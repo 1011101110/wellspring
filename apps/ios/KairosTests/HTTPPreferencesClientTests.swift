@@ -429,7 +429,8 @@ final class HTTPPreferencesClientTests: XCTestCase {
         )
         let sut = makeSUT(idToken: "tok")
 
-        let state = try XCTUnwrap(try await sut.pull())
+        let pulled = try await sut.pull()
+        let state = try XCTUnwrap(pulled)
 
         XCTAssertNil(state.onboardedAt)
         XCTAssertEqual(state.preferences.workdayStartHour, 6)

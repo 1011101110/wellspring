@@ -61,6 +61,21 @@ targets:
           - processing
         BGTaskSchedulerPermittedIdentifiers:
           - com.kairos.devotional.bandRefresh
+        # OAuth callback URL schemes. Kept here (not hand-edited into the
+        # generated Info.plist) so XcodeGen regeneration can't drop them.
+        # These are native-client OAuth identifiers, not secrets — they ship
+        # in every app binary. Two distinct entries on purpose: `kairos` is
+        # our own callback for the Google *Calendar* OAuth flow (#124), while
+        # the reversed-client-id scheme is Google Sign-In's callback (#190).
+        # Signing in must never imply calendar access (Foundation §8), and
+        # different OAuth clients back each one.
+        CFBundleURLTypes:
+          - CFBundleURLName: com.kairos.devotional.oauth
+            CFBundleURLSchemes:
+              - kairos
+          - CFBundleURLName: com.kairos.devotional.googlesignin
+            CFBundleURLSchemes:
+              - com.googleusercontent.apps.382100412938-816ee8lagi2o104197l9tdfkboccvd91
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.kairos.devotional

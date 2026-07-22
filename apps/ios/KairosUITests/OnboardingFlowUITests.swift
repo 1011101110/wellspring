@@ -124,7 +124,7 @@ final class OnboardingFlowUITests: XCTestCase {
         // device. A plain .tap() on an unhittable element fails silently,
         // leaving the toggle off — and the primary button is only labelled
         // `healthPriming.continue` once at least one category is on.
-        tapAfterScrollingIntoView(app.switches["healthPriming.toggle.recovery"])
+        flipSwitchOn("healthPriming.toggle.recovery")
         tapAfterScrollingIntoView(app.buttons["healthPriming.continue"])
 
         XCTAssertTrue(app.navigationBars["Preferences"].waitForExistence(timeout: 10))
@@ -161,7 +161,7 @@ final class OnboardingFlowUITests: XCTestCase {
         app.buttons["calendarConnect.skip"].tap()
 
         XCTAssertTrue(app.switches["healthPriming.toggle.sleepQuality"].waitForExistence(timeout: 10))
-        tapAfterScrollingIntoView(app.switches["healthPriming.toggle.sleepQuality"])
+        flipSwitchOn("healthPriming.toggle.sleepQuality")
         tapAfterScrollingIntoView(app.buttons["healthPriming.continue"])
 
         XCTAssertTrue(
@@ -245,6 +245,27 @@ final class OnboardingFlowUITests: XCTestCase {
         // element still isn't reachable after scrolling.
         XCTAssertTrue(element.waitForExistence(timeout: 5), "\(element) never became reachable after scrolling")
         element.tap()
+    }
+
+    /// Turns a health-category `Toggle` on and confirms it flipped.
+    ///
+    /// The accessibility-identified element spans the whole row (label + the
+    /// UISwitch), so XCUITest's `.tap()` — which targets the element centre —
+    /// lands on the label. On iOS 26 that no longer flips the control (it did
+    /// on the toolchain these tests were written against); only a hit on the
+    /// switch itself, at the trailing edge, toggles it. We tap there and then
+    /// assert `value == "1"` so a future behaviour change fails loudly here
+    /// rather than as a mysterious timeout on `healthPriming.continue`.
+    private func flipSwitchOn(_ identifier: String, maxSwipes: Int = 8) {
+        let sw = app.switches[identifier]
+        for _ in 0..<maxSwipes {
+            if sw.exists && sw.isHittable { break }
+            app.swipeUp()
+        }
+        XCTAssertTrue(sw.waitForExistence(timeout: 5), "\(identifier) switch never became reachable")
+        if (sw.value as? String) == "1" { return }
+        sw.coordinate(withNormalizedOffset: CGVector(dx: 0.92, dy: 0.5)).tap()
+        XCTAssertEqual(sw.value as? String, "1", "\(identifier) did not turn on after tapping the control")
     }
 
     /// Common setup shared by tests that need to get past sign-in to reach
