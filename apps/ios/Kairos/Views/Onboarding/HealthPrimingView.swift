@@ -29,7 +29,7 @@ struct HealthPrimingView: View {
                 .bold()
                 .accessibilityIdentifier("healthPriming.headline")
 
-            Text("Kairos already knows the shape of your day from your calendar. If you like, it can also notice how rested you are — a heavy day after a short night can call for something gentler.")
+            Text("Wellspring already knows the shape of your day from your calendar. If you like, it can also notice how rested you are — a heavy day after a short night can call for something gentler.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .accessibilityIdentifier("healthPriming.explainer")
@@ -89,14 +89,14 @@ struct HealthPrimingView: View {
                 .accessibilityIdentifier("healthPriming.skip")
                 .frame(maxWidth: .infinity)
             } else {
-                Button("My calendar is all Kairos needs") {
+                Button("My calendar is all Wellspring needs") {
                     viewModel.skipHealthPriming()
                 }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.large)
                 .frame(maxWidth: .infinity)
                 .accessibilityIdentifier("healthPriming.skip")
-                .accessibilityHint("Continues without sharing health data. Kairos personalizes from your calendar.")
+                .accessibilityHint("Continues without sharing health data. Wellspring personalizes from your calendar.")
             }
         }
         .padding()

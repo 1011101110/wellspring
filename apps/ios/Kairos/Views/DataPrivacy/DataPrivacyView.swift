@@ -96,7 +96,7 @@ struct DataPrivacyView: View {
                 consentRow(category)
             }
         } header: {
-            Text("What Kairos can use")
+            Text("What Wellspring can use")
         } footer: {
             Text("Each of these is independent — turning one off never turns off the others, and the app keeps working with reduced personalization.")
         }
@@ -197,7 +197,7 @@ struct DataPrivacyView: View {
             // that an already-scheduled devotional event stays on the
             // calendar, rather than letting the user discover it later and
             // reasonably conclude the disconnect didn't work.
-            Text("Disconnecting revokes Kairos's access to your Google Calendar and stops it reading your free/busy time. Any devotional event already on your calendar stays there — you can delete it yourself. To also revoke calendar access at the system level, use Settings › Privacy › Calendars.")
+            Text("Disconnecting revokes Wellspring's access to your Google Calendar and stops it reading your free/busy time. Any devotional event already on your calendar stays there — you can delete it yourself. To also revoke calendar access at the system level, use Settings › Privacy › Calendars.")
         }
     }
 
@@ -211,9 +211,9 @@ struct DataPrivacyView: View {
     // than implying a guarantee we can't keep.
     private var meetingDeliverySection: some View {
         Section {
-            Text("For devotionals scheduled on your Google Calendar, the event includes a Google Meet link, and a Kairos voice joins at that time to speak the devotional.")
-            Text("Kairos never records, reads, stores, or uses anything from that meeting. The Kairos voice only speaks — it does not listen. Its session data is deleted immediately after it leaves.")
-            Text("One thing we can't turn off: Google Meet runs its own live captions for any meeting, which we have no way to disable for a bot participant. Those captions are Google's, not Kairos's — we never receive or keep them. The meeting is only ever your own devotional time or a meeting you personally invited Kairos to.")
+            Text("For devotionals scheduled on your Google Calendar, the event includes a Google Meet link, and a Wellspring voice joins at that time to speak the devotional.")
+            Text("Wellspring never records, reads, stores, or uses anything from that meeting. The Wellspring voice only speaks — it does not listen. Its session data is deleted immediately after it leaves.")
+            Text("One thing we can't turn off: Google Meet runs its own live captions for any meeting, which we have no way to disable for a bot participant. Those captions are Google's, not Wellspring's — we never receive or keep them. The meeting is only ever your own devotional time or a meeting you personally invited Wellspring to.")
                 .font(.caption)
         } header: {
             Text("How devotionals reach your meetings")
@@ -232,12 +232,12 @@ struct DataPrivacyView: View {
     // standing explanation of what the feature does.
     private var inviteKairosSection: some View {
         Section {
-            Text("You can invite Kairos to a meeting you create — add your personal Kairos invite address as a guest, and Kairos will prepare a devotional for that time.")
-            Text("When you do, the meeting's title and description are sent to our AI provider (Gloo) to shape that devotional — because you wrote them for Kairos, the same as a note to any other guest. Don't put anything in them you wouldn't want an AI system to read.")
-            Text("Nothing else about that meeting is sent — not who else is invited, not where it is. And this only ever applies to a meeting you personally invited Kairos to; your other calendar events are never read this way.")
+            Text("You can invite Wellspring to a meeting you create — add your personal Wellspring invite address as a guest, and Wellspring will prepare a devotional for that time.")
+            Text("When you do, the meeting's title and description are sent to our AI provider (Gloo) to shape that devotional — because you wrote them for Wellspring, the same as a note to any other guest. Don't put anything in them you wouldn't want an AI system to read.")
+            Text("Nothing else about that meeting is sent — not who else is invited, not where it is. And this only ever applies to a meeting you personally invited Wellspring to; your other calendar events are never read this way.")
                 .font(.caption)
         } header: {
-            Text("Inviting Kairos to a meeting")
+            Text("Inviting Wellspring to a meeting")
         }
     }
 

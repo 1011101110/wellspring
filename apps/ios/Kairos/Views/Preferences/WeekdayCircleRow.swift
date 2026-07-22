@@ -118,7 +118,7 @@ struct WeekdayCircleRow: View {
             // constraint is part of what this control *is*, so stating it up
             // front is cheaper than letting someone discover it by tapping
             // something that then refuses to respond.
-            Text("Kairos needs at least one day.")
+            Text("Wellspring needs at least one day.")
                 .font(.caption)
                 .foregroundStyle(didRefuseDeselect ? Color.accentColor : Color.secondary)
                 .fontWeight(didRefuseDeselect ? .semibold : .regular)

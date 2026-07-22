@@ -64,7 +64,7 @@ public enum ConsentCategory: String, CaseIterable, Equatable, Sendable, Identifi
     public var deniedBehaviorDescription: String {
         switch self {
         case .calendar:
-            return "Kairos switches to email-invite-only mode — you pick a fixed time."
+            return "Wellspring switches to email-invite-only mode — you pick a fixed time."
         case .recovery, .sleep, .activity:
             return "This band is left out of your devotional; format falls back to your preference."
         }

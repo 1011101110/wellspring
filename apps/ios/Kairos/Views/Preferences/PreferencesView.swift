@@ -168,7 +168,7 @@ struct PreferencesView: View {
                 }
 
                 Section {
-                    Text("Kairos")
+                    Text("Wellspring")
                         .onTapGesture {
                             versionTapCount += 1
                             if versionTapCount >= 5 {

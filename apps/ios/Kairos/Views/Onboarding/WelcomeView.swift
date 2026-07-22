@@ -13,7 +13,7 @@ struct WelcomeView: View {
                 .foregroundStyle(.tint)
                 .accessibilityHidden(true)
 
-            Text("Kairos finds the open moment in your workday and books a short meeting with God.")
+            Text("Wellspring finds the open moment in your workday and books a short meeting with God.")
                 .font(.title2)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 32)
