@@ -1,41 +1,75 @@
 import SwiftUI
 
-/// docs/05_UX_FLOWS.md §3.1 "Devotional detail": full transcript, verse
-/// text + attribution, prayer, action step if present, Replay button.
-///
-/// In demo mode (issue #41 / EPIC E8) this view is fed directly from a
-/// `DemoFixtureSnapshot` decoded from `fixtures/snapshots/low_poor_heavy.json`
-/// — no network, no TTS, no session token — so the judge-facing arc (open
-/// app -> see bands -> see calendar event -> tap join -> audio plays,
-/// docs/05_UX_FLOWS.md §8) can render real fixture verse/attribution/body
-/// content with zero live dependencies. No live TTS pipeline exists yet
-/// (per this task's scope), so "audio plays" is represented honestly here
-/// by a play/pause control that toggles local UI state over the full
-/// transcript, rather than pretending to decode a real MP3 — functionally
-/// the same transcript-first experience as the `AUDIO_UNAVAILABLE` state's
-/// UI (§3.1), an acceptable substitute for a fixture stage that must stay
-/// judge-safe and fully offline.
+/// Normalized content the reader renders, so the same view serves both the
+/// demo fixture (`DemoFixtureSnapshot`) and a live devotional
+/// (`DevotionalDetail`) fetched from `GET /v1/devotionals/:id` (issue #3).
+struct DevotionalReaderContent: Equatable {
+    struct ReaderVerse: Equatable {
+        let reference: String
+        let text: String
+        let attribution: String
+    }
+    let theme: String
+    let verses: [ReaderVerse]
+    let body: String
+    let prayer: String
+    let actionStep: String?
+}
+
+/// docs/05_UX_FLOWS.md §3.1 "Devotional detail": full transcript, verse text
+/// + attribution, prayer, action step if present, play/complete controls.
+/// Reachable from the Home dashboard's Today card and History rows (#3), and
+/// fed directly from a fixture in demo mode (#41).
 struct DevotionalDetailView: View {
-    let snapshot: DemoFixtureSnapshot
+    let content: DevotionalReaderContent
     @State private var isPlaying = false
     @State private var isCompleted = false
+
+    init(content: DevotionalReaderContent) {
+        self.content = content
+    }
+
+    init(snapshot: DemoFixtureSnapshot) {
+        let output = snapshot.devotionalOutput
+        self.content = DevotionalReaderContent(
+            theme: output.theme,
+            verses: output.verses.map {
+                .init(reference: $0.reference, text: $0.fetchedText, attribution: $0.attribution)
+            },
+            body: output.devotionalBody,
+            prayer: output.prayer,
+            actionStep: output.actionStep
+        )
+    }
+
+    init(detail: DevotionalDetail) {
+        self.content = DevotionalReaderContent(
+            theme: detail.theme,
+            verses: detail.verses.map {
+                .init(reference: $0.reference, text: $0.fetchedText, attribution: $0.attribution)
+            },
+            body: detail.devotionalBody,
+            prayer: detail.prayer,
+            actionStep: detail.actionStep
+        )
+    }
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
-                Text(snapshot.devotionalOutput.theme.capitalized)
+                Text(content.theme.capitalized)
                     .font(.title2)
                     .bold()
                     .accessibilityIdentifier("devotionalDetail.theme")
 
-                ForEach(Array(snapshot.devotionalOutput.verses.enumerated()), id: \.offset) { _, verse in
+                ForEach(Array(content.verses.enumerated()), id: \.offset) { _, verse in
                     VStack(alignment: .leading, spacing: 8) {
                         Text(verse.reference)
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                             .accessibilityIdentifier("devotionalDetail.verseReference")
 
-                        Text(verse.fetchedText)
+                        Text(verse.text)
                             .font(.body)
                             .italic()
                             .accessibilityIdentifier("devotionalDetail.verseText")
@@ -55,7 +89,7 @@ struct DevotionalDetailView: View {
 
                 Text("Transcript")
                     .font(.headline)
-                Text(snapshot.devotionalOutput.devotionalBody)
+                Text(content.body)
                     .font(.body)
                     .accessibilityIdentifier("devotionalDetail.transcript")
 
@@ -63,12 +97,12 @@ struct DevotionalDetailView: View {
 
                 Text("Prayer")
                     .font(.headline)
-                Text(snapshot.devotionalOutput.prayer)
+                Text(content.prayer)
                     .font(.body)
                     .italic()
                     .accessibilityIdentifier("devotionalDetail.prayer")
 
-                if let actionStep = snapshot.devotionalOutput.actionStep {
+                if let actionStep = content.actionStep {
                     Divider()
                     Text("Action step")
                         .font(.headline)
@@ -85,10 +119,9 @@ struct DevotionalDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
     }
 
-    /// F4 web-session-page parity, docs/05_UX_FLOWS.md §4 "Main": large
-    /// play/pause control. No real audio asset ships with this stage (no
-    /// live TTS pipeline yet), so tapping only flips the local `isPlaying`
-    /// state — this is the "tap join -> audio plays" beat's UI, without
+    /// docs/05_UX_FLOWS.md §4 "Main": large play/pause control. No real audio
+    /// asset ships at this stage (no live TTS pipeline yet), so tapping only
+    /// flips the local `isPlaying` state — the "audio plays" beat's UI without
     /// pretending a real MP3 is being decoded.
     private var playbackControl: some View {
         Button {
@@ -101,8 +134,8 @@ struct DevotionalDetailView: View {
         .accessibilityIdentifier("devotionalDetail.playButton")
     }
 
-    /// docs/05_UX_FLOWS.md §4 "Amen — mark complete" button; becomes a
-    /// quiet "Completed check" once tapped, zero-guilt (P2).
+    /// docs/05_UX_FLOWS.md §4 "Amen — mark complete"; becomes a quiet
+    /// "Completed check" once tapped, zero-guilt (P2).
     private var completeButton: some View {
         Button {
             isCompleted = true

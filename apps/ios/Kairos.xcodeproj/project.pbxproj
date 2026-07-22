@@ -17,6 +17,7 @@
 		0E8CA96EB465768C155711EE /* DevotionalDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 28E40278047EBEC9094B7A2A /* DevotionalDetailView.swift */; };
 		10AE3607B8D511671B55527A /* RootTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC4787586F95302AD40228E1 /* RootTabView.swift */; };
 		1220BFB2B4C206E76265BA67 /* FirebaseAuthServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 352472024120B3204487CAC9 /* FirebaseAuthServiceTests.swift */; };
+		131ECFF394F13A10EAE9B5B2 /* DevotionalReaderScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 716CB5D58BA507641ADEAEA2 /* DevotionalReaderScreen.swift */; };
 		1519DE9C7D236655A0F874BE /* ConsentStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA7FFC5026A29219C3E41AFC /* ConsentStoreTests.swift */; };
 		1787187A4BEAEFD90EEDABA7 /* InviteEmailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13C5F4E51EF70C8F92499B50 /* InviteEmailView.swift */; };
 		19E85DB9218ECF24CEC3FFA5 /* EventKitCalendarConnectService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17971371FD4DDB4D05CAF5D4 /* EventKitCalendarConnectService.swift */; };
@@ -179,6 +180,7 @@
 		6063A46680E185C44BFC1FE0 /* WeekdayCircleRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WeekdayCircleRow.swift; sourceTree = "<group>"; };
 		6D23DFB5FA9F6A18C19BC236 /* DashboardDemoData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardDemoData.swift; sourceTree = "<group>"; };
 		6DD67613D65678B47BE2F643 /* BandUploadServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BandUploadServiceTests.swift; sourceTree = "<group>"; };
+		716CB5D58BA507641ADEAEA2 /* DevotionalReaderScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DevotionalReaderScreen.swift; sourceTree = "<group>"; };
 		72739D709AE300BA34D8492E /* BandPhraseCompleteMappingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BandPhraseCompleteMappingTests.swift; sourceTree = "<group>"; };
 		73D89500F1B93597A399595F /* AppEnvironment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppEnvironment.swift; sourceTree = "<group>"; };
 		86ACCDB0E9535872273BA4A6 /* HomeDashboardUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeDashboardUITests.swift; sourceTree = "<group>"; };
@@ -414,6 +416,7 @@
 			isa = PBXGroup;
 			children = (
 				28E40278047EBEC9094B7A2A /* DevotionalDetailView.swift */,
+				716CB5D58BA507641ADEAEA2 /* DevotionalReaderScreen.swift */,
 			);
 			path = Devotional;
 			sourceTree = "<group>";
@@ -712,6 +715,7 @@
 				5D3C6E7D348E0D899D4FFB86 /* DataPrivacyViewModel.swift in Sources */,
 				C7F30896A5555738FFE6834F /* DemoFixtureSnapshot.swift in Sources */,
 				0E8CA96EB465768C155711EE /* DevotionalDetailView.swift in Sources */,
+				131ECFF394F13A10EAE9B5B2 /* DevotionalReaderScreen.swift in Sources */,
 				6AA1F153E252FAE0AA0B883E /* DistressCheckinClient.swift in Sources */,
 				19E85DB9218ECF24CEC3FFA5 /* EventKitCalendarConnectService.swift in Sources */,
 				38C47ADE52FDD64DDB9034E2 /* EventKitSlotCollector.swift in Sources */,

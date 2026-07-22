@@ -54,4 +54,20 @@ final class HomeDashboardUITests: XCTestCase {
         snapshot("04-bottom-distress")
         XCTAssertTrue(app.buttons["home.distressCheckinButton"].exists)
     }
+
+    /// Tapping "Open today's devotional" pushes the native in-app reader (#3),
+    /// not a web session — the reader shows the real verse + transcript.
+    func test_openingTodaysDevotional_pushesNativeReader() {
+        app.launch()
+        let openButton = app.buttons["home.today.openButton"]
+        XCTAssertTrue(openButton.waitForExistence(timeout: 15))
+        openButton.tap()
+
+        XCTAssertTrue(app.staticTexts["devotionalDetail.theme"].waitForExistence(timeout: 10),
+                      "Should push the native reader")
+        XCTAssertTrue(app.staticTexts["devotionalDetail.verseText"].exists)
+        XCTAssertTrue(app.staticTexts["devotionalDetail.transcript"].exists)
+        XCTAssertTrue(app.buttons["devotionalDetail.completeButton"].exists)
+        snapshot("05-native-reader")
+    }
 }
