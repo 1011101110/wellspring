@@ -15,7 +15,7 @@ struct CalendarConnectView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
-            Text("This is how Kairos works")
+            Text("This is how Wellspring works")
                 .font(.title2)
                 .bold()
                 .accessibilityIdentifier("calendarConnect.headline")
@@ -77,9 +77,9 @@ struct CalendarConnectView: View {
     /// matching how the priming copy pairs are already read below.
     private var valueProposition: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Kairos reads the shape of your day — how packed it is, where the real gaps are — and books one short devotional into an open slot, like any other meeting.")
+            Text("Wellspring reads the shape of your day — how packed it is, where the real gaps are — and books one short devotional into an open slot, like any other meeting.")
             Text("It never reads meeting titles, attendees, or notes, and it never stores your calendar.")
-            Text("Your calendar is all Kairos needs. Everything after this step is optional.")
+            Text("Your calendar is all Wellspring needs. Everything after this step is optional.")
                 .fontWeight(.medium)
         }
         .font(.subheadline)

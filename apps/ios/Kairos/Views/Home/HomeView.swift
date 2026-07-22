@@ -78,7 +78,7 @@ struct HomeView: View {
                 .accessibilityIdentifier("home.distressCheckinButton")
 
                 if checkinFailed {
-                    Text("Couldn't reach Kairos just now — please try again in a moment. If you need immediate help, call or text 988.")
+                    Text("Couldn't reach Wellspring just now — please try again in a moment. If you need immediate help, call or text 988.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
@@ -121,7 +121,7 @@ struct HomeView: View {
             DevotionalDetailView(snapshot: fixture)
         } label: {
             VStack(alignment: .leading, spacing: 8) {
-                Text("Kairos — a moment of rest")
+                Text("Wellspring — a moment of rest")
                     .font(.headline)
                     .foregroundStyle(.primary)
                 Text(fixture.devotionalOutput.cardSummary)
@@ -176,7 +176,7 @@ struct HomeView: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
         case .uploadFailed:
-            Text("Bands derived, but couldn't reach Kairos — we'll try again soon.")
+            Text("Bands derived, but couldn't reach Wellspring — we'll try again soon.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }

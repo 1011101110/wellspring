@@ -52,6 +52,10 @@ targets:
       path: Kairos/Info.plist
       properties:
         UILaunchScreen: {}
+        # Product/brand name shown under the app icon and in system UI.
+        # The target, bundle id, and module stay "kairos" (internal codename);
+        # only the user-facing name is Wellspring, matching the web app.
+        CFBundleDisplayName: Wellspring
         NSCalendarsUsageDescription: "Kairos reads when you're free or busy to place your devotional in a quiet gap. Event titles, attendees, and notes are never read."
         NSCalendarsFullAccessUsageDescription: "Kairos reads when you're free or busy to place your devotional in a quiet gap. Event titles, attendees, and notes are never read."
         NSHealthShareUsageDescription: "Kairos turns your recovery, sleep, and activity into three simple words on your phone. Raw health data never leaves your device."
