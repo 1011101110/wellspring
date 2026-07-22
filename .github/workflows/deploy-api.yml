@@ -1,0 +1,234 @@
+name: Deploy API
+on:
+  push:
+    branches: [main]
+    paths: ["apps/api/**", "packages/shared-contracts/**", ".github/workflows/deploy-api.yml"]
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "Deploy target (prod requires environment approval)"
+        type: choice
+        options: [staging, prod]
+        default: staging
+
+env:
+  # Real project id lives in a repo Actions variable, not committed — this
+  # is an open-source repo. REGION is not sensitive.
+  PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+  REGION: us-central1
+  REGISTRY: us-central1-docker.pkg.dev
+  IMAGE: us-central1-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/docker-images/kairos-api
+
+concurrency:
+  group: deploy-api-${{ github.event_name == 'workflow_dispatch' && inputs.target || 'staging' }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: ${{ (github.event_name == 'workflow_dispatch' && inputs.target == 'prod') && 'production' || 'staging' }}
+    permissions: { contents: read, id-token: write }
+    steps:
+      - uses: actions/checkout@v4
+      - name: Resolve target
+        id: t
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.target }}" = "prod" ]; then
+            echo "service=kairos-api"          >> "$GITHUB_OUTPUT"
+            echo "db=kairos"                   >> "$GITHUB_OUTPUT"
+            echo "node_env=production"         >> "$GITHUB_OUTPUT"
+          else
+            echo "service=kairos-api-staging"  >> "$GITHUB_OUTPUT"
+            echo "db=kairos_staging"           >> "$GITHUB_OUTPUT"
+            echo "node_env=staging"            >> "$GITHUB_OUTPUT"
+          fi
+      # Keyless auth via Workload Identity Federation — no long-lived key in
+      # this public repo. GitHub's OIDC token is exchanged for short-lived GCP
+      # credentials; the WIF provider is locked to this repo only.
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOY_SA }}
+      - uses: google-github-actions/setup-gcloud@v2
+        with: { project_id: "${{ env.PROJECT_ID }}" }
+      - run: gcloud auth configure-docker ${{ env.REGISTRY }} --quiet
+      - name: Build image
+        run: |
+          docker build -f apps/api/Dockerfile \
+            -t ${{ env.IMAGE }}:${{ github.sha }} -t ${{ env.IMAGE }}:latest .
+      - name: Smoke test image — fixture fallback must work in the built container (docs/14 §1.3)
+        run: |
+          docker run --rm ${{ env.IMAGE }}:${{ github.sha }} node -e "
+            import('/repo/apps/api/dist/services/devotionalEngine.js').then(({ loadFixtureDevotional }) => {
+              const bands = { recovery: 'moderate', sleepQuality: 'fair', activity: 'moderate', busyness: 'moderate', communicationLoad: null, distressSignal: false };
+              const devotional = loadFixtureDevotional('/repo/fixtures/snapshots', bands);
+              if (!devotional || typeof devotional.devotionalBody !== 'string' || devotional.devotionalBody.length === 0) {
+                console.error('FAIL: loadFixtureDevotional did not return a valid devotional');
+                process.exit(1);
+              }
+              console.log('OK: loadFixtureDevotional works inside the built image, theme=' + devotional.theme);
+              process.exit(0);
+            }).catch((err) => {
+              console.error('FAIL:', err);
+              process.exit(1);
+            });
+          "
+      - name: Push image
+        run: |
+          docker push ${{ env.IMAGE }}:${{ github.sha }}
+          docker push ${{ env.IMAGE }}:latest
+      - name: Record current serving revision (rollback target)
+        id: prev
+        run: |
+          PREV=$(gcloud run services describe ${{ steps.t.outputs.service }} \
+            --region ${{ env.REGION }} \
+            --format='value(status.traffic[0].revisionName)' 2>/dev/null || true)
+          echo "revision=$PREV" >> "$GITHUB_OUTPUT"
+      - name: Resolve PUBLIC_BASE_URL (docs/14 §1.1)
+        id: baseurl
+        run: |
+          # The service's own live URL, if it has ever been deployed before
+          # (Cloud Run URLs are stable across revisions/redeploys of the
+          # same service). On a brand-new service's very first deploy this
+          # is empty — harmless, since AUDIO_BUCKET (set below) puts both
+          # targets in GCS signed-URL mode, where PUBLIC_BASE_URL is unused.
+          URL=$(gcloud run services describe ${{ steps.t.outputs.service }} \
+            --region ${{ env.REGION }} \
+            --format='value(status.url)' 2>/dev/null || true)
+          echo "url=$URL" >> "$GITHUB_OUTPUT"
+      - name: Run database migrations
+        run: |
+          curl -sLo csp https://storage.googleapis.com/cloud-sql-connectors/cloud-sql-proxy/v2.14.0/cloud-sql-proxy.linux.amd64
+          chmod +x csp && ./csp ${{ env.PROJECT_ID }}:${{ env.REGION }}:shared-postgres --port 5432 &
+          sleep 3
+          DB_PASSWORD=$(gcloud secrets versions access latest --secret=KAIROS_DB_PASSWORD)
+          export DATABASE_URL="postgres://kairos_app:${DB_PASSWORD}@127.0.0.1:5432/${{ steps.t.outputs.db }}"
+          npm ci && npm run migrate --workspace=apps/api -- up
+      - name: Deploy to Cloud Run
+        run: |
+          # --no-cpu-throttling (D4/#32, docs/23_LIVEKIT_DELIVERY.md §1):
+          # Cloud Run's default freezes a container's CPU once the HTTP
+          # response is sent — found live 2026-07-06 when the LiveKit
+          # webhook's fire-and-forget publish work (which continues after
+          # the 200 ack) never got a chance to run. Applied manually first
+          # to unblock the live test, now declared here so it isn't lost
+          # on the next deploy. Cost tradeoff: pay for CPU while an
+          # instance is idle-but-warm, not just per-request — accepted
+          # given min-instances=0 keeps this bounded.
+          #
+          # --set-env-vars below opens with `^@^`, which sets `@` as the entry
+          # delimiter (gcloud topic escaping) so a VALUE may itself contain
+          # commas: WEB_APP_BASE_URL carries both allowed origins (.web.app AND
+          # .firebaseapp.com) comma-joined, which app.ts splits for the CORS
+          # allowlist. With the default comma delimiter gcloud read that inner
+          # comma as a malformed second entry and the deploy failed.
+          gcloud run deploy ${{ steps.t.outputs.service }} \
+            --image ${{ env.IMAGE }}:${{ github.sha }} \
+            --region ${{ env.REGION }} --platform managed \
+            --service-account kairos-api-sa@${{ env.PROJECT_ID }}.iam.gserviceaccount.com \
+            --add-cloudsql-instances ${{ env.PROJECT_ID }}:${{ env.REGION }}:shared-postgres \
+            --allow-unauthenticated \
+            --cpu 1 --memory 512Mi --min-instances 0 --max-instances 3 \
+            --no-cpu-throttling \
+            --timeout 900 \
+            --set-env-vars "^@^BUILD_SHA=${{ github.sha }}@NODE_ENV=${{ steps.t.outputs.node_env }}@DB_NAME=${{ steps.t.outputs.db }}@DB_SOCKET=/cloudsql/${{ env.PROJECT_ID }}:${{ env.REGION }}:shared-postgres@AUDIO_BUCKET=kairos-audio-${{ env.PROJECT_ID }}@PUBLIC_BASE_URL=${{ steps.baseurl.outputs.url }}@MEETBOT_TASKS_PROJECT_ID=${{ env.PROJECT_ID }}@MEETBOT_TASKS_LOCATION=${{ env.REGION }}@MEETBOT_TASKS_QUEUE=meetbot-dispatch@WEB_APP_BASE_URL=${{ vars.WEB_APP_BASE_URL }}@KMS_KEY_NAME=${{ vars.KMS_KEY_NAME }}" \
+            --set-secrets "DB_PASSWORD=KAIROS_DB_PASSWORD:latest,GLOO_CLIENT_ID=GLOO_CLIENT_ID:latest,GLOO_CLIENT_SECRET=GLOO_CLIENT_SECRET:latest,YOUVERSION_API_KEY=YOUVERSION_API_KEY:latest,INTERNAL_API_TOKEN=INTERNAL_API_TOKEN:latest,GOOGLE_OAUTH_CLIENT_ID=GOOGLE_OAUTH_CLIENT_ID:latest,GOOGLE_OAUTH_CLIENT_SECRET=GOOGLE_OAUTH_CLIENT_SECRET:latest,LIVEKIT_URL=LIVEKIT_URL:latest,LIVEKIT_API_KEY=LIVEKIT_API_KEY:latest,LIVEKIT_API_SECRET=LIVEKIT_API_SECRET:latest,ATTENDEE_API_KEY=ATTENDEE_API_KEY:latest,MEETBOT_AUDIO_TOKEN=MEETBOT_AUDIO_TOKEN:latest,RESEND_API_KEY=RESEND_API_KEY:latest,RESEND_WEBHOOK_SECRET=RESEND_WEBHOOK_SECRET:latest,INVITE_EMAIL_DOMAIN=INVITE_EMAIL_DOMAIN:latest"
+            # WEB_APP_BASE_URL (#195): origin of the web app, so a
+            # browser-originated Google Calendar connect returns to
+            # `${WEB_APP_BASE_URL}/connect/callback` instead of the iOS-only
+            # `kairos://` scheme, which a browser cannot resolve. A plain
+            # public origin, not a credential — set as a GitHub Actions
+            # repo/environment variable so the URL can change without a
+            # workflow edit. Deliberately safe to leave unset: it expands to
+            # an empty string, routes/connect.ts requires a valid https://
+            # URL, and anything else falls back to the mobile scheme.
+            # D4/#32, docs/23_LIVEKIT_DELIVERY.md: LIVEKIT_URL isn't a
+            # credential (just the project's wss:// endpoint) but is kept in
+            # Secret Manager rather than hardcoded here, mirroring
+            # GOOGLE_OAUTH_CLIENT_ID's treatment above — avoids committing a
+            # third-party project identifier to git history and keeps every
+            # LiveKit value rotatable the same way.
+            # MEETBOT_TASKS_* (H1c, #131 / #53): wired 2026-07-08 — the owner
+            # ACTIVATED H1 Meet-bot delivery for all Google-connected users
+            # (accept+disclose transcription posture, Foundation §8 / docs/22
+            # §3). Plain non-secret identifiers (project id + region are
+            # already in this file), so set directly, not via Secret Manager.
+            # Presence of all three (plus ATTENDEE_API_KEY + INTERNAL_API_TOKEN,
+            # already set) flips deliveryProvider from LiveKit to MeetBotProvider
+            # in index.ts: Google-Calendar events now carry a real Meet link and
+            # a bot is dispatched at gap_start_at via the meetbot-dispatch Cloud
+            # Tasks queue. The hosted session page stays the permanent fallback
+            # (DEC-K3). Staging and prod share the one queue — task names are
+            # UUID-based (meetbot-<devotionalId>), so no cross-target collision.
+            # --timeout 900 (H1a, #129): the default Cloud Run request timeout
+            # is 300s. A live devotional playback test found this borderline —
+            # a ~303s devotional caused audible degradation right near the end
+            # of a single long-lived meetBotAudio websocket connection (the
+            # request duration and the timeout collided almost exactly).
+            # 900s gives generous headroom for any realistic devotional length.
+            # ATTENDEE_API_KEY (H1, #53, issue #129): wired 2026-07-07 once the
+            # owner created the attendee.dev account — code that reads it
+            # (apps/api/src/services/meetBot/attendeeClient.ts) is still
+            # unverified against a live account until the H1a spike runs.
+            # MEETBOT_AUDIO_TOKEN (H1a, #129): a dedicated, randomly generated
+            # secret for routes/meetBotAudio.ts ONLY — deliberately separate
+            # from INTERNAL_API_TOKEN because this URL is sent to Attendee (a
+            # third party) as part of the createBot request; reusing the
+            # admin-scoped INTERNAL_API_TOKEN there would leak it externally.
+            # RESEND_API_KEY / RESEND_WEBHOOK_SECRET (Epic I, #60, issue #61):
+            # wired 2026-07-07 once the owner created a Resend account — used
+            # for both outbound .ics email (EPIC C5) and the inbound invite
+            # webhook (routes/inboundInvite.ts). INVITE_EMAIL_DOMAIN is that
+            # account's free `<id>.resend.app` receiving subdomain (kept in
+            # Secret Manager rather than hardcoded here, same reasoning as
+            # LIVEKIT_URL above) — an interim value since the owner hasn't
+            # registered/decided a real product domain yet.
+            # FIREBASE_SERVICE_ACCOUNT: permanently omitted by design — the backend uses
+            # kairos-api-sa's own Application Default Credentials (granted roles/firebaseauth.admin)
+            # instead of a downloaded service-account key file. See docs/10_CREDENTIALS_ACCESS.md item 6.
+      # Traffic must follow the newest revision. A previous rollback pinned it
+      # to a named revision (`--to-revisions <rev>=100`), which turns OFF
+      # Cloud Run's default "latest revision serves" — so every subsequent
+      # deploy built a healthy revision that received zero traffic, for hours,
+      # while the pipeline stayed green (issue #230). Re-asserting --to-latest
+      # here makes that pin self-healing on the next successful deploy rather
+      # than a permanent trap set by a transient failure.
+      - name: Route traffic to the new revision
+        run: |
+          gcloud run services update-traffic ${{ steps.t.outputs.service }} \
+            --region ${{ env.REGION }} --to-latest
+
+      # Asserts IDENTITY, not liveness. The old check curled /status and
+      # accepted any 200 — which the *pinned old revision* returned happily,
+      # so a no-op deploy looked identical to a successful one. Comparing the
+      # served buildSha to the commit we just built is the only thing that
+      # actually answers "is the code I built the code that is serving?".
+      - name: Post-deploy verification — served build must equal this commit
+        run: |
+          URL=$(gcloud run services describe ${{ steps.t.outputs.service }} \
+            --region ${{ env.REGION }} --format='value(status.url)')
+          EXPECTED="${{ github.sha }}"
+          for i in $(seq 1 10); do
+            BODY=$(curl -fsS --max-time 10 "$URL/status" || true)
+            SERVED=$(printf '%s' "$BODY" | sed -n 's/.*"buildSha":"\([^"]*\)".*/\1/p')
+            if [ "$SERVED" = "$EXPECTED" ]; then
+              echo "Serving $SERVED — matches this build."
+              exit 0
+            fi
+            echo "Attempt $i: serving '${SERVED:-<none>}', expected '$EXPECTED'"
+            sleep 6
+          done
+          echo "::error::Deploy did not take effect. /status reports buildSha '${SERVED:-<none>}' but this build is '$EXPECTED'. The container is alive but it is NOT this commit — check whether traffic is pinned to an older revision (issue #230)."
+          exit 1
+
+      # Rollback restores availability, but pinning is what caused #230. The
+      # `--to-latest` step above un-pins on the next successful deploy, so this
+      # is now a temporary measure rather than a permanent one. The log line
+      # matters: someone reading a red run needs to know traffic was moved.
+      - name: Roll traffic back to previous revision
+        if: failure() && steps.prev.outputs.revision != ''
+        run: |
+          echo "::warning::Deploy failed — pinning traffic to ${{ steps.prev.outputs.revision }} to restore service. The next SUCCESSFUL deploy re-runs 'update-traffic --to-latest' and un-pins automatically (issue #230)."
+          gcloud run services update-traffic ${{ steps.t.outputs.service }} \
+            --region ${{ env.REGION }} \
+            --to-revisions ${{ steps.prev.outputs.revision }}=100

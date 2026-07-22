@@ -1,0 +1,119 @@
+name: Deploy Web
+# Web client (#195) -> Firebase Hosting.
+#
+# Deliberately mirrors deploy-api.yml's posture rather than inventing a second
+# one: same cost controls (path-filtered, concurrency-serialized), same
+# credential (GCP_SA_KEY), and the same refusal to call a deploy "done"
+# because a request returned 200 — see the verification step at the bottom
+# and issue #230, where exactly that assumption hid a two-and-a-half hour
+# outage on the API side.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/web/**"
+      - "packages/shared-contracts/**"
+      - ".github/workflows/deploy-web.yml"
+  workflow_dispatch: {}
+
+env:
+  # Real project id in a repo Actions variable, not committed (open-source repo).
+  PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+  SITE: ${{ vars.GCP_PROJECT_ID }}
+
+# Serialize deploys to one site. Unlike CI, `cancel-in-progress` is FALSE:
+# cancelling a half-finished hosting release is how you get a site serving a
+# partially-uploaded version.
+concurrency:
+  group: deploy-web
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions: { contents: read, id-token: write }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20, cache: npm }
+      - run: npm ci
+
+      # shared-contracts is the wire contract the web client compiles against;
+      # a stale dist here produces a client that typechecks locally and
+      # disagrees with the API in the browser.
+      - name: Build shared contracts
+        run: npm run build --workspace=packages/shared-contracts
+
+      - name: Build web
+        env:
+          # Baked into the bundle at build time so the deployed artifact can
+          # report which commit it came from — the same identity check the API
+          # gained in #230. A hosting release that silently didn't take is
+          # otherwise indistinguishable from one that did.
+          VITE_BUILD_SHA: ${{ github.sha }}
+          # Firebase browser API key. It is NOT secret — it ships in the
+          # bundle by design and is restricted by allowed referrers, not by
+          # obscurity. It lives in Actions secrets purely so the literal
+          # `AIza…` string never enters a tracked file: gitleaks' default
+          # `gcp-api-key` rule matches it, and `secret-scan.yml` runs on every
+          # PR with no allowlist. (The committed iOS plist escapes that rule
+          # only by accident — `</string>` follows its value rather than a
+          # quote — so it is not a precedent a new commit could rely on.)
+          # Using a secret also keeps it out of build logs.
+          VITE_FIREBASE_API_KEY: ${{ secrets.VITE_FIREBASE_API_KEY }}
+          # The rest of the Firebase config + the API base. NOT secret (they
+          # ship in the bundle), but kept in Actions *variables* rather than
+          # committed so the open-source repo carries only placeholders — the
+          # real project values live in repo settings, injected here at build.
+          VITE_FIREBASE_AUTH_DOMAIN: ${{ vars.VITE_FIREBASE_AUTH_DOMAIN }}
+          VITE_FIREBASE_PROJECT_ID: ${{ vars.VITE_FIREBASE_PROJECT_ID }}
+          VITE_FIREBASE_APP_ID: ${{ vars.VITE_FIREBASE_APP_ID }}
+          VITE_FIREBASE_MESSAGING_SENDER_ID: ${{ vars.VITE_FIREBASE_MESSAGING_SENDER_ID }}
+          VITE_FIREBASE_STORAGE_BUCKET: ${{ vars.VITE_FIREBASE_STORAGE_BUCKET }}
+          VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL }}
+        run: npm run build --workspace=apps/web
+
+      # Keyless auth via Workload Identity Federation — no long-lived key in
+      # this public repo. GitHub's OIDC token is exchanged for short-lived GCP
+      # credentials; the WIF provider is locked to this repo only.
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOY_SA }}
+      - uses: google-github-actions/setup-gcloud@v2
+        with: { project_id: "${{ env.PROJECT_ID }}" }
+
+      - name: Deploy to Firebase Hosting
+        run: |
+          npx --yes firebase-tools@13 deploy \
+            --only hosting \
+            --project "${{ env.PROJECT_ID }}" \
+            --non-interactive
+
+      # Identity, not liveness (#230). A 200 from the hosting CDN proves a site
+      # is there — it cannot prove it is THIS build. The bundle embeds the SHA,
+      # so grep the served assets for it.
+      #
+      # Retries because Firebase Hosting's CDN takes a moment to propagate a
+      # new release; a single immediate check would be flaky in the direction
+      # of false failure.
+      - name: Post-deploy verification — served bundle must be this commit
+        run: |
+          URL="https://${{ env.SITE }}.web.app"
+          EXPECTED="${{ github.sha }}"
+          for i in $(seq 1 12); do
+            # The SHA appears in the built JS, not index.html, so follow the
+            # module script the page actually loads.
+            ASSET=$(curl -fsS --max-time 10 "$URL/" \
+              | sed -n 's/.*<script[^>]*src="\([^"]*\.js\)".*/\1/p' | head -1)
+            if [ -n "$ASSET" ]; then
+              if curl -fsS --max-time 10 "$URL${ASSET#.}" | grep -q "$EXPECTED"; then
+                echo "Serving $EXPECTED — matches this build."
+                exit 0
+              fi
+            fi
+            echo "Attempt $i: served bundle does not yet contain $EXPECTED"
+            sleep 10
+          done
+          echo "::error::Web deploy did not take effect — the served bundle does not contain ${EXPECTED}. The site is up but it is NOT this commit (cf. issue #230 on the API side)."
+          exit 1
