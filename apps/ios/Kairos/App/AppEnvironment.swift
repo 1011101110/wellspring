@@ -91,6 +91,16 @@ public final class AppEnvironment: ObservableObject {
     /// previews use an in-memory fake, mirroring `accountDeletionClient`'s
     /// real-vs-fake split.
     public let distressCheckinClient: any DistressCheckinRequesting
+
+    // Dashboard (issue #252) — the signed-in Home's card data sources.
+    public let devotionalsClient: any DevotionalsProviding
+    public let upcomingEventsClient: any UpcomingEventsProviding
+    public let connectionsClient: any ConnectionsProviding
+    public let recapClient: any RecapProviding
+    public let journalClient: any JournalProviding
+    public let liturgyClient: any LiturgyProviding
+    public let accountInfoClient: any AccountInfoProviding
+    public let generateNowClient: any GenerateNowRequesting
     /// `nil` in previews/tests that don't need background scheduling —
     /// `BGTaskScheduler.register` traps if invoked more than once per
     /// process, so this is only constructed (and registered) once per real
@@ -189,7 +199,13 @@ public final class AppEnvironment: ObservableObject {
         if let authService {
             self.authService = authService
         } else if resolvedIsDemoMode {
-            self.authService = AnyAuthService(FakeAuthService())
+            // For the Home-dashboard demo/UI-test hook, start already signed
+            // in so RootView routes straight to the tab shell (it needs both a
+            // current user and completed onboarding).
+            let demoUser = Self.launchImpliesOnboardingComplete()
+                ? KairosUser(id: "demo-user", displayName: "Demo", email: "demo@wellspring.app")
+                : nil
+            self.authService = AnyAuthService(FakeAuthService(initialUser: demoUser))
         } else {
             self.authService = AnyAuthService(FirebaseAuthService())
         }
@@ -406,6 +422,31 @@ public final class AppEnvironment: ObservableObject {
             )
         }
 
+        // Dashboard clients (issue #252). Demo mode wires the DashboardDemoData
+        // fakes so the signed-in Home is populated offline; otherwise real HTTP
+        // clients against the same API base + Firebase ID token.
+        if resolvedIsDemoMode {
+            self.devotionalsClient = DashboardDemoData.devotionals()
+            self.upcomingEventsClient = DashboardDemoData.upcoming()
+            self.connectionsClient = DashboardDemoData.connections()
+            self.recapClient = DashboardDemoData.recap()
+            self.journalClient = DashboardDemoData.journal()
+            self.liturgyClient = DashboardDemoData.liturgy()
+            self.accountInfoClient = DashboardDemoData.accountInfo()
+            self.generateNowClient = DashboardDemoData.generateNow()
+        } else {
+            let captured = self.authService
+            let token: @Sendable () async throws -> String = { try await captured.idToken() }
+            self.devotionalsClient = HTTPDevotionalsClient(baseURL: Self.apiBaseURL, idTokenProvider: token)
+            self.upcomingEventsClient = HTTPUpcomingEventsClient(baseURL: Self.apiBaseURL, idTokenProvider: token)
+            self.connectionsClient = HTTPConnectionsClient(baseURL: Self.apiBaseURL, idTokenProvider: token)
+            self.recapClient = HTTPRecapClient(baseURL: Self.apiBaseURL, idTokenProvider: token)
+            self.journalClient = HTTPJournalClient(baseURL: Self.apiBaseURL, idTokenProvider: token)
+            self.liturgyClient = HTTPLiturgyClient(baseURL: Self.apiBaseURL, idTokenProvider: token)
+            self.accountInfoClient = HTTPAccountInfoClient(baseURL: Self.apiBaseURL, idTokenProvider: token)
+            self.generateNowClient = HTTPGenerateNowClient(baseURL: Self.apiBaseURL, idTokenProvider: token)
+        }
+
         // Test isolation, same rationale as the preferences/consent suite
         // resets above: a UI test that wants a fresh "never completed
         // onboarding" state for the real `UserDefaultsOnboardingCompletionStore`
@@ -421,7 +462,7 @@ public final class AppEnvironment: ObservableObject {
             // `launchImpliesRealPreferencesStore`/the consent store above —
             // a test that wants real on-device persistence for one wants it
             // for all three "survives relaunch" screens/flags.
-            self.onboardingCompletionStore = InMemoryOnboardingCompletionStore()
+            self.onboardingCompletionStore = InMemoryOnboardingCompletionStore(initial: Self.launchImpliesOnboardingComplete())
         } else {
             self.onboardingCompletionStore = UserDefaultsOnboardingCompletionStore()
         }
@@ -462,11 +503,36 @@ public final class AppEnvironment: ObservableObject {
         )
     }
 
+    /// Composition helper for the signed-in Home dashboard (issue #252):
+    /// assembles a `HomeViewModel` from this environment's dashboard clients.
+    @MainActor
+    public func makeHomeViewModel() -> HomeViewModel {
+        HomeViewModel(
+            devotionals: devotionalsClient,
+            upcomingClient: upcomingEventsClient,
+            connectionsClient: connectionsClient,
+            recapClient: recapClient,
+            journalClient: journalClient,
+            liturgyClient: liturgyClient,
+            generateNowClient: generateNowClient,
+            accountInfo: accountInfoClient
+        )
+    }
+
     /// UI-test-only escape hatch (see `launchImpliesDemoMode` doc for why
     /// this is checked the same way): lets `PreferencesPersistenceUITests`
     /// prove real `UserDefaultsPreferencesStore` persistence survives an
     /// app relaunch, while every other service in the same launch stays
     /// fake/in-memory (still demo mode).
+    /// Demo/UI-test hook (issue #252): start already onboarded so a launch
+    /// lands straight on the signed-in Home dashboard, for screenshotting and
+    /// Home UI tests, without driving the whole onboarding flow first.
+    private static func launchImpliesOnboardingComplete() -> Bool {
+        if UserDefaults.standard.string(forKey: "UITEST_ONBOARDING_COMPLETE") != nil { return true }
+        if ProcessInfo.processInfo.arguments.contains(where: { $0.contains("UITEST_ONBOARDING_COMPLETE") }) { return true }
+        return false
+    }
+
     private static func launchImpliesRealPreferencesStore() -> Bool {
         if UserDefaults.standard.string(forKey: "UITEST_REAL_PREFERENCES_STORE") != nil {
             return true

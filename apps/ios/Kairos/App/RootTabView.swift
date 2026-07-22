@@ -7,8 +7,7 @@ struct RootTabView: View {
     var body: some View {
         TabView {
             HomeView(
-                demoFixture: appEnvironment.demoFixture,
-                bandUploadService: appEnvironment.bandUploadService,
+                makeViewModel: appEnvironment.makeHomeViewModel(),
                 distressCheckinClient: appEnvironment.distressCheckinClient
             )
                 .tabItem { Label("Home", systemImage: "house") }
