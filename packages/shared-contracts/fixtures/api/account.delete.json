@@ -1,0 +1,6 @@
+{
+  "_comment": "Canonical DELETE /v1/account contract fixture for issue #83. Backend tests parse `response` against AccountDeletionResponseSchema (packages/shared-contracts/src/api/account.ts). iOS tests (apps/ios/KairosTests/AccountDeletionClientTests.swift) embed an identical literal copy — keep both in sync by hand if this file changes. No request body: the verified bearer token is the account identifier.",
+  "response": {
+    "ok": true
+  }
+}

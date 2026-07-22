@@ -1,0 +1,97 @@
+{
+  "fixtureKey": "low_poor_heavy",
+  "scenario": "Under-rested + packed calendar",
+  "description": "A user whose HRV/resting-HR trend show low recovery, who slept poorly, and whose calendar is back-to-back all day. Format heuristic: recovery=low + busyness=heavy -> micro/short. This fixture targets micro.",
+  "bands": {
+    "recovery": "low",
+    "sleepQuality": "poor",
+    "activity": "sedentary",
+    "busyness": "heavy",
+    "communicationLoad": "moderate",
+    "distressSignal": false
+  },
+  "context": {
+    "timeOfDayBucket": "early_morning",
+    "durationPreferenceMinutes": 2,
+    "tradition": "general",
+    "translationVersionId": 3034
+  },
+  "freeBusy": {
+    "timezone": "America/Denver",
+    "windowStart": "2026-07-02T06:00:00-06:00",
+    "windowEnd": "2026-07-02T18:00:00-06:00",
+    "busyBlocks": [
+      {
+        "start": "2026-07-02T08:00:00-06:00",
+        "end": "2026-07-02T08:30:00-06:00"
+      },
+      {
+        "start": "2026-07-02T08:30:00-06:00",
+        "end": "2026-07-02T09:15:00-06:00"
+      },
+      {
+        "start": "2026-07-02T09:15:00-06:00",
+        "end": "2026-07-02T10:00:00-06:00"
+      },
+      {
+        "start": "2026-07-02T10:00:00-06:00",
+        "end": "2026-07-02T11:30:00-06:00"
+      },
+      {
+        "start": "2026-07-02T11:30:00-06:00",
+        "end": "2026-07-02T13:00:00-06:00"
+      },
+      {
+        "start": "2026-07-02T13:00:00-06:00",
+        "end": "2026-07-02T14:00:00-06:00"
+      },
+      {
+        "start": "2026-07-02T14:00:00-06:00",
+        "end": "2026-07-02T17:30:00-06:00"
+      }
+    ],
+    "chosenGap": {
+      "start": "2026-07-02T13:52:00-06:00",
+      "end": "2026-07-02T13:59:00-06:00"
+    }
+  },
+  "toolCalls": [
+    {
+      "request": {
+        "usfm": "MAT.11.28-MAT.11.30",
+        "versionId": 3034,
+        "reason": "Direct invitation to the weary; fits low recovery and a wall-to-wall day."
+      },
+      "envelope": {
+        "ok": true,
+        "data": {
+          "usfm": "MAT.11.28-MAT.11.30",
+          "versionId": 3034,
+          "reference": "Matthew 11:28-30",
+          "text": "Come to Me, all you who labor and are heavy-laden, and I will give you rest. Take My yoke upon you and learn from Me, for I am gentle and humble in heart, and you will find rest for your souls. For My yoke is easy and My burden is light.",
+          "attribution": "Berean Standard Bible (BSB). Public domain."
+        },
+        "meta": {
+          "source": "youversion",
+          "fetched_at": "2026-07-02T06:05:00Z"
+        }
+      }
+    }
+  ],
+  "devotionalOutput": {
+    "format": "micro",
+    "theme": "rest",
+    "verses": [
+      {
+        "usfm": "MAT.11.28-MAT.11.30",
+        "versionId": 3034,
+        "reference": "Matthew 11:28-30",
+        "fetchedText": "Come to Me, all you who labor and are heavy-laden, and I will give you rest. Take My yoke upon you and learn from Me, for I am gentle and humble in heart, and you will find rest for your souls. For My yoke is easy and My burden is light.",
+        "attribution": "Berean Standard Bible (BSB). Public domain."
+      }
+    ],
+    "devotionalBody": "Your body kept score last night, and today's calendar didn't leave room to recover. Before the next meeting starts, hear this: Jesus doesn't meet a tired, over-scheduled person with a longer to-do list. He meets you carrying yours. 'Come to Me, all who labor and are heavy-laden, and I will give you rest. Take My yoke upon you and learn from Me, for I am gentle and humble in heart, and you will find rest for your souls.' Notice what He doesn't say. He doesn't say come once the meetings are over, or once you've caught up on sleep. He says come now, exactly as depleted as you are. A yoke is a shared weight, built for two — He isn't asking you to walk away from today. He's asking to carry it with you, one meeting at a time, instead of you carrying it alone in strength that's running low. This isn't rest as an empty calendar; it's rest as a posture held inside a full one. You don't have to solve today's exhaustion in the next few minutes. Just stop gripping it so tightly. Breathe once. Let Him take the weight He already offered to take.",
+    "cardSummary": "Come to Me, weary one — Jesus offers rest for a heavy-laden day. Matthew 11:28-30.",
+    "prayer": "Jesus, I'm running on empty and the day isn't slowing down. Take this weight I keep gripping. Give me Your rest, right here, right now. Amen."
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "kairos-api-dev",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "--workspace=apps/api", "dev"],
+      "port": 8090
+    },
+    {
+      "name": "kairos-web-dev",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "--workspace=apps/web", "dev"],
+      "port": 5173
+    }
+  ]
+}

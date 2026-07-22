@@ -1,0 +1,15 @@
+# gitleaks config for CI (secret-scan.yml).
+# Extends the default ruleset; adds a narrow allowlist for known test fixtures
+# that use obviously-fake, hard-coded values (not real credentials).
+title = "wellspring"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Obviously-fake constants in test fixtures — not real secrets."
+regexes = [
+  # LocalFileAudioStorage signing secret used only in a live/integration test;
+  # any constant string works, this one is a placeholder.
+  '''live-test-secret-0123456789''',
+]

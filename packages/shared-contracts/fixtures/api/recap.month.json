@@ -1,0 +1,25 @@
+{
+  "_comment": "Canonical GET /v1/recap/:year/:month contract fixture for issue #96. Backend tests parse both `response` variants against MonthlyRecapResponseSchema (packages/shared-contracts/src/api/recap.ts).",
+  "response": {
+    "ok": true,
+    "data": {
+      "year": 2026,
+      "month": 6,
+      "sessionsCount": 11,
+      "recurringPassages": ["Matthew 11", "Psalm 46"],
+      "heavyWeek": { "label": "the week of the 14th" },
+      "narrative": "This month you sat with Scripture 11 times. Two passages kept returning: Matthew 11, Psalm 46. You marked the week of the 14th as heavy; Kairos met you in micro moments that week."
+    }
+  },
+  "responseEmpty": {
+    "ok": true,
+    "data": {
+      "year": 2026,
+      "month": 6,
+      "sessionsCount": 0,
+      "recurringPassages": [],
+      "heavyWeek": null,
+      "narrative": "You didn't sit with Scripture this month. Whenever you're ready, Kairos will be here."
+    }
+  }
+}

@@ -1,0 +1,86 @@
+{
+  "fixtureKey": "moderate_fair_moderate",
+  "scenario": "Balanced day",
+  "description": "A representative middle-of-the-road day: moderate recovery, fair sleep, moderate busyness. Standard format, gratitude theme — the default/no-extreme-signal case.",
+  "bands": {
+    "recovery": "moderate",
+    "sleepQuality": "fair",
+    "activity": "moderate",
+    "busyness": "moderate",
+    "communicationLoad": "moderate",
+    "distressSignal": false
+  },
+  "context": {
+    "timeOfDayBucket": "late_afternoon",
+    "durationPreferenceMinutes": 10,
+    "tradition": "catholic",
+    "translationVersionId": 3034
+  },
+  "freeBusy": {
+    "timezone": "America/Denver",
+    "windowStart": "2026-07-02T08:00:00-06:00",
+    "windowEnd": "2026-07-02T17:30:00-06:00",
+    "busyBlocks": [
+      {
+        "start": "2026-07-02T09:00:00-06:00",
+        "end": "2026-07-02T10:00:00-06:00"
+      },
+      {
+        "start": "2026-07-02T11:00:00-06:00",
+        "end": "2026-07-02T12:00:00-06:00"
+      },
+      {
+        "start": "2026-07-02T13:00:00-06:00",
+        "end": "2026-07-02T13:30:00-06:00"
+      },
+      {
+        "start": "2026-07-02T15:00:00-06:00",
+        "end": "2026-07-02T16:00:00-06:00"
+      }
+    ],
+    "chosenGap": {
+      "start": "2026-07-02T16:15:00-06:00",
+      "end": "2026-07-02T16:25:00-06:00"
+    }
+  },
+  "toolCalls": [
+    {
+      "request": {
+        "usfm": "PHP.4.6-PHP.4.7",
+        "versionId": 3034,
+        "reason": "A steady, ordinary day fits a theme of gratitude-shaped peace rather than crisis comfort or celebratory extension."
+      },
+      "envelope": {
+        "ok": true,
+        "data": {
+          "usfm": "PHP.4.6-PHP.4.7",
+          "versionId": 3034,
+          "reference": "Philippians 4:6-7",
+          "text": "Do not be anxious about anything, but in everything, by prayer and petition with thanksgiving, present your requests to God. And the peace of God, which surpasses all understanding, will guard your hearts and minds in Christ Jesus.",
+          "attribution": "Berean Standard Bible (BSB). Public domain."
+        },
+        "meta": {
+          "source": "youversion",
+          "fetched_at": "2026-07-02T16:15:10Z"
+        }
+      }
+    }
+  ],
+  "devotionalOutput": {
+    "format": "standard",
+    "theme": "gratitude",
+    "verses": [
+      {
+        "usfm": "PHP.4.6-PHP.4.7",
+        "versionId": 3034,
+        "reference": "Philippians 4:6-7",
+        "fetchedText": "Do not be anxious about anything, but in everything, by prayer and petition with thanksgiving, present your requests to God. And the peace of God, which surpasses all understanding, will guard your hearts and minds in Christ Jesus.",
+        "attribution": "Berean Standard Bible (BSB). Public domain."
+      }
+    ],
+    "devotionalBody": "Today hasn't been dramatic. Sleep was fine, not great. Energy has been steady, not exceptional. The calendar has had a normal rhythm — meetings, gaps, more meetings. Days like this rarely get noticed, let alone thanked for, because nothing about them demands attention. No crisis to survive, no victory to celebrate, just the ordinary middle where most of life is actually lived. But Paul, writing from an actual prison cell, didn't reserve gratitude for the good days or the remarkable ones. He wrote, 'Do not be anxious about anything, but in everything, by prayer and petition with thanksgiving, present your requests to God.' In everything — including the unremarkable Wednesday afternoon you're in right now, with its fair sleep and its moderate pace and its perfectly average to-do list. Gratitude, as Paul frames it, isn't a reaction reserved for exceptional circumstances. It's a discipline that works on ordinary ground, maybe especially there, because ordinary days are where the habit actually gets built. What would it look like to bring today's small, unspectacular things to God with thanksgiving instead of just efficiently moving through them on the way to something better? The meeting that went fine and didn't run long. The lunch you actually had time to eat. The body that, while not at its peak, carried you through the day's requests without complaint. None of that is headline news. All of it is worth naming. Paul promises something specific in return for this kind of ordinary-day gratitude: not the removal of every open question or looming deadline still ahead of you, but 'the peace of God, which surpasses all understanding' standing guard over your heart and mind. That peace doesn't require a dramatic testimony or a crisis resolved to access. It meets you in the moderate, fair, entirely ordinary middle of things — which is, after all, where most of your life will actually be lived out, one steady Wednesday at a time. It's worth noticing, too, that Paul doesn't separate the thanksgiving from the requests — he links them in the same breath. This isn't a call to pretend everything is perfect before you're allowed to ask God for anything. It's an invitation to hold both at once: genuine gratitude for what today actually is, and genuine honesty about what's still unresolved or uncertain in it. Maybe there's a decision still pending from this morning's meeting. Maybe there's a conversation later this afternoon you're not looking forward to. Bring that too — not instead of the gratitude, but alongside it. That combination, thanksgiving braided together with honest request, is what Paul says produces peace that doesn't depend on circumstances lining up perfectly. Not the absence of anything left to resolve, but a settledness underneath it regardless. You don't need today to become extraordinary for that peace to be available. It's available exactly here, in the fair sleep and the moderate pace and the string of ordinary tasks still ahead of you this afternoon.",
+    "cardSummary": "Gratitude isn't just for the extraordinary days — Paul brings it to an ordinary one. Philippians 4:6-7.",
+    "prayer": "Father, thank You for this steady, unremarkable day — for the strength to meet it and the small mercies inside it I usually rush past. Quiet my mind about what's still ahead, and let Your peace stand guard here. Amen.",
+    "actionStep": "Before your next meeting, name three small, unremarkable things from today you're grateful for — out loud or written down, not just thought."
+  }
+}

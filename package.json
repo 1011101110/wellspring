@@ -1,0 +1,35 @@
+{
+  "name": "kairos-devotional",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Kairos — a meeting with God, on your calendar. Monorepo root.",
+  "workspaces": [
+    "apps/api",
+    "apps/web",
+    "packages/shared-contracts"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "npm run build --workspaces --if-present",
+    "pretest": "npm run build --workspace=packages/shared-contracts",
+    "test": "npm run test --workspaces --if-present",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "pretypecheck": "npm run build --workspace=packages/shared-contracts",
+    "typecheck": "npm run typecheck --workspaces --if-present"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.15.0",
+    "@types/node": "^20.14.0",
+    "eslint": "^9.15.0",
+    "eslint-config-prettier": "^9.1.0",
+    "prettier": "^3.3.3",
+    "typescript": "^5.6.3",
+    "typescript-eslint": "^8.15.0",
+    "vitest": "^4.1.9"
+  }
+}

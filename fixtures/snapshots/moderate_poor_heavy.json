@@ -1,0 +1,102 @@
+{
+  "fixtureKey": "moderate_poor_heavy",
+  "scenario": "Short sleep, scattered day",
+  "description": "Moderate recovery, poor sleep, heavy busyness with a fragmented, scattered calendar (many short meetings rather than long blocks). Micro format, grace theme.",
+  "bands": {
+    "recovery": "moderate",
+    "sleepQuality": "poor",
+    "activity": "sedentary",
+    "busyness": "heavy",
+    "communicationLoad": "heavy",
+    "distressSignal": false
+  },
+  "context": {
+    "timeOfDayBucket": "midday",
+    "durationPreferenceMinutes": 3,
+    "tradition": "mainline",
+    "translationVersionId": 3034
+  },
+  "freeBusy": {
+    "timezone": "America/Denver",
+    "windowStart": "2026-07-02T07:00:00-06:00",
+    "windowEnd": "2026-07-02T17:00:00-06:00",
+    "busyBlocks": [
+      {
+        "start": "2026-07-02T07:30:00-06:00",
+        "end": "2026-07-02T07:50:00-06:00"
+      },
+      {
+        "start": "2026-07-02T08:00:00-06:00",
+        "end": "2026-07-02T08:20:00-06:00"
+      },
+      {
+        "start": "2026-07-02T08:30:00-06:00",
+        "end": "2026-07-02T08:50:00-06:00"
+      },
+      {
+        "start": "2026-07-02T09:00:00-06:00",
+        "end": "2026-07-02T09:25:00-06:00"
+      },
+      {
+        "start": "2026-07-02T09:30:00-06:00",
+        "end": "2026-07-02T09:55:00-06:00"
+      },
+      {
+        "start": "2026-07-02T10:00:00-06:00",
+        "end": "2026-07-02T10:20:00-06:00"
+      },
+      {
+        "start": "2026-07-02T13:00:00-06:00",
+        "end": "2026-07-02T13:20:00-06:00"
+      },
+      {
+        "start": "2026-07-02T13:30:00-06:00",
+        "end": "2026-07-02T13:55:00-06:00"
+      }
+    ],
+    "chosenGap": {
+      "start": "2026-07-02T11:58:00-06:00",
+      "end": "2026-07-02T12:04:00-06:00"
+    }
+  },
+  "toolCalls": [
+    {
+      "request": {
+        "usfm": "LAM.3.22-LAM.3.23",
+        "versionId": 3034,
+        "reason": "A scattered, under-slept day calls for the theme of renewed-daily mercy rather than achievement."
+      },
+      "envelope": {
+        "ok": true,
+        "data": {
+          "usfm": "LAM.3.22-LAM.3.23",
+          "versionId": 3034,
+          "reference": "Lamentations 3:22-23",
+          "text": "Because of the LORD's loving devotion we are not consumed, for His compassions never fail. They are new every morning; great is Your faithfulness.",
+          "attribution": "Berean Standard Bible (BSB). Public domain."
+        },
+        "meta": {
+          "source": "youversion",
+          "fetched_at": "2026-07-02T11:58:20Z"
+        }
+      }
+    }
+  ],
+  "devotionalOutput": {
+    "format": "micro",
+    "theme": "grace",
+    "verses": [
+      {
+        "usfm": "LAM.3.22-LAM.3.23",
+        "versionId": 3034,
+        "reference": "Lamentations 3:22-23",
+        "fetchedText": "Because of the LORD's loving devotion we are not consumed, for His compassions never fail. They are new every morning; great is Your faithfulness.",
+        "attribution": "Berean Standard Bible (BSB). Public domain."
+      }
+    ],
+    "devotionalBody": "Six minutes between meetings, and you started the day short on sleep. That's not a personal failing — it's just where your body is today. The prophet Jeremiah wrote from real ruin, not a tidy schedule: 'Because of the LORD's loving devotion we are not consumed, for His compassions never fail. They are new every morning.' New — not saved up from yesterday's better rest, not owed because you earned it. Just freely renewed, this morning, for exactly the scattered day you're having. You don't need a full night's sleep to receive grace. You just need this minute.",
+    "cardSummary": "His mercies are new this morning, scattered day and all. Lamentations 3:22-23.",
+    "prayer": "Lord, my morning was fragmented and my sleep was short. Meet me in these few minutes with mercy I didn't earn and don't need to earn. Renew me for what's still ahead today. Amen.",
+    "actionStep": "Before your next call starts, silently say 'new mercy, not new performance' once — let it reset your posture for the next twenty minutes."
+  }
+}

@@ -1,0 +1,107 @@
+{
+  "fixtureKey": "high_good_light",
+  "scenario": "Post-workout, open afternoon",
+  "description": "A user with high recovery, good sleep, an active morning workout, and a light calendar. Format heuristic: busyness=light + recovery=high -> extended.",
+  "bands": {
+    "recovery": "high",
+    "sleepQuality": "good",
+    "activity": "active",
+    "busyness": "light",
+    "communicationLoad": "light",
+    "distressSignal": false
+  },
+  "context": {
+    "timeOfDayBucket": "early_afternoon",
+    "durationPreferenceMinutes": 15,
+    "tradition": "evangelical",
+    "translationVersionId": 3034
+  },
+  "freeBusy": {
+    "timezone": "America/Denver",
+    "windowStart": "2026-07-02T06:00:00-06:00",
+    "windowEnd": "2026-07-02T18:00:00-06:00",
+    "busyBlocks": [
+      {
+        "start": "2026-07-02T09:00:00-06:00",
+        "end": "2026-07-02T09:30:00-06:00"
+      },
+      {
+        "start": "2026-07-02T15:00:00-06:00",
+        "end": "2026-07-02T15:30:00-06:00"
+      }
+    ],
+    "chosenGap": {
+      "start": "2026-07-02T13:00:00-06:00",
+      "end": "2026-07-02T13:20:00-06:00"
+    }
+  },
+  "toolCalls": [
+    {
+      "request": {
+        "usfm": "PSA.19.1-PSA.19.2",
+        "versionId": 3034,
+        "reason": "High recovery and open time invite a wider view of God's glory in creation; a fitting call to worship."
+      },
+      "envelope": {
+        "ok": true,
+        "data": {
+          "usfm": "PSA.19.1-PSA.19.2",
+          "versionId": 3034,
+          "reference": "Psalm 19:1-2",
+          "text": "The heavens declare the glory of God, and the sky above proclaims the work of His hands. Day after day they pour forth speech; night after night they revere knowledge.",
+          "attribution": "Berean Standard Bible (BSB). Public domain."
+        },
+        "meta": {
+          "source": "youversion",
+          "fetched_at": "2026-07-02T13:00:30Z"
+        }
+      }
+    },
+    {
+      "request": {
+        "usfm": "ROM.12.1",
+        "versionId": 3034,
+        "reason": "Reinforces the theme of calling: offering the whole self, body included, as worship."
+      },
+      "envelope": {
+        "ok": true,
+        "data": {
+          "usfm": "ROM.12.1",
+          "versionId": 3034,
+          "reference": "Romans 12:1",
+          "text": "Therefore I urge you, brothers, on account of God's mercy, to offer your bodies as a living sacrifice, holy and pleasing to God—this is your spiritual service of worship.",
+          "attribution": "Berean Standard Bible (BSB). Public domain."
+        },
+        "meta": {
+          "source": "youversion",
+          "fetched_at": "2026-07-02T13:00:45Z"
+        }
+      }
+    }
+  ],
+  "devotionalOutput": {
+    "format": "extended",
+    "theme": "calling",
+    "verses": [
+      {
+        "usfm": "PSA.19.1-PSA.19.2",
+        "versionId": 3034,
+        "reference": "Psalm 19:1-2",
+        "fetchedText": "The heavens declare the glory of God, and the sky above proclaims the work of His hands. Day after day they pour forth speech; night after night they revere knowledge.",
+        "attribution": "Berean Standard Bible (BSB). Public domain."
+      },
+      {
+        "usfm": "ROM.12.1",
+        "versionId": 3034,
+        "reference": "Romans 12:1",
+        "fetchedText": "Therefore I urge you, brothers, on account of God's mercy, to offer your bodies as a living sacrifice, holy and pleasing to God—this is your spiritual service of worship.",
+        "attribution": "Berean Standard Bible (BSB). Public domain."
+      }
+    ],
+    "devotionalBody": "There's a particular clarity that comes after a body has been well used and well rested — muscles worked this morning, sleep deep the night before, and now an open afternoon stretched out in front of you with nothing urgent pressing on it. Days like this are rare enough that it's worth pausing to notice one when it arrives, rather than rushing straight into filling it. It's tempting to treat a day like this as a blank slate — an efficiency opportunity, a chance to finally get ahead on everything that's been piling up. Scripture invites something different: to treat it not as a slate to fill, but as an offering to make. The psalmist writes, 'The heavens declare the glory of God, and the sky above proclaims the work of His hands. Day after day they pour forth speech; night after night they revere knowledge.' The heavens don't strain to declare God's glory. They simply exist, faithfully, continuously, doing exactly what they were made to do — and in that faithful ordinariness, they proclaim something enormous. The same God who set that sky in motion made room, this particular morning, for your own body to move well and rest well. That convergence — good sleep, a strong workout, an unhurried afternoon — is not an accident to rush past on the way to the next task. It's a gift, and gifts carry a direction; they point somewhere beyond themselves. Paul makes that direction explicit in his letter to the Romans: 'I urge you, brothers, on account of God's mercy, to offer your bodies as a living sacrifice, holy and pleasing to God — this is your spiritual service of worship.' Notice what he doesn't say. He doesn't say offer your spirit while your body handles its own business on the side. He says the body — this specific, physical, right-now body, the one that slept well and trained hard and is currently running with more capacity than most days afford. The clear head you have this afternoon, the steady heart rate, the general sense of having margin instead of scraping by: these aren't just personal wins to log in a fitness app and move on from. They're raw material handed to you for worship, for service, for something larger than personal optimization. An open, high-capacity afternoon is not empty time waiting to be filled efficiently with more tasks. It's space to ask a bigger, slower question: what is all of this capacity actually for? Strength that exists only to be spent on yourself, again and again, eventually curls inward and gets smaller, even as the muscles get stronger. So who benefits when you are at your best — is it only you, quietly checking off your own list, or is there room today for someone else's need, some overlooked task nobody has claimed, some quiet act of generosity that a depleted, running-on-empty version of you simply couldn't have managed yesterday? This is worth sitting with rather than answering too fast. Consider what calling might mean today, in concrete, unglamorous terms. Not necessarily a grand pronouncement from heaven about your life's purpose — most days, calling is smaller and closer than that. Maybe it's simply this: who is in front of you today, and what could your unusual strength, on this unusually good day, offer to them specifically? A friend who's been struggling and needs an hour of real attention. A task at work that's been sitting untouched because no one had the bandwidth. A stranger's ordinary need that a tired person would walk past but a well-rested one might actually stop for. The heavens don't declare God's glory by outworking the earth beneath them or racing through the sky faster than necessary. They simply do, faithfully and without strain, what they were made to do, day after day, night after night. Let your good day be that same kind of declaration — not frantic, not performing, not trying to prove your worth through how much you accomplish while the window is open. Just offered, freely, the way it was freely given to you this morning. It might help, practically, to hold both passages together as you move through the rest of the afternoon: the heavens pouring forth speech simply by being what they are, and Paul's call to offer the body as living worship. Together they suggest that worship isn't confined to the explicitly religious hour of your week — the sung hymn, the bowed head, the quiet prayer before a meal. It can be as physical and ordinary as how you spend a well-rested Tuesday afternoon. The strength in your legs from this morning's run. The mental clarity that comes from having actually slept. The calendar that, for once, isn't crowding you toward the next obligation before you've finished the current one. None of that is owed to you, and none of it is permanent — tomorrow may bring a poor night's sleep or a packed schedule, and that will be its own day with its own instructions. But today, this particular convergence of rest and strength and space is here, and it's asking a question worth taking seriously before it passes: not 'what can I get done,' but 'what can I give.'",
+    "cardSummary": "Strength and open time are gifts with a direction — offer today as worship. Psalm 19 & Romans 12:1.",
+    "prayer": "Lord, thank You for a body that rested well and moved well, and for room in today's calendar. I don't want to waste this capacity on myself alone. Show me where this strength can serve someone else. Take this day as an offering — my time, my energy, my attention. Use it for Your glory. Amen.",
+    "journalingPrompt": "Where in today's open hours could your current strength — physical, mental, or emotional — be a gift to someone else rather than just a personal win?",
+    "actionStep": "Use fifteen minutes of your open window to reach out to one person who could use your help today — not because you owe them, but because you have the capacity to give."
+  }
+}

@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>BGTaskSchedulerPermittedIdentifiers</key>
+	<array>
+		<string>com.kairos.devotional.bandRefresh</string>
+	</array>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>$(DEVELOPMENT_LANGUAGE)</string>
+	<key>CFBundleExecutable</key>
+	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleIdentifier</key>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>$(PRODUCT_NAME)</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>1.0</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.kairos.devotional.oauth</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>kairos</string>
+			</array>
+		</dict>
+		<!-- Google Sign-In callback (#190). This scheme is the
+		     REVERSED_CLIENT_ID from GoogleService-Info.plist verbatim; Google's
+		     SDK requires the two to match exactly or the sign-in sheet returns
+		     without ever calling back. It is a separate entry from the `kairos`
+		     scheme above on purpose: `kairos` is our own callback for the
+		     Google *Calendar* OAuth flow (#124), and the two grants are kept
+		     deliberately distinct — signing in must never imply calendar
+		     access (Foundation §8). Different OAuth clients back each one. -->
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.kairos.devotional.googlesignin</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>com.googleusercontent.apps.382100412938-816ee8lagi2o104197l9tdfkboccvd91</string>
+			</array>
+		</dict>
+	</array>
+	<key>CFBundleVersion</key>
+	<string>1</string>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
+	<key>NSCalendarsFullAccessUsageDescription</key>
+	<string>Kairos reads when you're free or busy to place your devotional in a quiet gap. Event titles, attendees, and notes are never read.</string>
+	<key>NSCalendarsUsageDescription</key>
+	<string>Kairos reads when you're free or busy to place your devotional in a quiet gap. Event titles, attendees, and notes are never read.</string>
+	<key>NSHealthShareUsageDescription</key>
+	<string>Kairos turns your recovery, sleep, and activity into three simple words on your phone. Raw health data never leaves your device.</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>fetch</string>
+		<string>processing</string>
+	</array>
+	<key>UILaunchScreen</key>
+	<dict/>
+</dict>
+</plist>

@@ -1,0 +1,52 @@
+{
+  "name": "@kairos/api",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Kairos backend — Cloud Run (TypeScript/Fastify). Owns secrets, the Gloo tool loop, YouVersion fetches, calendar analysis, TTS, and session hosting.",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "dev": "tsx watch src/index.ts",
+    "start": "node dist/index.js",
+    "test": "vitest run",
+    "test:e2e": "playwright test",
+    "migrate": "node-pg-migrate --tsx --migrations-dir migrations"
+  },
+  "dependencies": {
+    "@fastify/cors": "^11.3.0",
+    "@fastify/helmet": "^13.0.2",
+    "@fastify/rate-limit": "^11.1.0",
+    "@fastify/websocket": "^11.2.0",
+    "@ffmpeg-installer/ffmpeg": "^1.1.0",
+    "@google-cloud/storage": "^7.21.0",
+    "@google-cloud/tasks": "^6.2.3",
+    "@google-cloud/text-to-speech": "^6.4.1",
+    "@kairos/shared-contracts": "*",
+    "@livekit/rtc-node": "^0.13.30",
+    "fastify": "^5.1.0",
+    "firebase-admin": "^14.1.0",
+    "ical-generator": "^11.0.0",
+    "jose": "^6.2.3",
+    "livekit-server-sdk": "^2.16.0",
+    "luxon": "^3.7.2",
+    "node-ical": "^0.26.1",
+    "pg": "^8.22.0",
+    "svix": "^1.96.1",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "^4.12.1",
+    "@playwright/test": "^1.61.1",
+    "@types/luxon": "^3.7.2",
+    "@types/node": "^20.14.0",
+    "@types/pg": "^8.20.0",
+    "@types/ws": "^8.18.1",
+    "node-pg-migrate": "^8.0.4",
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.3",
+    "vitest": "^4.1.9",
+    "ws": "^8.21.0"
+  }
+}

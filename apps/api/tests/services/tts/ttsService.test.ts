@@ -1,0 +1,214 @@
+import { describe, expect, it, vi } from 'vitest';
+import { VOICE_CATALOG, VOICE_LABELS, type DevotionalOutput } from '@kairos/shared-contracts';
+import {
+  TtsService,
+  TtsServiceError,
+  type TtsClientLike,
+} from '../../../src/services/tts/ttsService.js';
+
+const devotional: DevotionalOutput = {
+  format: 'micro',
+  theme: 'peace',
+  verses: [
+    {
+      usfm: 'PHP.4.6-7',
+      versionId: 3034,
+      reference: 'Philippians 4:6-7',
+      fetchedText: 'Do not be anxious about anything.',
+      attribution: 'Berean Standard Bible (BSB). Public domain.',
+    },
+  ],
+  devotionalBody: 'A short steady word for a short steady day.',
+  cardSummary: 'Peace for today.',
+  prayer: 'Father, thank You. Amen.',
+};
+
+function fakeClient(audioContent: Buffer | null = Buffer.from('fake-mp3-bytes')): TtsClientLike {
+  return {
+    synthesizeSpeech: vi.fn().mockResolvedValue([{ audioContent }]),
+  };
+}
+
+describe('TtsService', () => {
+  it('synthesizes a single segment and returns concatenated audio + charCount', async () => {
+    const client = fakeClient(Buffer.from('abc'));
+    const service = new TtsService({ client });
+
+    const result = await service.synthesize(devotional);
+
+    expect(result.audio.equals(Buffer.from('abc'))).toBe(true);
+    expect(result.segmentCount).toBe(1);
+    expect(result.charCount).toBeGreaterThan(0);
+    expect(result.voiceName).toBe('en-US-Chirp3-HD-Achernar');
+  });
+
+  it('passes the configured voice, language, and gentle speaking rate to the client', async () => {
+    const client = fakeClient();
+    const service = new TtsService({
+      client,
+      voiceName: 'en-US-Chirp3-HD-Charon',
+      speakingRate: 0.95,
+    });
+
+    await service.synthesize(devotional);
+
+    expect(client.synthesizeSpeech).toHaveBeenCalledWith(
+      expect.objectContaining({
+        voice: { languageCode: 'en-US', name: 'en-US-Chirp3-HD-Charon' },
+        audioConfig: { audioEncoding: 'MP3', speakingRate: 0.95 },
+      }),
+    );
+  });
+
+  it('defaults speakingRate to 0.95 per API spec §6 gentle pacing', async () => {
+    const client = fakeClient();
+    const service = new TtsService({ client });
+    await service.synthesize(devotional);
+    const call = (client.synthesizeSpeech as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(call.audioConfig.speakingRate).toBe(0.95);
+  });
+
+  it('splits into multiple segments and concatenates audio buffers for a long script', async () => {
+    const longBody = Array.from(
+      { length: 300 },
+      (_, i) => `Sentence number ${i} about steady grace today.`,
+    ).join(' ');
+    const extended: DevotionalOutput = {
+      ...devotional,
+      format: 'extended',
+      devotionalBody: longBody,
+    };
+
+    let call = 0;
+    const client: TtsClientLike = {
+      synthesizeSpeech: vi.fn().mockImplementation(async () => {
+        call += 1;
+        return [{ audioContent: Buffer.from(`seg${call}`) }];
+      }),
+    };
+    const service = new TtsService({ client, maxSegmentBytes: 500 });
+
+    const result = await service.synthesize(extended);
+
+    expect(result.segmentCount).toBeGreaterThan(1);
+    expect(client.synthesizeSpeech).toHaveBeenCalledTimes(result.segmentCount);
+    // Concatenated buffer should be the literal concatenation of each segment's fake bytes, in order.
+    const expected = Buffer.concat(
+      Array.from({ length: result.segmentCount }, (_, i) => Buffer.from(`seg${i + 1}`)),
+    );
+    expect(result.audio.equals(expected)).toBe(true);
+  });
+
+  it('wraps a client rejection in TtsServiceError (AUDIO_UNAVAILABLE) instead of throwing raw', async () => {
+    const client: TtsClientLike = {
+      synthesizeSpeech: vi.fn().mockRejectedValue(new Error('permission denied')),
+    };
+    const service = new TtsService({ client });
+
+    await expect(service.synthesize(devotional)).rejects.toBeInstanceOf(TtsServiceError);
+    await expect(service.synthesize(devotional)).rejects.toThrow(/Cloud TTS synthesis failed/);
+  });
+
+  it('treats an empty audioContent response as a failure (AUDIO_UNAVAILABLE)', async () => {
+    const client = fakeClient(Buffer.alloc(0));
+    const service = new TtsService({ client });
+
+    await expect(service.synthesize(devotional)).rejects.toBeInstanceOf(TtsServiceError);
+  });
+
+  it('defaults stillness to off — no hand-off/silence text sent to Cloud TTS', async () => {
+    const client = fakeClient();
+    const service = new TtsService({ client });
+    await service.synthesize(devotional);
+    const call = (client.synthesizeSpeech as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(call.input.ssml).not.toContain("Let's sit with this");
+  });
+
+  it('threads a non-off stillness preference into the SSML sent to Cloud TTS (docs/14 §5.2)', async () => {
+    const client = fakeClient();
+    const service = new TtsService({ client });
+    await service.synthesize(devotional, 'brief');
+    const call = (client.synthesizeSpeech as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(call.input.ssml).toContain("Let's sit with this — I'll keep the time.");
+    expect(call.input.ssml).toContain('still here.');
+  });
+
+  /* ---------------------------------------------------------------- *
+   * Per-request voice — issue #202. Before this, the voice came only from
+   * the constructor, so `preferences.voice` had no path to Cloud TTS and
+   * every user heard the deployment default.
+   * ---------------------------------------------------------------- */
+
+  function voiceSentToClient(client: TtsClientLike): string {
+    return (client.synthesizeSpeech as ReturnType<typeof vi.fn>).mock.calls[0][0].voice.name;
+  }
+
+  it('a per-request voice overrides the constructor voice in the Cloud TTS request', async () => {
+    const client = fakeClient();
+    const service = new TtsService({ client, voiceName: 'en-US-Chirp3-HD-Achernar' });
+
+    const result = await service.synthesize(devotional, 'off', false, 'en-US-Chirp3-HD-Kore');
+
+    // The request that actually leaves the process carries the per-request
+    // voice, not the constructor's — the output differs, not just the arg.
+    expect(voiceSentToClient(client)).toBe('en-US-Chirp3-HD-Kore');
+    expect(result.voiceName).toBe('en-US-Chirp3-HD-Kore');
+  });
+
+  it('two different per-request voices produce two different Cloud TTS requests', async () => {
+    const calmClient = fakeClient();
+    const brightClient = fakeClient();
+    await new TtsService({ client: calmClient }).synthesize(devotional, 'off', false, 'calm');
+    await new TtsService({ client: brightClient }).synthesize(devotional, 'off', false, 'bright');
+
+    expect(voiceSentToClient(calmClient)).not.toBe(voiceSentToClient(brightClient));
+  });
+
+  it('resolves a picker label to a real voice id before it reaches Cloud TTS', async () => {
+    // iOS stores `warm`/`calm`/`bright` (VoiceChoice), which are NOT valid
+    // Cloud TTS voice names — sending one verbatim would be rejected. See
+    // packages/shared-contracts/src/voice.ts.
+    const client = fakeClient();
+    await new TtsService({ client }).synthesize(devotional, 'off', false, 'calm');
+
+    expect(voiceSentToClient(client)).toBe(VOICE_CATALOG.calm);
+    expect(VOICE_LABELS).toContain('calm');
+  });
+
+  it('falls back to the configured voice on an unrecognized name instead of failing', async () => {
+    // #202 acceptance: a bad or stale voice name must cost the user their
+    // voice choice, never their audio.
+    const client = fakeClient(Buffer.from('abc'));
+    const service = new TtsService({ client, voiceName: 'en-US-Chirp3-HD-Achernar' });
+
+    const result = await service.synthesize(devotional, 'off', false, 'not-a-real-voice');
+
+    expect(voiceSentToClient(client)).toBe('en-US-Chirp3-HD-Achernar');
+    expect(result.audio.equals(Buffer.from('abc'))).toBe(true);
+  });
+
+  it('omitting the voice argument keeps the constructor voice (existing callers unaffected)', async () => {
+    const client = fakeClient();
+    const service = new TtsService({ client, voiceName: 'en-US-Chirp3-HD-Charon' });
+
+    await service.synthesize(devotional, 'off', false);
+
+    // Note this is deliberately NOT run through the catalog: a deployment
+    // may legitimately be configured to a voice outside the offered set.
+    expect(voiceSentToClient(client)).toBe('en-US-Chirp3-HD-Charon');
+  });
+
+  it('TtsServiceError carries the canonical AUDIO_UNAVAILABLE code (Foundation §4.5)', async () => {
+    const client: TtsClientLike = {
+      synthesizeSpeech: vi.fn().mockRejectedValue(new Error('boom')),
+    };
+    const service = new TtsService({ client });
+    try {
+      await service.synthesize(devotional);
+      throw new Error('expected synthesize to reject');
+    } catch (err) {
+      expect(err).toBeInstanceOf(TtsServiceError);
+      expect((err as TtsServiceError).code).toBe('AUDIO_UNAVAILABLE');
+    }
+  });
+});

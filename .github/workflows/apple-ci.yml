@@ -1,0 +1,33 @@
+name: Apple CI
+# Manual-only (issue: GitHub Actions spending cap blown by automatic macOS
+# runs). This workflow only runs `xcodebuild test` against a simulator — it
+# is a correctness check, not part of any deployment path (there is no
+# TestFlight/App Store Connect upload here; that's a manual/local Xcode
+# step). macOS runners bill at ~10x Linux per-minute rates, and this repo
+# has no automated iOS deploy that depends on it running in CI, so it no
+# longer runs on every push/PR. Trigger it by hand from the Actions tab, or
+# `gh workflow run "Apple CI"`, when you specifically want a clean-room
+# confidence check (e.g. before a submission-critical merge). Day to day,
+# run the same command locally instead — see the "run" step below, or
+# open apps/ios/Kairos.xcodeproj in Xcode and Cmd+U.
+on:
+  workflow_dispatch: {}
+
+# macOS runners bill at 10x Linux minutes — cancel a superseded run instead
+# of letting it finish once a newer commit lands on the same branch/PR.
+concurrency:
+  group: apple-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ios-test:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: iOS unit + UI tests (simulator, unsigned)
+        run: |
+          xcodebuild test \
+            -project apps/ios/Kairos.xcodeproj \
+            -scheme Kairos \
+            -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' \
+            CODE_SIGNING_ALLOWED=NO

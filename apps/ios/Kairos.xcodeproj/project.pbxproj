@@ -1,0 +1,1092 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		03ABF5B79BF0A4DF19FCB098 /* HTTPPreferencesClientTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FBD046B3AEEB33770FE49B3A /* HTTPPreferencesClientTests.swift */; };
+		05C550CCCB687A78A000B766 /* AccountDeletionClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 51F1ED7C8D58C781BCDB3B96 /* AccountDeletionClient.swift */; };
+		09A5A02489B0AABD13E3B757 /* OnboardingCompletionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B14F86FCD073BD8D7B5FE443 /* OnboardingCompletionStore.swift */; };
+		0AC218370922A49ECB810DC8 /* DataPrivacyViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC127B3FD8F1A069DF347998 /* DataPrivacyViewModelTests.swift */; };
+		0E8CA96EB465768C155711EE /* DevotionalDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 28E40278047EBEC9094B7A2A /* DevotionalDetailView.swift */; };
+		10AE3607B8D511671B55527A /* RootTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC4787586F95302AD40228E1 /* RootTabView.swift */; };
+		1220BFB2B4C206E76265BA67 /* FirebaseAuthServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 352472024120B3204487CAC9 /* FirebaseAuthServiceTests.swift */; };
+		1519DE9C7D236655A0F874BE /* ConsentStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA7FFC5026A29219C3E41AFC /* ConsentStoreTests.swift */; };
+		1787187A4BEAEFD90EEDABA7 /* InviteEmailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13C5F4E51EF70C8F92499B50 /* InviteEmailView.swift */; };
+		19E85DB9218ECF24CEC3FFA5 /* EventKitCalendarConnectService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17971371FD4DDB4D05CAF5D4 /* EventKitCalendarConnectService.swift */; };
+		F8912F936B7FECC05C556F11 /* GoogleConnectClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 92B0E1E915FE230E6AEB941E /* GoogleConnectClient.swift */; };
+		EBB19ACFD7D3557B26CFBDC4 /* GoogleOAuthSessionRunner.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7243BB997924F1D6AFC5846 /* GoogleOAuthSessionRunner.swift */; };
+		B375FB2AC702553D88DA4BE3 /* GoogleCalendarConnectService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08DD4E09E55EB5E37A47371E /* GoogleCalendarConnectService.swift */; };
+		0A8BE93B2A008AB66F551248 /* GoogleConnectClientTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 795BBAC4AC839F5ABC0D834E /* GoogleConnectClientTests.swift */; };
+		21C8827AF07A8C7E820F1F0C /* GoogleCalendarConnectServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C346A5B187C1D5919AE3F519 /* GoogleCalendarConnectServiceTests.swift */; };
+		1B4093489FFD959D17F0D372 /* BackgroundBandRefreshScheduler.swift in Sources */ = {isa = PBXBuildFile; fileRef = B26CB33A1CB9C2006E0DC0E3 /* BackgroundBandRefreshScheduler.swift */; };
+		1D1637F7FC73408E0112D944 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A9245997707B87F343A508E9 /* RootView.swift */; };
+		23B80F50BE3E8F6892B7FA31 /* FakeCalendarConnectService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 87883220B1E6ED8FACDE2899 /* FakeCalendarConnectService.swift */; };
+		24F7149D46F5148A58DA2382 /* SlotsUploadClientTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D55928D7FAB2A67D7155263D /* SlotsUploadClientTests.swift */; };
+		2B602594952A11D6A3D64C96 /* PreferencesStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD9A80BBAA1D0602760907D1 /* PreferencesStore.swift */; };
+		2EDAAF4F39605BADBA77F9B8 /* HistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C8B15F8FEDFD08AE8F0D6C3 /* HistoryView.swift */; };
+		3318F2A2B22E8CD0E4E21047 /* OnboardingCompletionStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9E2BF4D48A0B97F35146C037 /* OnboardingCompletionStoreTests.swift */; };
+		343E47FA4AA502A4D1B1597B /* PreferencesStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E771470C893B0E25767E0707 /* PreferencesStoreTests.swift */; };
+		38C47ADE52FDD64DDB9034E2 /* EventKitSlotCollector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 979B13A562A502EA847BE47D /* EventKitSlotCollector.swift */; };
+		3C61699E9F5C2F963DD3300F /* HealthKitConnectService.swift in Sources */ = {isa = PBXBuildFile; fileRef = BFA3B0083B469D4C9A742E80 /* HealthKitConnectService.swift */; };
+		4563EE45FD2125ABDBA5461A /* DemoModeUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 49EAEC5F7CD83DD4F879C396 /* DemoModeUITests.swift */; };
+		45DBB6E52A510728108BF511 /* PreferencesViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 53152D0BCC96925FA1700C4A /* PreferencesViewModel.swift */; };
+		B2E8D5F81A4C59630D7F8CA1 /* WeekdayCircleRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1D9C4E70F3B48521C6E7B90 /* WeekdayCircleRow.swift */; };
+		47FA693F013FBF300431C5C6 /* AccountDeletionClientTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4948F7F9E33A7407C8ED4107 /* AccountDeletionClientTests.swift */; };
+		490F84B9BA8820E310EE058D /* FakeAuthServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D6A4C9BB1EC590903905D4E /* FakeAuthServiceTests.swift */; };
+		494369D3C770E5687D15D54B /* HealthKitMappingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 58C8019FF79B107631D11796 /* HealthKitMappingTests.swift */; };
+		49C74A0B853348C590543823 /* OnboardingViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1860F8D321B6B36F934B8BF9 /* OnboardingViewModel.swift */; };
+		50DB50678F3EC0DBE8E3A2BA /* DataPrivacyUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 37A60DDE1E0BA007E245B00B /* DataPrivacyUITests.swift */; };
+		520F1EF92716CB48483D7236 /* HealthConnectServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8A36025B7AD02753E4BE229 /* HealthConnectServiceTests.swift */; };
+		521A47358CD27B02D9C16AAB /* SignInView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 225C2C52FDDE9CA7AA327D36 /* SignInView.swift */; };
+		53125BB9D1781C4D456E8262 /* DistressCheckinClientTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2229A9C7DB8BD6BE929F8BC7 /* DistressCheckinClientTests.swift */; };
+		5426495D4B30779EF69930C9 /* ConsentCategory.swift in Sources */ = {isa = PBXBuildFile; fileRef = 877248042152D9130C306B1B /* ConsentCategory.swift */; };
+		549457CBC77822D3D92FB5CB /* EventKitSlotCollectorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 16D966FA6ECCABF05A11FEB7 /* EventKitSlotCollectorTests.swift */; };
+		5D3C6E7D348E0D899D4FFB86 /* DataPrivacyViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 982732059F8188168569B7D2 /* DataPrivacyViewModel.swift */; };
+		62B67EFC2CF20E614849002E /* CalendarConnectServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5B400AFEA67C3FAF3B159FA /* CalendarConnectServiceTests.swift */; };
+		63534DCCE76D13DFD020E997 /* PreferencesCaptureView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 228B068F0A95497B58F6AE6C /* PreferencesCaptureView.swift */; };
+		6884019A4E90FD2399ACB5C5 /* BandPhrase.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C38373AAAD69B2D16624B3F /* BandPhrase.swift */; };
+		6892DC69C4EFDB1601532A5F /* CalendarConnectView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE3581DD6AE13D5FD334DD48 /* CalendarConnectView.swift */; };
+		6AA1F153E252FAE0AA0B883E /* DistressCheckinClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 26B61FCFA6FFA13374E7C036 /* DistressCheckinClient.swift */; };
+		6DD56EE9B0EE885AA16A7FF1 /* AnyAuthService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 906D28DF23B49DDF5A107AD3 /* AnyAuthService.swift */; };
+		7455A0B4A6296C6D46955B02 /* SlotsUploadClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0134AC9630FD7A8AD3333B4B /* SlotsUploadClient.swift */; };
+		75A7584FB0AE08F32FDA1019 /* CalendarConnectService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3DD750FEA75CF49DBAD8F0A5 /* CalendarConnectService.swift */; };
+		7652C5DB9C640FBFA6AFC0DC /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24B5BCD1033E36AE0FB067DA /* HomeView.swift */; };
+		7CD6A99ADCF5C9CF4137BDA2 /* BandUploadClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C3823CA4C01AB0840A90CC1 /* BandUploadClient.swift */; };
+		7FD3F9CAB633CA03C3E9C555 /* HomeBandRefreshUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E9915B3B685F6E060EC37209 /* HomeBandRefreshUITests.swift */; };
+		81D335F532389EE4A10241C4 /* PreferencesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 436F6B34CEF04422CB364DA7 /* PreferencesView.swift */; };
+		8624EE2A62D9D2D09CAD74C5 /* FirebaseCore in Frameworks */ = {isa = PBXBuildFile; productRef = 578AB598BC8BEC0015BB7658 /* FirebaseCore */; };
+		8BFA8C3C5CA4444A4863AA27 /* HealthPrimingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A4250BED5A2A76DCC40D205 /* HealthPrimingView.swift */; };
+		8CC3B479E41531C58B923DD0 /* FirebaseAuth in Frameworks */ = {isa = PBXBuildFile; productRef = D7321BF4221FEF5CC24F8BC0 /* FirebaseAuth */; };
+		8E58CF0CFB40ADD5AF629801 /* BackgroundBandRefreshSchedulerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8BBA1942CEB49482A333456B /* BackgroundBandRefreshSchedulerTests.swift */; };
+		8FE0A9B26F600D0690B79682 /* DataLedger.swift in Sources */ = {isa = PBXBuildFile; fileRef = B296210DE438456FA56ADAC0 /* DataLedger.swift */; };
+		923280772EFD5460FF3638C6 /* AppEnvironment.swift in Sources */ = {isa = PBXBuildFile; fileRef = 73D89500F1B93597A399595F /* AppEnvironment.swift */; };
+		9320334E96BB00107FDF75E0 /* OnboardingViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FAAA4BCFA1924F52FB9ECE68 /* OnboardingViewModelTests.swift */; };
+		938A8919524210CC7C00BDCA /* DataPrivacyView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3E3E9584B35B304112B59BE /* DataPrivacyView.swift */; };
+		9DC2D9692EE8EB42D1B0EFE5 /* low_poor_heavy.json in Resources */ = {isa = PBXBuildFile; fileRef = 96A335C05EAF6892306241EA /* low_poor_heavy.json */; };
+		A05133D46BBFD4E472B915BE /* HealthKitMapping.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0E22A4A5D05FA07EF526832 /* HealthKitMapping.swift */; };
+		A3D6FC91F0342DE952D04D7B /* FakeHealthConnectService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A82EF295CA9A39C85CF828B /* FakeHealthConnectService.swift */; };
+		AB1D527DA0E2159559EA0C9E /* OnboardingDoneView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E55CC8AA69A81049C4E1B40 /* OnboardingDoneView.swift */; };
+		AD6CB5E8329F0D2E4F46145F /* BandDeriver in Frameworks */ = {isa = PBXBuildFile; productRef = EFD5050A9841BB1BD16AD2DE /* BandDeriver */; };
+		AD791F0AFA6E91D520D28A3D /* HealthConnectService.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD23FB9A6EF0C74F13F7BD49 /* HealthConnectService.swift */; };
+		B4A03B15F291157968AD69C0 /* HealthSampleReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1DD9B5FA0BCC651BD47D7A76 /* HealthSampleReader.swift */; };
+		BB30280CEE55A1067CE80C7D /* BandUploadClientTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04D3A0B237B296CDC0CCBB9A /* BandUploadClientTests.swift */; };
+		BEFAB144FA2E4A7A0845BE98 /* FakeAuthService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 004B91EFC22563549B917811 /* FakeAuthService.swift */; };
+		BEFE34BEBF4329858F3194EC /* HealthKitSampleReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = A773E52CA6DCF45AFA3A0B52 /* HealthKitSampleReader.swift */; };
+		BF1CF59F001B7CAE01621C94 /* KairosApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF341935C3B2CBC215BC7E16 /* KairosApp.swift */; };
+		C3F941918410F71116A1E3CB /* BandPhraseCompleteMappingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 72739D709AE300BA34D8492E /* BandPhraseCompleteMappingTests.swift */; };
+		C65DCF48CDBB3B731E5A829C /* OnboardingFlowUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F840002AA4A48B78795616A0 /* OnboardingFlowUITests.swift */; };
+		D8A4B3C20F6E59A72C5BAF33 /* PreferencesDaysUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7F3A2B10E5D48961B4A9E22 /* PreferencesDaysUITests.swift */; };
+		C7F30896A5555738FFE6834F /* DemoFixtureSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = F582EA465E8626CE7316AB5F /* DemoFixtureSnapshot.swift */; };
+		C815146CAE902317D39D3472 /* BandUploadService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 26F577F92BB766502426C044 /* BandUploadService.swift */; };
+		C9267FD18BBDF2EC9273BA23 /* BandPhraseTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 015B66C29B884BAC5A105E13 /* BandPhraseTests.swift */; };
+		CC351CC84FA1A9D4067AF942 /* AuthService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 32E01D397E23DD723FB73297 /* AuthService.swift */; };
+		D1CE9908357C713FE6F522E3 /* FirebaseAuthService.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED2AC8A507E59B1BEF90BCB2 /* FirebaseAuthService.swift */; };
+		D3BE53D8646B6C79BD2A5865 /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 47A3586D625BB77492FE5203 /* GoogleService-Info.plist */; };
+		6F6C783489CFD657E41D6F54 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = B587348263E5F1E3C45866E4 /* PrivacyInfo.xcprivacy */; };
+		D4FABCE1634ACD32DEFB3225 /* BandUploadServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DD67613D65678B47BE2F643 /* BandUploadServiceTests.swift */; };
+		D7B926BC7D9B113DA3AC0CD8 /* AppEnvironmentTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D8CD9922E8758B7FCE724FF0 /* AppEnvironmentTests.swift */; };
+		D8A292D2EBCAB6447FB6F64E /* OnboardingContainerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 23D4B3ABBA316A764CA3FC67 /* OnboardingContainerView.swift */; };
+		E17A4571BBEC9FD6FBB75158 /* KairosUser.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9DEED509BBDF81D12E1BCAB /* KairosUser.swift */; };
+		ECC6FA6062A9B86A5ADEF21B /* FakeHealthSampleReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA30CBDE195BF342CC787C18 /* FakeHealthSampleReader.swift */; };
+		F090F01EA08C63A67547E85C /* HTTPPreferencesClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 478AEB73C00F600B95DFB6ED /* HTTPPreferencesClient.swift */; };
+		F7DB4AC6D32A963B5B44B118 /* ConsentStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3975558B363CB3F79EA08464 /* ConsentStore.swift */; };
+		F8435A7C750A446307C5B9E1 /* WelcomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF745B89549A1A75F4A3092D /* WelcomeView.swift */; };
+		F90B272F46A9788F08DC9ED9 /* OnboardingPreferences.swift in Sources */ = {isa = PBXBuildFile; fileRef = 523CED05F1A49D217C9615B2 /* OnboardingPreferences.swift */; };
+		FA927725FF82C931C04BF1A1 /* DemoFixtureSnapshotTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C86D125153FC539C27ED66A /* DemoFixtureSnapshotTests.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		08A99ABB33C1E91A1E158BD3 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = E64FEF4991E8210A9E26C0F7 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 6CD36DBB9B1781513D7A5353;
+			remoteInfo = Kairos;
+		};
+		4F2E06E0B03B22D106C9A25E /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = E64FEF4991E8210A9E26C0F7 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 6CD36DBB9B1781513D7A5353;
+			remoteInfo = Kairos;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		004B91EFC22563549B917811 /* FakeAuthService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FakeAuthService.swift; sourceTree = "<group>"; };
+		0134AC9630FD7A8AD3333B4B /* SlotsUploadClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SlotsUploadClient.swift; sourceTree = "<group>"; };
+		015B66C29B884BAC5A105E13 /* BandPhraseTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BandPhraseTests.swift; sourceTree = "<group>"; };
+		04D3A0B237B296CDC0CCBB9A /* BandUploadClientTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BandUploadClientTests.swift; sourceTree = "<group>"; };
+		13C5F4E51EF70C8F92499B50 /* InviteEmailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InviteEmailView.swift; sourceTree = "<group>"; };
+		16D966FA6ECCABF05A11FEB7 /* EventKitSlotCollectorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EventKitSlotCollectorTests.swift; sourceTree = "<group>"; };
+		17971371FD4DDB4D05CAF5D4 /* EventKitCalendarConnectService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EventKitCalendarConnectService.swift; sourceTree = "<group>"; };
+		92B0E1E915FE230E6AEB941E /* GoogleConnectClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoogleConnectClient.swift; sourceTree = "<group>"; };
+		B7243BB997924F1D6AFC5846 /* GoogleOAuthSessionRunner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoogleOAuthSessionRunner.swift; sourceTree = "<group>"; };
+		08DD4E09E55EB5E37A47371E /* GoogleCalendarConnectService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoogleCalendarConnectService.swift; sourceTree = "<group>"; };
+		795BBAC4AC839F5ABC0D834E /* GoogleConnectClientTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoogleConnectClientTests.swift; sourceTree = "<group>"; };
+		C346A5B187C1D5919AE3F519 /* GoogleCalendarConnectServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoogleCalendarConnectServiceTests.swift; sourceTree = "<group>"; };
+		1860F8D321B6B36F934B8BF9 /* OnboardingViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingViewModel.swift; sourceTree = "<group>"; };
+		1C3823CA4C01AB0840A90CC1 /* BandUploadClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BandUploadClient.swift; sourceTree = "<group>"; };
+		1DD9B5FA0BCC651BD47D7A76 /* HealthSampleReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthSampleReader.swift; sourceTree = "<group>"; };
+		1F69A857897BC1CD9AB5DBC3 /* Kairos.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Kairos.entitlements; sourceTree = "<group>"; };
+		2229A9C7DB8BD6BE929F8BC7 /* DistressCheckinClientTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DistressCheckinClientTests.swift; sourceTree = "<group>"; };
+		225C2C52FDDE9CA7AA327D36 /* SignInView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SignInView.swift; sourceTree = "<group>"; };
+		228B068F0A95497B58F6AE6C /* PreferencesCaptureView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreferencesCaptureView.swift; sourceTree = "<group>"; };
+		23D4B3ABBA316A764CA3FC67 /* OnboardingContainerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingContainerView.swift; sourceTree = "<group>"; };
+		24B5BCD1033E36AE0FB067DA /* HomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeView.swift; sourceTree = "<group>"; };
+		26B61FCFA6FFA13374E7C036 /* DistressCheckinClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DistressCheckinClient.swift; sourceTree = "<group>"; };
+		26F577F92BB766502426C044 /* BandUploadService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BandUploadService.swift; sourceTree = "<group>"; };
+		28E40278047EBEC9094B7A2A /* DevotionalDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DevotionalDetailView.swift; sourceTree = "<group>"; };
+		2D6A4C9BB1EC590903905D4E /* FakeAuthServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FakeAuthServiceTests.swift; sourceTree = "<group>"; };
+		32E01D397E23DD723FB73297 /* AuthService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthService.swift; sourceTree = "<group>"; };
+		352472024120B3204487CAC9 /* FirebaseAuthServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FirebaseAuthServiceTests.swift; sourceTree = "<group>"; };
+		37A60DDE1E0BA007E245B00B /* DataPrivacyUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DataPrivacyUITests.swift; sourceTree = "<group>"; };
+		3975558B363CB3F79EA08464 /* ConsentStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConsentStore.swift; sourceTree = "<group>"; };
+		3DD750FEA75CF49DBAD8F0A5 /* CalendarConnectService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalendarConnectService.swift; sourceTree = "<group>"; };
+		3E55CC8AA69A81049C4E1B40 /* OnboardingDoneView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingDoneView.swift; sourceTree = "<group>"; };
+		436F6B34CEF04422CB364DA7 /* PreferencesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreferencesView.swift; sourceTree = "<group>"; };
+		478AEB73C00F600B95DFB6ED /* HTTPPreferencesClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HTTPPreferencesClient.swift; sourceTree = "<group>"; };
+		47A3586D625BB77492FE5203 /* GoogleService-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = "GoogleService-Info.plist"; sourceTree = "<group>"; };
+		4948F7F9E33A7407C8ED4107 /* AccountDeletionClientTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountDeletionClientTests.swift; sourceTree = "<group>"; };
+		49EAEC5F7CD83DD4F879C396 /* DemoModeUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DemoModeUITests.swift; sourceTree = "<group>"; };
+		4A4250BED5A2A76DCC40D205 /* HealthPrimingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthPrimingView.swift; sourceTree = "<group>"; };
+		4C86D125153FC539C27ED66A /* DemoFixtureSnapshotTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DemoFixtureSnapshotTests.swift; sourceTree = "<group>"; };
+		4C8B15F8FEDFD08AE8F0D6C3 /* HistoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryView.swift; sourceTree = "<group>"; };
+		4D2465E4BB7D301FB75862B3 /* KairosTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = KairosTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		51F1ED7C8D58C781BCDB3B96 /* AccountDeletionClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountDeletionClient.swift; sourceTree = "<group>"; };
+		523CED05F1A49D217C9615B2 /* OnboardingPreferences.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingPreferences.swift; sourceTree = "<group>"; };
+		53152D0BCC96925FA1700C4A /* PreferencesViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreferencesViewModel.swift; sourceTree = "<group>"; };
+		A1D9C4E70F3B48521C6E7B90 /* WeekdayCircleRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WeekdayCircleRow.swift; sourceTree = "<group>"; };
+		573F23B4CACDB25A2DC2C2A7 /* KairosUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = KairosUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		58C8019FF79B107631D11796 /* HealthKitMappingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthKitMappingTests.swift; sourceTree = "<group>"; };
+		5A82EF295CA9A39C85CF828B /* FakeHealthConnectService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FakeHealthConnectService.swift; sourceTree = "<group>"; };
+		5B803826F5975368BA52E5A3 /* BandDeriver */ = {isa = PBXFileReference; lastKnownFileType = folder; name = BandDeriver; path = Packages/BandDeriver; sourceTree = SOURCE_ROOT; };
+		6DD67613D65678B47BE2F643 /* BandUploadServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BandUploadServiceTests.swift; sourceTree = "<group>"; };
+		72739D709AE300BA34D8492E /* BandPhraseCompleteMappingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BandPhraseCompleteMappingTests.swift; sourceTree = "<group>"; };
+		73D89500F1B93597A399595F /* AppEnvironment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppEnvironment.swift; sourceTree = "<group>"; };
+		877248042152D9130C306B1B /* ConsentCategory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConsentCategory.swift; sourceTree = "<group>"; };
+		87883220B1E6ED8FACDE2899 /* FakeCalendarConnectService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FakeCalendarConnectService.swift; sourceTree = "<group>"; };
+		8BBA1942CEB49482A333456B /* BackgroundBandRefreshSchedulerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackgroundBandRefreshSchedulerTests.swift; sourceTree = "<group>"; };
+		906D28DF23B49DDF5A107AD3 /* AnyAuthService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnyAuthService.swift; sourceTree = "<group>"; };
+		96A335C05EAF6892306241EA /* low_poor_heavy.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = low_poor_heavy.json; sourceTree = "<group>"; };
+		979B13A562A502EA847BE47D /* EventKitSlotCollector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EventKitSlotCollector.swift; sourceTree = "<group>"; };
+		982732059F8188168569B7D2 /* DataPrivacyViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DataPrivacyViewModel.swift; sourceTree = "<group>"; };
+		9C38373AAAD69B2D16624B3F /* BandPhrase.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BandPhrase.swift; sourceTree = "<group>"; };
+		9E2BF4D48A0B97F35146C037 /* OnboardingCompletionStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingCompletionStoreTests.swift; sourceTree = "<group>"; };
+		A773E52CA6DCF45AFA3A0B52 /* HealthKitSampleReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthKitSampleReader.swift; sourceTree = "<group>"; };
+		A9245997707B87F343A508E9 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
+		AF745B89549A1A75F4A3092D /* WelcomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WelcomeView.swift; sourceTree = "<group>"; };
+		B14F86FCD073BD8D7B5FE443 /* OnboardingCompletionStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingCompletionStore.swift; sourceTree = "<group>"; };
+		B26CB33A1CB9C2006E0DC0E3 /* BackgroundBandRefreshScheduler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackgroundBandRefreshScheduler.swift; sourceTree = "<group>"; };
+		B296210DE438456FA56ADAC0 /* DataLedger.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DataLedger.swift; sourceTree = "<group>"; };
+		B9DEED509BBDF81D12E1BCAB /* KairosUser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KairosUser.swift; sourceTree = "<group>"; };
+		BA30CBDE195BF342CC787C18 /* FakeHealthSampleReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FakeHealthSampleReader.swift; sourceTree = "<group>"; };
+		BE3581DD6AE13D5FD334DD48 /* CalendarConnectView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalendarConnectView.swift; sourceTree = "<group>"; };
+		BFA3B0083B469D4C9A742E80 /* HealthKitConnectService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthKitConnectService.swift; sourceTree = "<group>"; };
+		D0E22A4A5D05FA07EF526832 /* HealthKitMapping.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthKitMapping.swift; sourceTree = "<group>"; };
+		D55928D7FAB2A67D7155263D /* SlotsUploadClientTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SlotsUploadClientTests.swift; sourceTree = "<group>"; };
+		D8CD9922E8758B7FCE724FF0 /* AppEnvironmentTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppEnvironmentTests.swift; sourceTree = "<group>"; };
+		DC127B3FD8F1A069DF347998 /* DataPrivacyViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DataPrivacyViewModelTests.swift; sourceTree = "<group>"; };
+		DD23FB9A6EF0C74F13F7BD49 /* HealthConnectService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthConnectService.swift; sourceTree = "<group>"; };
+		E43372EFD253509C9CD5A7F7 /* Kairos.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Kairos.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		E5B400AFEA67C3FAF3B159FA /* CalendarConnectServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalendarConnectServiceTests.swift; sourceTree = "<group>"; };
+		E771470C893B0E25767E0707 /* PreferencesStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreferencesStoreTests.swift; sourceTree = "<group>"; };
+		E8A36025B7AD02753E4BE229 /* HealthConnectServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthConnectServiceTests.swift; sourceTree = "<group>"; };
+		E9915B3B685F6E060EC37209 /* HomeBandRefreshUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeBandRefreshUITests.swift; sourceTree = "<group>"; };
+		EA7FFC5026A29219C3E41AFC /* ConsentStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConsentStoreTests.swift; sourceTree = "<group>"; };
+		EC4787586F95302AD40228E1 /* RootTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootTabView.swift; sourceTree = "<group>"; };
+		ED2AC8A507E59B1BEF90BCB2 /* FirebaseAuthService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FirebaseAuthService.swift; sourceTree = "<group>"; };
+		F3E3E9584B35B304112B59BE /* DataPrivacyView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DataPrivacyView.swift; sourceTree = "<group>"; };
+		F582EA465E8626CE7316AB5F /* DemoFixtureSnapshot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DemoFixtureSnapshot.swift; sourceTree = "<group>"; };
+		C7F3A2B10E5D48961B4A9E22 /* PreferencesDaysUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreferencesDaysUITests.swift; sourceTree = "<group>"; };
+		F840002AA4A48B78795616A0 /* OnboardingFlowUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingFlowUITests.swift; sourceTree = "<group>"; };
+		F8589904AE116A9AB6BF516B /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		B587348263E5F1E3C45866E4 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		FAAA4BCFA1924F52FB9ECE68 /* OnboardingViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingViewModelTests.swift; sourceTree = "<group>"; };
+		FBD046B3AEEB33770FE49B3A /* HTTPPreferencesClientTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HTTPPreferencesClientTests.swift; sourceTree = "<group>"; };
+		FD9A80BBAA1D0602760907D1 /* PreferencesStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreferencesStore.swift; sourceTree = "<group>"; };
+		FF341935C3B2CBC215BC7E16 /* KairosApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KairosApp.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		24C6A3A072BB8AE0177BCF37 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				AD6CB5E8329F0D2E4F46145F /* BandDeriver in Frameworks */,
+				8CC3B479E41531C58B923DD0 /* FirebaseAuth in Frameworks */,
+				8624EE2A62D9D2D09CAD74C5 /* FirebaseCore in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		16603435C979DC7297604C00 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				E43372EFD253509C9CD5A7F7 /* Kairos.app */,
+				4D2465E4BB7D301FB75862B3 /* KairosTests.xctest */,
+				573F23B4CACDB25A2DC2C2A7 /* KairosUITests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		23257DD8B3B31B8BD8E7B367 = {
+			isa = PBXGroup;
+			children = (
+				AF115EB5B62BBED56B7F3D1D /* Kairos */,
+				911EAB3EEFEA71AC15CE9851 /* KairosTests */,
+				3A9E818BEF4F2C4769A4E98D /* KairosUITests */,
+				6875CF0975F640AB89B8CD79 /* Packages */,
+				16603435C979DC7297604C00 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		3976EA50134F74992818EAD4 /* Preferences */ = {
+			isa = PBXGroup;
+			children = (
+				436F6B34CEF04422CB364DA7 /* PreferencesView.swift */,
+				53152D0BCC96925FA1700C4A /* PreferencesViewModel.swift */,
+				A1D9C4E70F3B48521C6E7B90 /* WeekdayCircleRow.swift */,
+			);
+			path = Preferences;
+			sourceTree = "<group>";
+		};
+		3A9E818BEF4F2C4769A4E98D /* KairosUITests */ = {
+			isa = PBXGroup;
+			children = (
+				37A60DDE1E0BA007E245B00B /* DataPrivacyUITests.swift */,
+				49EAEC5F7CD83DD4F879C396 /* DemoModeUITests.swift */,
+				E9915B3B685F6E060EC37209 /* HomeBandRefreshUITests.swift */,
+				F840002AA4A48B78795616A0 /* OnboardingFlowUITests.swift */,
+				C7F3A2B10E5D48961B4A9E22 /* PreferencesDaysUITests.swift */,
+			);
+			path = KairosUITests;
+			sourceTree = "<group>";
+		};
+		40234B77E8D899E871CEEEEC /* Health */ = {
+			isa = PBXGroup;
+			children = (
+				1C3823CA4C01AB0840A90CC1 /* BandUploadClient.swift */,
+				26F577F92BB766502426C044 /* BandUploadService.swift */,
+				5A82EF295CA9A39C85CF828B /* FakeHealthConnectService.swift */,
+				BA30CBDE195BF342CC787C18 /* FakeHealthSampleReader.swift */,
+				DD23FB9A6EF0C74F13F7BD49 /* HealthConnectService.swift */,
+				BFA3B0083B469D4C9A742E80 /* HealthKitConnectService.swift */,
+				D0E22A4A5D05FA07EF526832 /* HealthKitMapping.swift */,
+				A773E52CA6DCF45AFA3A0B52 /* HealthKitSampleReader.swift */,
+				1DD9B5FA0BCC651BD47D7A76 /* HealthSampleReader.swift */,
+			);
+			path = Health;
+			sourceTree = "<group>";
+		};
+		46A89BA99493EB8A5C469E54 /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				B9DEED509BBDF81D12E1BCAB /* KairosUser.swift */,
+				523CED05F1A49D217C9615B2 /* OnboardingPreferences.swift */,
+			);
+			path = Models;
+			sourceTree = "<group>";
+		};
+		561D69E0F69C3C76BCD203B1 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				78DD3D8D95B177070DF8F0D2 /* Fixtures */,
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
+		5AA32894D3453FC8CBD0B072 /* Devotional */ = {
+			isa = PBXGroup;
+			children = (
+				26B61FCFA6FFA13374E7C036 /* DistressCheckinClient.swift */,
+			);
+			path = Devotional;
+			sourceTree = "<group>";
+		};
+		5B77F1516A7DDEF6276BCE15 /* Privacy */ = {
+			isa = PBXGroup;
+			children = (
+				51F1ED7C8D58C781BCDB3B96 /* AccountDeletionClient.swift */,
+				877248042152D9130C306B1B /* ConsentCategory.swift */,
+				3975558B363CB3F79EA08464 /* ConsentStore.swift */,
+				B296210DE438456FA56ADAC0 /* DataLedger.swift */,
+			);
+			path = Privacy;
+			sourceTree = "<group>";
+		};
+		644362E69DA8A65130AAC0FB /* Auth */ = {
+			isa = PBXGroup;
+			children = (
+				906D28DF23B49DDF5A107AD3 /* AnyAuthService.swift */,
+				32E01D397E23DD723FB73297 /* AuthService.swift */,
+				004B91EFC22563549B917811 /* FakeAuthService.swift */,
+				ED2AC8A507E59B1BEF90BCB2 /* FirebaseAuthService.swift */,
+			);
+			path = Auth;
+			sourceTree = "<group>";
+		};
+		6875CF0975F640AB89B8CD79 /* Packages */ = {
+			isa = PBXGroup;
+			children = (
+				5B803826F5975368BA52E5A3 /* BandDeriver */,
+			);
+			path = Packages;
+			sourceTree = "<group>";
+		};
+		6E0217C7106064BEF7A44D30 /* DataPrivacy */ = {
+			isa = PBXGroup;
+			children = (
+				F3E3E9584B35B304112B59BE /* DataPrivacyView.swift */,
+				982732059F8188168569B7D2 /* DataPrivacyViewModel.swift */,
+			);
+			path = DataPrivacy;
+			sourceTree = "<group>";
+		};
+		7560E7258F09F6A2DBF3C963 /* Demo */ = {
+			isa = PBXGroup;
+			children = (
+				F582EA465E8626CE7316AB5F /* DemoFixtureSnapshot.swift */,
+			);
+			path = Demo;
+			sourceTree = "<group>";
+		};
+		78DD3D8D95B177070DF8F0D2 /* Fixtures */ = {
+			isa = PBXGroup;
+			children = (
+				96A335C05EAF6892306241EA /* low_poor_heavy.json */,
+			);
+			path = Fixtures;
+			sourceTree = "<group>";
+		};
+		80FDE47C4B987DD9D957E16C /* Calendar */ = {
+			isa = PBXGroup;
+			children = (
+				3DD750FEA75CF49DBAD8F0A5 /* CalendarConnectService.swift */,
+				17971371FD4DDB4D05CAF5D4 /* EventKitCalendarConnectService.swift */,
+				979B13A562A502EA847BE47D /* EventKitSlotCollector.swift */,
+				87883220B1E6ED8FACDE2899 /* FakeCalendarConnectService.swift */,
+				08DD4E09E55EB5E37A47371E /* GoogleCalendarConnectService.swift */,
+				92B0E1E915FE230E6AEB941E /* GoogleConnectClient.swift */,
+				B7243BB997924F1D6AFC5846 /* GoogleOAuthSessionRunner.swift */,
+				0134AC9630FD7A8AD3333B4B /* SlotsUploadClient.swift */,
+			);
+			path = Calendar;
+			sourceTree = "<group>";
+		};
+		830F50592E2760E79E2D2F65 /* Preferences */ = {
+			isa = PBXGroup;
+			children = (
+				478AEB73C00F600B95DFB6ED /* HTTPPreferencesClient.swift */,
+				FD9A80BBAA1D0602760907D1 /* PreferencesStore.swift */,
+			);
+			path = Preferences;
+			sourceTree = "<group>";
+		};
+		83A520DF431F025916A81C9E /* Devotional */ = {
+			isa = PBXGroup;
+			children = (
+				28E40278047EBEC9094B7A2A /* DevotionalDetailView.swift */,
+			);
+			path = Devotional;
+			sourceTree = "<group>";
+		};
+		8AEC6A23A85E972C05CDD1CD /* App */ = {
+			isa = PBXGroup;
+			children = (
+				73D89500F1B93597A399595F /* AppEnvironment.swift */,
+				B26CB33A1CB9C2006E0DC0E3 /* BackgroundBandRefreshScheduler.swift */,
+				FF341935C3B2CBC215BC7E16 /* KairosApp.swift */,
+				B14F86FCD073BD8D7B5FE443 /* OnboardingCompletionStore.swift */,
+				EC4787586F95302AD40228E1 /* RootTabView.swift */,
+				A9245997707B87F343A508E9 /* RootView.swift */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		8B97E7D655DF7D41C9B8D6C2 /* Support */ = {
+			isa = PBXGroup;
+			children = (
+				9C38373AAAD69B2D16624B3F /* BandPhrase.swift */,
+			);
+			path = Support;
+			sourceTree = "<group>";
+		};
+		911EAB3EEFEA71AC15CE9851 /* KairosTests */ = {
+			isa = PBXGroup;
+			children = (
+				4948F7F9E33A7407C8ED4107 /* AccountDeletionClientTests.swift */,
+				D8CD9922E8758B7FCE724FF0 /* AppEnvironmentTests.swift */,
+				8BBA1942CEB49482A333456B /* BackgroundBandRefreshSchedulerTests.swift */,
+				72739D709AE300BA34D8492E /* BandPhraseCompleteMappingTests.swift */,
+				015B66C29B884BAC5A105E13 /* BandPhraseTests.swift */,
+				04D3A0B237B296CDC0CCBB9A /* BandUploadClientTests.swift */,
+				6DD67613D65678B47BE2F643 /* BandUploadServiceTests.swift */,
+				E5B400AFEA67C3FAF3B159FA /* CalendarConnectServiceTests.swift */,
+				EA7FFC5026A29219C3E41AFC /* ConsentStoreTests.swift */,
+				DC127B3FD8F1A069DF347998 /* DataPrivacyViewModelTests.swift */,
+				4C86D125153FC539C27ED66A /* DemoFixtureSnapshotTests.swift */,
+				2229A9C7DB8BD6BE929F8BC7 /* DistressCheckinClientTests.swift */,
+				16D966FA6ECCABF05A11FEB7 /* EventKitSlotCollectorTests.swift */,
+				2D6A4C9BB1EC590903905D4E /* FakeAuthServiceTests.swift */,
+				352472024120B3204487CAC9 /* FirebaseAuthServiceTests.swift */,
+				C346A5B187C1D5919AE3F519 /* GoogleCalendarConnectServiceTests.swift */,
+				795BBAC4AC839F5ABC0D834E /* GoogleConnectClientTests.swift */,
+				E8A36025B7AD02753E4BE229 /* HealthConnectServiceTests.swift */,
+				58C8019FF79B107631D11796 /* HealthKitMappingTests.swift */,
+				FBD046B3AEEB33770FE49B3A /* HTTPPreferencesClientTests.swift */,
+				9E2BF4D48A0B97F35146C037 /* OnboardingCompletionStoreTests.swift */,
+				FAAA4BCFA1924F52FB9ECE68 /* OnboardingViewModelTests.swift */,
+				E771470C893B0E25767E0707 /* PreferencesStoreTests.swift */,
+				D55928D7FAB2A67D7155263D /* SlotsUploadClientTests.swift */,
+			);
+			path = KairosTests;
+			sourceTree = "<group>";
+		};
+		AF115EB5B62BBED56B7F3D1D /* Kairos */ = {
+			isa = PBXGroup;
+			children = (
+				47A3586D625BB77492FE5203 /* GoogleService-Info.plist */,
+				F8589904AE116A9AB6BF516B /* Info.plist */,
+				1F69A857897BC1CD9AB5DBC3 /* Kairos.entitlements */,
+				B587348263E5F1E3C45866E4 /* PrivacyInfo.xcprivacy */,
+				8AEC6A23A85E972C05CDD1CD /* App */,
+				644362E69DA8A65130AAC0FB /* Auth */,
+				80FDE47C4B987DD9D957E16C /* Calendar */,
+				7560E7258F09F6A2DBF3C963 /* Demo */,
+				5AA32894D3453FC8CBD0B072 /* Devotional */,
+				40234B77E8D899E871CEEEEC /* Health */,
+				46A89BA99493EB8A5C469E54 /* Models */,
+				830F50592E2760E79E2D2F65 /* Preferences */,
+				5B77F1516A7DDEF6276BCE15 /* Privacy */,
+				561D69E0F69C3C76BCD203B1 /* Resources */,
+				8B97E7D655DF7D41C9B8D6C2 /* Support */,
+				D7F9EC6F876FEAC21FC713CA /* Views */,
+			);
+			path = Kairos;
+			sourceTree = "<group>";
+		};
+		C3F00FACACF8F6C5830847F8 /* History */ = {
+			isa = PBXGroup;
+			children = (
+				4C8B15F8FEDFD08AE8F0D6C3 /* HistoryView.swift */,
+			);
+			path = History;
+			sourceTree = "<group>";
+		};
+		D7F9EC6F876FEAC21FC713CA /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				6E0217C7106064BEF7A44D30 /* DataPrivacy */,
+				83A520DF431F025916A81C9E /* Devotional */,
+				C3F00FACACF8F6C5830847F8 /* History */,
+				E15AC5BDA4A1E8ACA4101A41 /* Home */,
+				F3BBE803EB30D3EBB68D6A61 /* Onboarding */,
+				3976EA50134F74992818EAD4 /* Preferences */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
+		E15AC5BDA4A1E8ACA4101A41 /* Home */ = {
+			isa = PBXGroup;
+			children = (
+				24B5BCD1033E36AE0FB067DA /* HomeView.swift */,
+			);
+			path = Home;
+			sourceTree = "<group>";
+		};
+		F3BBE803EB30D3EBB68D6A61 /* Onboarding */ = {
+			isa = PBXGroup;
+			children = (
+				BE3581DD6AE13D5FD334DD48 /* CalendarConnectView.swift */,
+				4A4250BED5A2A76DCC40D205 /* HealthPrimingView.swift */,
+				13C5F4E51EF70C8F92499B50 /* InviteEmailView.swift */,
+				23D4B3ABBA316A764CA3FC67 /* OnboardingContainerView.swift */,
+				3E55CC8AA69A81049C4E1B40 /* OnboardingDoneView.swift */,
+				1860F8D321B6B36F934B8BF9 /* OnboardingViewModel.swift */,
+				228B068F0A95497B58F6AE6C /* PreferencesCaptureView.swift */,
+				225C2C52FDDE9CA7AA327D36 /* SignInView.swift */,
+				AF745B89549A1A75F4A3092D /* WelcomeView.swift */,
+			);
+			path = Onboarding;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		6CD36DBB9B1781513D7A5353 /* Kairos */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = C0071BF05744CF0FC596843C /* Build configuration list for PBXNativeTarget "Kairos" */;
+			buildPhases = (
+				01314336B9680736F168E2C1 /* Sources */,
+				42CA752220353C8A7A34E72D /* Resources */,
+				24C6A3A072BB8AE0177BCF37 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = Kairos;
+			packageProductDependencies = (
+				EFD5050A9841BB1BD16AD2DE /* BandDeriver */,
+				D7321BF4221FEF5CC24F8BC0 /* FirebaseAuth */,
+				578AB598BC8BEC0015BB7658 /* FirebaseCore */,
+			);
+			productName = Kairos;
+			productReference = E43372EFD253509C9CD5A7F7 /* Kairos.app */;
+			productType = "com.apple.product-type.application";
+		};
+		BB663BD61268A5A10FB69C71 /* KairosTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A97728D97B64E609D4E994EF /* Build configuration list for PBXNativeTarget "KairosTests" */;
+			buildPhases = (
+				7D5B9B31E1258691C794F3E4 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				40B25A7EF82F473315AF7EE7 /* PBXTargetDependency */,
+			);
+			name = KairosTests;
+			packageProductDependencies = (
+			);
+			productName = KairosTests;
+			productReference = 4D2465E4BB7D301FB75862B3 /* KairosTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		C129057D617671E571F97C23 /* KairosUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 4FA9AC03D0FC159A13378870 /* Build configuration list for PBXNativeTarget "KairosUITests" */;
+			buildPhases = (
+				62CD1C57360FC0A8D5DC212E /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				D06FBB7604243747BE3D0E00 /* PBXTargetDependency */,
+			);
+			name = KairosUITests;
+			packageProductDependencies = (
+			);
+			productName = KairosUITests;
+			productReference = 573F23B4CACDB25A2DC2C2A7 /* KairosUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		E64FEF4991E8210A9E26C0F7 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+					6CD36DBB9B1781513D7A5353 = {
+						ProvisioningStyle = Automatic;
+					};
+					BB663BD61268A5A10FB69C71 = {
+						ProvisioningStyle = Automatic;
+					};
+					C129057D617671E571F97C23 = {
+						ProvisioningStyle = Automatic;
+						TestTargetID = 6CD36DBB9B1781513D7A5353;
+					};
+				};
+			};
+			buildConfigurationList = 956BD75DB366E2AA30124BF1 /* Build configuration list for PBXProject "Kairos" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = 23257DD8B3B31B8BD8E7B367;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				671BD7F0501A90E6138BB14A /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */,
+				CFB71434C4346FF34458FD5D /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */,
+				83E8D902B11A33574C53D792 /* XCLocalSwiftPackageReference "Packages/BandDeriver" */,
+			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 16603435C979DC7297604C00 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				6CD36DBB9B1781513D7A5353 /* Kairos */,
+				BB663BD61268A5A10FB69C71 /* KairosTests */,
+				C129057D617671E571F97C23 /* KairosUITests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		42CA752220353C8A7A34E72D /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				D3BE53D8646B6C79BD2A5865 /* GoogleService-Info.plist in Resources */,
+				9DC2D9692EE8EB42D1B0EFE5 /* low_poor_heavy.json in Resources */,
+				6F6C783489CFD657E41D6F54 /* PrivacyInfo.xcprivacy in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		01314336B9680736F168E2C1 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				05C550CCCB687A78A000B766 /* AccountDeletionClient.swift in Sources */,
+				6DD56EE9B0EE885AA16A7FF1 /* AnyAuthService.swift in Sources */,
+				923280772EFD5460FF3638C6 /* AppEnvironment.swift in Sources */,
+				CC351CC84FA1A9D4067AF942 /* AuthService.swift in Sources */,
+				1B4093489FFD959D17F0D372 /* BackgroundBandRefreshScheduler.swift in Sources */,
+				6884019A4E90FD2399ACB5C5 /* BandPhrase.swift in Sources */,
+				7CD6A99ADCF5C9CF4137BDA2 /* BandUploadClient.swift in Sources */,
+				C815146CAE902317D39D3472 /* BandUploadService.swift in Sources */,
+				75A7584FB0AE08F32FDA1019 /* CalendarConnectService.swift in Sources */,
+				6892DC69C4EFDB1601532A5F /* CalendarConnectView.swift in Sources */,
+				5426495D4B30779EF69930C9 /* ConsentCategory.swift in Sources */,
+				F7DB4AC6D32A963B5B44B118 /* ConsentStore.swift in Sources */,
+				8FE0A9B26F600D0690B79682 /* DataLedger.swift in Sources */,
+				938A8919524210CC7C00BDCA /* DataPrivacyView.swift in Sources */,
+				5D3C6E7D348E0D899D4FFB86 /* DataPrivacyViewModel.swift in Sources */,
+				C7F30896A5555738FFE6834F /* DemoFixtureSnapshot.swift in Sources */,
+				0E8CA96EB465768C155711EE /* DevotionalDetailView.swift in Sources */,
+				6AA1F153E252FAE0AA0B883E /* DistressCheckinClient.swift in Sources */,
+				19E85DB9218ECF24CEC3FFA5 /* EventKitCalendarConnectService.swift in Sources */,
+				38C47ADE52FDD64DDB9034E2 /* EventKitSlotCollector.swift in Sources */,
+				BEFAB144FA2E4A7A0845BE98 /* FakeAuthService.swift in Sources */,
+				23B80F50BE3E8F6892B7FA31 /* FakeCalendarConnectService.swift in Sources */,
+				A3D6FC91F0342DE952D04D7B /* FakeHealthConnectService.swift in Sources */,
+				ECC6FA6062A9B86A5ADEF21B /* FakeHealthSampleReader.swift in Sources */,
+				D1CE9908357C713FE6F522E3 /* FirebaseAuthService.swift in Sources */,
+				B375FB2AC702553D88DA4BE3 /* GoogleCalendarConnectService.swift in Sources */,
+				F8912F936B7FECC05C556F11 /* GoogleConnectClient.swift in Sources */,
+				EBB19ACFD7D3557B26CFBDC4 /* GoogleOAuthSessionRunner.swift in Sources */,
+				F090F01EA08C63A67547E85C /* HTTPPreferencesClient.swift in Sources */,
+				AD791F0AFA6E91D520D28A3D /* HealthConnectService.swift in Sources */,
+				3C61699E9F5C2F963DD3300F /* HealthKitConnectService.swift in Sources */,
+				A05133D46BBFD4E472B915BE /* HealthKitMapping.swift in Sources */,
+				BEFE34BEBF4329858F3194EC /* HealthKitSampleReader.swift in Sources */,
+				8BFA8C3C5CA4444A4863AA27 /* HealthPrimingView.swift in Sources */,
+				B4A03B15F291157968AD69C0 /* HealthSampleReader.swift in Sources */,
+				2EDAAF4F39605BADBA77F9B8 /* HistoryView.swift in Sources */,
+				7652C5DB9C640FBFA6AFC0DC /* HomeView.swift in Sources */,
+				1787187A4BEAEFD90EEDABA7 /* InviteEmailView.swift in Sources */,
+				BF1CF59F001B7CAE01621C94 /* KairosApp.swift in Sources */,
+				E17A4571BBEC9FD6FBB75158 /* KairosUser.swift in Sources */,
+				09A5A02489B0AABD13E3B757 /* OnboardingCompletionStore.swift in Sources */,
+				D8A292D2EBCAB6447FB6F64E /* OnboardingContainerView.swift in Sources */,
+				AB1D527DA0E2159559EA0C9E /* OnboardingDoneView.swift in Sources */,
+				F90B272F46A9788F08DC9ED9 /* OnboardingPreferences.swift in Sources */,
+				49C74A0B853348C590543823 /* OnboardingViewModel.swift in Sources */,
+				63534DCCE76D13DFD020E997 /* PreferencesCaptureView.swift in Sources */,
+				2B602594952A11D6A3D64C96 /* PreferencesStore.swift in Sources */,
+				81D335F532389EE4A10241C4 /* PreferencesView.swift in Sources */,
+				45DBB6E52A510728108BF511 /* PreferencesViewModel.swift in Sources */,
+				B2E8D5F81A4C59630D7F8CA1 /* WeekdayCircleRow.swift in Sources */,
+				10AE3607B8D511671B55527A /* RootTabView.swift in Sources */,
+				1D1637F7FC73408E0112D944 /* RootView.swift in Sources */,
+				521A47358CD27B02D9C16AAB /* SignInView.swift in Sources */,
+				7455A0B4A6296C6D46955B02 /* SlotsUploadClient.swift in Sources */,
+				F8435A7C750A446307C5B9E1 /* WelcomeView.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		62CD1C57360FC0A8D5DC212E /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				50DB50678F3EC0DBE8E3A2BA /* DataPrivacyUITests.swift in Sources */,
+				4563EE45FD2125ABDBA5461A /* DemoModeUITests.swift in Sources */,
+				7FD3F9CAB633CA03C3E9C555 /* HomeBandRefreshUITests.swift in Sources */,
+				C65DCF48CDBB3B731E5A829C /* OnboardingFlowUITests.swift in Sources */,
+				D8A4B3C20F6E59A72C5BAF33 /* PreferencesDaysUITests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		7D5B9B31E1258691C794F3E4 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				47FA693F013FBF300431C5C6 /* AccountDeletionClientTests.swift in Sources */,
+				D7B926BC7D9B113DA3AC0CD8 /* AppEnvironmentTests.swift in Sources */,
+				8E58CF0CFB40ADD5AF629801 /* BackgroundBandRefreshSchedulerTests.swift in Sources */,
+				C3F941918410F71116A1E3CB /* BandPhraseCompleteMappingTests.swift in Sources */,
+				C9267FD18BBDF2EC9273BA23 /* BandPhraseTests.swift in Sources */,
+				BB30280CEE55A1067CE80C7D /* BandUploadClientTests.swift in Sources */,
+				D4FABCE1634ACD32DEFB3225 /* BandUploadServiceTests.swift in Sources */,
+				62B67EFC2CF20E614849002E /* CalendarConnectServiceTests.swift in Sources */,
+				1519DE9C7D236655A0F874BE /* ConsentStoreTests.swift in Sources */,
+				0AC218370922A49ECB810DC8 /* DataPrivacyViewModelTests.swift in Sources */,
+				FA927725FF82C931C04BF1A1 /* DemoFixtureSnapshotTests.swift in Sources */,
+				53125BB9D1781C4D456E8262 /* DistressCheckinClientTests.swift in Sources */,
+				549457CBC77822D3D92FB5CB /* EventKitSlotCollectorTests.swift in Sources */,
+				490F84B9BA8820E310EE058D /* FakeAuthServiceTests.swift in Sources */,
+				1220BFB2B4C206E76265BA67 /* FirebaseAuthServiceTests.swift in Sources */,
+				21C8827AF07A8C7E820F1F0C /* GoogleCalendarConnectServiceTests.swift in Sources */,
+				0A8BE93B2A008AB66F551248 /* GoogleConnectClientTests.swift in Sources */,
+				03ABF5B79BF0A4DF19FCB098 /* HTTPPreferencesClientTests.swift in Sources */,
+				520F1EF92716CB48483D7236 /* HealthConnectServiceTests.swift in Sources */,
+				494369D3C770E5687D15D54B /* HealthKitMappingTests.swift in Sources */,
+				3318F2A2B22E8CD0E4E21047 /* OnboardingCompletionStoreTests.swift in Sources */,
+				9320334E96BB00107FDF75E0 /* OnboardingViewModelTests.swift in Sources */,
+				343E47FA4AA502A4D1B1597B /* PreferencesStoreTests.swift in Sources */,
+				24F7149D46F5148A58DA2382 /* SlotsUploadClientTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		40B25A7EF82F473315AF7EE7 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 6CD36DBB9B1781513D7A5353 /* Kairos */;
+			targetProxy = 4F2E06E0B03B22D106C9A25E /* PBXContainerItemProxy */;
+		};
+		D06FBB7604243747BE3D0E00 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 6CD36DBB9B1781513D7A5353 /* Kairos */;
+			targetProxy = 08A99ABB33C1E91A1E158BD3 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		1EF7EF35AE8D5822C8AE3638 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGNING_ALLOWED = NO;
+				CODE_SIGNING_REQUIRED = NO;
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_PREVIEWS = YES;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.1;
+			};
+			name = Debug;
+		};
+		210D07AB961F41D3019ECB50 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = Kairos/Kairos.entitlements;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Kairos/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.kairos.devotional;
+				SDKROOT = iphoneos;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
+		5973F220C1CFC68498ED2DEF /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.kairos.KairosTests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Kairos.app/Kairos";
+			};
+			name = Release;
+		};
+		5E780994CD593115E17EBFAF /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.kairos.KairosUITests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = Kairos;
+			};
+			name = Release;
+		};
+		AB30A4EC7024B26309D398B8 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGNING_ALLOWED = NO;
+				CODE_SIGNING_REQUIRED = NO;
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_PREVIEWS = YES;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.1;
+			};
+			name = Release;
+		};
+		C03D906342ABE2FAF9A1971C /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = Kairos/Kairos.entitlements;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Kairos/Info.plist;
+				INFOPLIST_KEY_API_BASE_URL = "https://your-api-host.example.com";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.kairos.devotional;
+				SDKROOT = iphoneos;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		E2122AF100979FEFAC4C6B77 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.kairos.KairosUITests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = Kairos;
+			};
+			name = Debug;
+		};
+		FEB8EF39BD406A94A96E2CC8 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.kairos.KairosTests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Kairos.app/Kairos";
+			};
+			name = Debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		4FA9AC03D0FC159A13378870 /* Build configuration list for PBXNativeTarget "KairosUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				E2122AF100979FEFAC4C6B77 /* Debug */,
+				5E780994CD593115E17EBFAF /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		956BD75DB366E2AA30124BF1 /* Build configuration list for PBXProject "Kairos" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				1EF7EF35AE8D5822C8AE3638 /* Debug */,
+				AB30A4EC7024B26309D398B8 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		A97728D97B64E609D4E994EF /* Build configuration list for PBXNativeTarget "KairosTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				FEB8EF39BD406A94A96E2CC8 /* Debug */,
+				5973F220C1CFC68498ED2DEF /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		C0071BF05744CF0FC596843C /* Build configuration list for PBXNativeTarget "Kairos" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				C03D906342ABE2FAF9A1971C /* Debug */,
+				210D07AB961F41D3019ECB50 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		83E8D902B11A33574C53D792 /* XCLocalSwiftPackageReference "Packages/BandDeriver" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/BandDeriver;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		671BD7F0501A90E6138BB14A /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/firebase/firebase-ios-sdk";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 11.0.0;
+			};
+		};
+		CFB71434C4346FF34458FD5D /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/firebase/firebase-ios-sdk";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 11.0.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		578AB598BC8BEC0015BB7658 /* FirebaseCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = CFB71434C4346FF34458FD5D /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseCore;
+		};
+		D7321BF4221FEF5CC24F8BC0 /* FirebaseAuth */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 671BD7F0501A90E6138BB14A /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseAuth;
+		};
+		EFD5050A9841BB1BD16AD2DE /* BandDeriver */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = BandDeriver;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = E64FEF4991E8210A9E26C0F7 /* Project object */;
+}

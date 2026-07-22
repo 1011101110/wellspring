@@ -1,0 +1,26 @@
+{
+  "_comment": "Canonical POST /v1/bands contract fixture for issue #83. Backend tests parse `request`/`response` against BandsUploadRequestSchema/BandsUploadResponseSchema (packages/shared-contracts/src/api/bands.ts). iOS tests (apps/ios/KairosTests/BandUploadClientTests.swift) embed an identical literal copy of both objects — keep both in sync by hand if this file changes.",
+  "request": {
+    "date": "2026-07-04",
+    "recovery": "low",
+    "sleepQuality": "poor",
+    "activity": "sedentary",
+    "distressSignal": false
+  },
+  "requestWithWithheldCategories": {
+    "date": "2026-07-04",
+    "distressSignal": false
+  },
+  "response": {
+    "ok": true,
+    "data": {
+      "date": "2026-07-04",
+      "recovery": "low",
+      "sleepQuality": "poor",
+      "activity": "sedentary",
+      "busyness": null,
+      "communicationLoad": null,
+      "distressSignal": false
+    }
+  }
+}

@@ -1,0 +1,45 @@
+# Node
+node_modules/
+dist/
+*.tsbuildinfo
+.npm/
+
+# Env & secrets — never commit
+.env
+.env.*
+!.env.example
+*.pem
+*.p8
+*.key
+service-account*.json
+
+# iOS / Xcode
+DerivedData/
+build/
+*.xcuserstate
+xcuserdata/
+*.ipa
+*.dSYM.zip
+
+# Swift Package Manager
+.build/
+.swiftpm/
+Package.resolved
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Test & tooling output
+coverage/
+.playwright/
+test-results/
+playwright-report/
+
+# Local dev/test audio storage (LocalFileAudioStorage output dir — never committed)
+apps/api/.data/
+
+# Firebase iOS config — carries the project API key; provide your own from the .example template
+apps/ios/**/GoogleService-Info.plist

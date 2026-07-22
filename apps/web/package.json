@@ -1,0 +1,33 @@
+{
+  "name": "@kairos/web",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Kairos web client \u2014 Google sign-in, calendar connect, and preferences at parity with iOS (issue #195).",
+  "type": "module",
+  "scripts": {
+    "prebuild": "npm --prefix ../../packages/shared-contracts run build",
+    "build": "tsc -p tsconfig.json --noEmit && vite build",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "dev": "vite",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "playwright test"
+  },
+  "dependencies": {
+    "@kairos/shared-contracts": "*",
+    "firebase": "^11.1.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "^4.12.1",
+    "@playwright/test": "^1.61.1",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.4",
+    "typescript": "^5.6.3",
+    "vite": "^6.0.7",
+    "vitest": "^4.1.9"
+  }
+}

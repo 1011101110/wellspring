@@ -1,0 +1,110 @@
+name: CI
+# Cost posture (see docs/24 §"CI cost control"):
+#   1. NO `push: [main]` trigger. A squash-merge re-runs the identical tree
+#      that PR CI just validated, so the main-branch run was pure duplicate
+#      spend — it was ~1 extra full CI run per merge, and nothing gates on
+#      it (deploy-api.yml triggers off `push: main` independently and has
+#      never had a `needs:` on this workflow).
+#   2. Docs-only changes skip this workflow entirely via `paths-ignore`.
+#      A denylist is used rather than an allowlist deliberately: an
+#      unlisted new directory then still RUNS CI (fail-safe toward
+#      running), where an allowlist would silently skip it.
+#
+# Secret scanning deliberately does NOT live here — it must run on every
+# PR including docs-only ones, since a credential can land in a markdown
+# example as easily as in code. It has its own workflow (secret-scan.yml).
+on:
+  pull_request:
+    paths-ignore:
+      - "docs/**"
+      - "**/*.md"
+      - "LICENSE"
+      - ".gitignore"
+      - ".github/ISSUE_TEMPLATE/**"
+  # Manual escape hatch: run the full suite against a branch on demand
+  # (e.g. before a submission-critical merge, or to re-validate main).
+  workflow_dispatch: {}
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: kairos_test
+        ports: ["5433:5432"]
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgres://postgres:test@localhost:5433/kairos_test
+      TEST_DATABASE_URL: postgres://postgres:test@localhost:5433/kairos_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20, cache: npm }
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      # Migrations from zero every build (docs/06 §5) — schema drift is caught before deploy.
+      - run: npm run migrate --workspace=apps/api -- up
+      - run: npm run test
+      - run: npm run build
+  dependency-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20, cache: npm }
+      - run: npm ci
+      - run: npm audit --audit-level=high
+  # Session-page accessibility suite (issue #67): browser-rendered
+  # WCAG AA (axe-core) + structural checks against renderSessionPage.ts's
+  # real HTML output. No Postgres/live server needed — the function under
+  # test is pure, exercised directly via page.setContent() (see
+  # apps/api/e2e/sessionPage.a11y.spec.ts's header comment).
+  session-a11y:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20, cache: npm }
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+        working-directory: apps/api
+      - run: npm run test:e2e --workspace=apps/api
+
+  # Dashboard accessibility (N5, issue #264). Same tooling as the job
+  # above, different reason for existing: #264's four defects were all
+  # properties of the LAID-OUT page — a focus ring's painted position, an
+  # opacity composite, a `<label>` that never inherited the app's 44px
+  # button floor — so lint, tsc, 183 unit tests and a clean build were all
+  # green while every one of them was live. This job is the only thing in
+  # CI that lays the page out.
+  #
+  # Runs against `preview.html`, which is fixture-driven and makes no
+  # network calls, so like session-a11y it needs no Postgres, no auth and
+  # no seeded account — just Vite. Both colour schemes, because two of the
+  # four measured worse in dark and a single-theme run called the page
+  # clean.
+  web-a11y:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20, cache: npm }
+      - run: npm ci
+      # The web client compiles against the built contracts; without this
+      # the dev server the suite boots fails to resolve @kairos/shared-contracts.
+      - run: npm run build --workspace=packages/shared-contracts
+      - run: npx playwright install --with-deps chromium
+        working-directory: apps/web
+      - run: npm run test:e2e --workspace=apps/web

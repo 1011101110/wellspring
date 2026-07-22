@@ -1,0 +1,22 @@
+/*
+ * Chrome for the states preview only (#245). Nothing here is loaded by the
+ * app — `preview.html` is the sole importer.
+ */
+
+main#main {
+  max-width: 44rem;
+}
+
+.preview-section {
+  margin: 2.5rem 0;
+  padding-top: 1rem;
+  border-top: 2px solid var(--border);
+}
+
+.preview-heading {
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+  margin-bottom: 1rem;
+}

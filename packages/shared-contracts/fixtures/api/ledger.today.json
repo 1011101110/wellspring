@@ -1,0 +1,24 @@
+{
+  "_comment": "Canonical GET /v1/ledger/today contract fixture for issue #85. Backend tests parse both `response` variants against LedgerTodayResponseSchema (packages/shared-contracts/src/api/ledger.ts). `prayerIntention` added for issue #93 (docs/14 §5.5).",
+  "response": {
+    "ok": true,
+    "data": {
+      "date": "2026-07-04",
+      "recovery": "low",
+      "sleepQuality": "poor",
+      "activity": "sedentary",
+      "busyness": null,
+      "communicationLoad": null,
+      "distressSignal": false
+    },
+    "prayerIntention": {
+      "text": "a hard week at work",
+      "createdAt": "2026-07-04T08:00:00.000Z"
+    }
+  },
+  "responseEmpty": {
+    "ok": true,
+    "data": null,
+    "prayerIntention": null
+  }
+}

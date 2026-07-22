@@ -1,0 +1,6 @@
+node_modules
+dist
+coverage
+*.md
+fixtures/snapshots/**/*.json
+.github/**

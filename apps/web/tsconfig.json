@@ -1,0 +1,20 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // The base config targets Node (`module: NodeNext`, `lib: ES2022`).
+    // A browser bundle needs the DOM lib and a bundler-style resolver —
+    // `NodeNext` would demand explicit `.js` extensions on every relative
+    // import, which Vite does not want and which nothing here emits.
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "jsx": "react-jsx",
+    "noEmit": true,
+    // Vite handles emit; `declaration`/`sourceMap` from the base config are
+    // meaningless (and `declaration` is an error) alongside `noEmit`.
+    "declaration": false,
+    "declarationMap": false,
+    "types": ["vite/client"]
+  },
+  "include": ["src", "test", "vite.config.ts", "vitest.config.ts"]
+}

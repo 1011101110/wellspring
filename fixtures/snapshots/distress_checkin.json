@@ -1,0 +1,69 @@
+{
+  "fixtureKey": "distress_checkin",
+  "scenario": "Anxious manual check-in",
+  "description": "distressSignal=true from a manual in-app check-in, regardless of underlying bands. Format heuristic: distressSignal=true -> always micro, gentle-comfort theme, never alarm. Bands shown are one plausible underlying set; the fixture provider must serve this same output for ANY band combination when distressSignal=true.",
+  "bands": {
+    "recovery": "moderate",
+    "sleepQuality": "fair",
+    "activity": "sedentary",
+    "busyness": "moderate",
+    "communicationLoad": "heavy",
+    "distressSignal": true
+  },
+  "context": {
+    "timeOfDayBucket": "evening",
+    "durationPreferenceMinutes": 2,
+    "tradition": "general",
+    "translationVersionId": 3034
+  },
+  "freeBusy": {
+    "timezone": "America/Denver",
+    "windowStart": "2026-07-02T17:00:00-06:00",
+    "windowEnd": "2026-07-02T21:00:00-06:00",
+    "busyBlocks": [],
+    "chosenGap": {
+      "start": "2026-07-02T19:10:00-06:00",
+      "end": "2026-07-02T19:15:00-06:00"
+    }
+  },
+  "toolCalls": [
+    {
+      "request": {
+        "usfm": "PSA.34.18",
+        "versionId": 3034,
+        "reason": "distressSignal=true requires gentle comfort, not correction or diagnosis; this verse names God's nearness to the brokenhearted without pathologizing the user's state."
+      },
+      "envelope": {
+        "ok": true,
+        "data": {
+          "usfm": "PSA.34.18",
+          "versionId": 3034,
+          "reference": "Psalm 34:18",
+          "text": "The LORD is near to the brokenhearted and saves those who are crushed in spirit.",
+          "attribution": "Berean Standard Bible (BSB). Public domain."
+        },
+        "meta": {
+          "source": "youversion",
+          "fetched_at": "2026-07-02T19:10:15Z"
+        }
+      }
+    }
+  ],
+  "devotionalOutput": {
+    "format": "micro",
+    "theme": "comfort",
+    "verses": [
+      {
+        "usfm": "PSA.34.18",
+        "versionId": 3034,
+        "reference": "Psalm 34:18",
+        "fetchedText": "The LORD is near to the brokenhearted and saves those who are crushed in spirit.",
+        "attribution": "Berean Standard Bible (BSB). Public domain."
+      }
+    ],
+    "devotionalBody": "You checked in and said today is hard. That took honesty, and it matters. You don't need to explain it or justify it right now — just let this be true: 'The LORD is near to the brokenhearted and saves those who are crushed in spirit.' Near. Not distant and evaluating you, not waiting for you to have it together first. Near, right here, in whatever this feeling is. You are not behind. You are not failing at anything. You are a person having a hard moment, and that is exactly where He meets you. Breathe. You are not alone in this.",
+    "cardSummary": "You said today is hard. The Lord is near to the brokenhearted — right now, as you are.",
+    "prayer": "Lord, today is heavy and I don't have the words to fix it. Thank You for being near anyway. Hold what I can't right now. Amen.",
+    "actionStep": "If this feeling doesn't ease, consider reaching out to someone you trust or a counselor today — you don't have to carry this alone. In the US, you can call or text 988 anytime for free, confidential support."
+  }
+}
