@@ -202,6 +202,11 @@ public final class HomeViewModel: ObservableObject {
 
     public func clearSearch() { searchResults = nil }
 
+    /// Fetch a single devotional's full detail for the native reader (#3).
+    public func devotionalDetail(id: String) async throws -> DevotionalDetail {
+        try await devotionals.detail(id: id)
+    }
+
     public func addJournalEntry() async {
         let text = journalDraft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty, !isSavingJournal else { return }

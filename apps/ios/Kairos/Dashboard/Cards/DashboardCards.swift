@@ -37,7 +37,16 @@ struct TodayCard: View {
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                     if let verse = content.verse { VerseBlock(verse: verse) }
-                    generateNowButton(title: content.provenance == .today ? "Open today's devotional" : "Make today's devotional")
+                    // Opens the native in-app reader (#3), not a web session.
+                    NavigationLink {
+                        DevotionalReaderScreen(devotionalID: content.devotional.id, viewModel: viewModel)
+                    } label: {
+                        Text(content.provenance == .today ? "Open today's devotional" : "Read your last devotional")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.large)
+                    .accessibilityIdentifier("home.today.openButton")
                 }
             }
         }
@@ -317,16 +326,22 @@ struct HistoryCard: View {
     private func devotionalList(_ cards: [DevotionalCard], showMore: Bool) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             ForEach(cards) { card in
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(card.theme).font(.subheadline.weight(.semibold))
-                    Text(DashboardDate.calendarDateLabel(card.date))
-                        .font(.caption).foregroundStyle(.secondary)
-                    Text(card.cardSummary).font(.footnote).foregroundStyle(.secondary)
-                    if card.completedAt != nil {
-                        CardHint("You sat with this one.")
+                NavigationLink {
+                    DevotionalReaderScreen(devotionalID: card.id, viewModel: viewModel)
+                } label: {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(card.theme).font(.subheadline.weight(.semibold))
+                        Text(DashboardDate.calendarDateLabel(card.date))
+                            .font(.caption).foregroundStyle(.secondary)
+                        Text(card.cardSummary).font(.footnote).foregroundStyle(.secondary)
+                        if card.completedAt != nil {
+                            CardHint("You sat with this one.")
+                        }
                     }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .buttonStyle(.plain)
                 if card.id != cards.last?.id { Divider() }
             }
             if showMore {
