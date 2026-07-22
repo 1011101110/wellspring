@@ -30,14 +30,6 @@
 				<string>kairos</string>
 			</array>
 		</dict>
-		<!-- Google Sign-In callback (#190). This scheme is the
-		     REVERSED_CLIENT_ID from GoogleService-Info.plist verbatim; Google's
-		     SDK requires the two to match exactly or the sign-in sheet returns
-		     without ever calling back. It is a separate entry from the `kairos`
-		     scheme above on purpose: `kairos` is our own callback for the
-		     Google *Calendar* OAuth flow (#124), and the two grants are kept
-		     deliberately distinct — signing in must never imply calendar
-		     access (Foundation §8). Different OAuth clients back each one. -->
 		<dict>
 			<key>CFBundleURLName</key>
 			<string>com.kairos.devotional.googlesignin</string>

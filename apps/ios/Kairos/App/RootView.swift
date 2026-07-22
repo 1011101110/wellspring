@@ -79,8 +79,8 @@ struct RootView: View {
         // Sign-in edge. `currentUser` publishes on session restore at launch
         // as well as on a fresh sign-in, so this covers both — and it is the
         // earliest moment a pull can succeed, since every call needs a token.
-        .onChange(of: authService.currentUser?.uid) { _, uid in
-            guard uid != nil else { return }
+        .onChange(of: authService.currentUser?.id) { _, id in
+            guard id != nil else { return }
             Task { await refreshFromServer() }
         }
         // Foreground edge. This is what makes "change it on web, pick up the

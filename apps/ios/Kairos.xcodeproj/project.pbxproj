@@ -9,6 +9,9 @@
 /* Begin PBXBuildFile section */
 		03ABF5B79BF0A4DF19FCB098 /* HTTPPreferencesClientTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FBD046B3AEEB33770FE49B3A /* HTTPPreferencesClientTests.swift */; };
 		05C550CCCB687A78A000B766 /* AccountDeletionClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 51F1ED7C8D58C781BCDB3B96 /* AccountDeletionClient.swift */; };
+		0630721A0DE53A006BE0EF47 /* GoogleService-Info.plist.example in Resources */ = {isa = PBXBuildFile; fileRef = F25F3738EEAD0D62A39FE27C /* GoogleService-Info.plist.example */; };
+		07D10EDE96DC595198387A1B /* PreferencesSyncCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 40873C9CC821B9D5C43C74F2 /* PreferencesSyncCoordinator.swift */; };
+		08D2B87B3AE39149C33B9E04 /* GoogleCalendarConnectService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 37C89900673F9D2ED781EBA1 /* GoogleCalendarConnectService.swift */; };
 		09A5A02489B0AABD13E3B757 /* OnboardingCompletionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B14F86FCD073BD8D7B5FE443 /* OnboardingCompletionStore.swift */; };
 		0AC218370922A49ECB810DC8 /* DataPrivacyViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC127B3FD8F1A069DF347998 /* DataPrivacyViewModelTests.swift */; };
 		0E8CA96EB465768C155711EE /* DevotionalDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 28E40278047EBEC9094B7A2A /* DevotionalDetailView.swift */; };
@@ -17,34 +20,33 @@
 		1519DE9C7D236655A0F874BE /* ConsentStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA7FFC5026A29219C3E41AFC /* ConsentStoreTests.swift */; };
 		1787187A4BEAEFD90EEDABA7 /* InviteEmailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13C5F4E51EF70C8F92499B50 /* InviteEmailView.swift */; };
 		19E85DB9218ECF24CEC3FFA5 /* EventKitCalendarConnectService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17971371FD4DDB4D05CAF5D4 /* EventKitCalendarConnectService.swift */; };
-		F8912F936B7FECC05C556F11 /* GoogleConnectClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 92B0E1E915FE230E6AEB941E /* GoogleConnectClient.swift */; };
-		EBB19ACFD7D3557B26CFBDC4 /* GoogleOAuthSessionRunner.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7243BB997924F1D6AFC5846 /* GoogleOAuthSessionRunner.swift */; };
-		B375FB2AC702553D88DA4BE3 /* GoogleCalendarConnectService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08DD4E09E55EB5E37A47371E /* GoogleCalendarConnectService.swift */; };
-		0A8BE93B2A008AB66F551248 /* GoogleConnectClientTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 795BBAC4AC839F5ABC0D834E /* GoogleConnectClientTests.swift */; };
-		21C8827AF07A8C7E820F1F0C /* GoogleCalendarConnectServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C346A5B187C1D5919AE3F519 /* GoogleCalendarConnectServiceTests.swift */; };
 		1B4093489FFD959D17F0D372 /* BackgroundBandRefreshScheduler.swift in Sources */ = {isa = PBXBuildFile; fileRef = B26CB33A1CB9C2006E0DC0E3 /* BackgroundBandRefreshScheduler.swift */; };
 		1D1637F7FC73408E0112D944 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A9245997707B87F343A508E9 /* RootView.swift */; };
 		23B80F50BE3E8F6892B7FA31 /* FakeCalendarConnectService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 87883220B1E6ED8FACDE2899 /* FakeCalendarConnectService.swift */; };
 		24F7149D46F5148A58DA2382 /* SlotsUploadClientTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D55928D7FAB2A67D7155263D /* SlotsUploadClientTests.swift */; };
 		2B602594952A11D6A3D64C96 /* PreferencesStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD9A80BBAA1D0602760907D1 /* PreferencesStore.swift */; };
 		2EDAAF4F39605BADBA77F9B8 /* HistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C8B15F8FEDFD08AE8F0D6C3 /* HistoryView.swift */; };
+		317A352686F4C8BC82A404C1 /* GoogleCalendarConnectServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA08692D3C94F3B5B558289D /* GoogleCalendarConnectServiceTests.swift */; };
 		3318F2A2B22E8CD0E4E21047 /* OnboardingCompletionStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9E2BF4D48A0B97F35146C037 /* OnboardingCompletionStoreTests.swift */; };
 		343E47FA4AA502A4D1B1597B /* PreferencesStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E771470C893B0E25767E0707 /* PreferencesStoreTests.swift */; };
 		38C47ADE52FDD64DDB9034E2 /* EventKitSlotCollector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 979B13A562A502EA847BE47D /* EventKitSlotCollector.swift */; };
 		3C61699E9F5C2F963DD3300F /* HealthKitConnectService.swift in Sources */ = {isa = PBXBuildFile; fileRef = BFA3B0083B469D4C9A742E80 /* HealthKitConnectService.swift */; };
 		4563EE45FD2125ABDBA5461A /* DemoModeUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 49EAEC5F7CD83DD4F879C396 /* DemoModeUITests.swift */; };
 		45DBB6E52A510728108BF511 /* PreferencesViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 53152D0BCC96925FA1700C4A /* PreferencesViewModel.swift */; };
-		B2E8D5F81A4C59630D7F8CA1 /* WeekdayCircleRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1D9C4E70F3B48521C6E7B90 /* WeekdayCircleRow.swift */; };
 		47FA693F013FBF300431C5C6 /* AccountDeletionClientTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4948F7F9E33A7407C8ED4107 /* AccountDeletionClientTests.swift */; };
+		48E1EF0B20F0DD6E0BEA81B8 /* GoogleOAuthSessionRunner.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5EA8444E6F16A8B893E10C7 /* GoogleOAuthSessionRunner.swift */; };
 		490F84B9BA8820E310EE058D /* FakeAuthServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D6A4C9BB1EC590903905D4E /* FakeAuthServiceTests.swift */; };
 		494369D3C770E5687D15D54B /* HealthKitMappingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 58C8019FF79B107631D11796 /* HealthKitMappingTests.swift */; };
 		49C74A0B853348C590543823 /* OnboardingViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1860F8D321B6B36F934B8BF9 /* OnboardingViewModel.swift */; };
+		49D4CD9B6150546093D9AEE5 /* GoogleConnectClientTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EB4A32DEE6E0611CBC123040 /* GoogleConnectClientTests.swift */; };
+		5043FE6F78A70703C1D27B0F /* PreferencesDaysUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1F5483E5A11C9CF962698746 /* PreferencesDaysUITests.swift */; };
 		50DB50678F3EC0DBE8E3A2BA /* DataPrivacyUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 37A60DDE1E0BA007E245B00B /* DataPrivacyUITests.swift */; };
 		520F1EF92716CB48483D7236 /* HealthConnectServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8A36025B7AD02753E4BE229 /* HealthConnectServiceTests.swift */; };
 		521A47358CD27B02D9C16AAB /* SignInView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 225C2C52FDDE9CA7AA327D36 /* SignInView.swift */; };
 		53125BB9D1781C4D456E8262 /* DistressCheckinClientTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2229A9C7DB8BD6BE929F8BC7 /* DistressCheckinClientTests.swift */; };
 		5426495D4B30779EF69930C9 /* ConsentCategory.swift in Sources */ = {isa = PBXBuildFile; fileRef = 877248042152D9130C306B1B /* ConsentCategory.swift */; };
 		549457CBC77822D3D92FB5CB /* EventKitSlotCollectorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 16D966FA6ECCABF05A11FEB7 /* EventKitSlotCollectorTests.swift */; };
+		57E916C1258D28B63FC9D1CA /* WeekdayCircleRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6063A46680E185C44BFC1FE0 /* WeekdayCircleRow.swift */; };
 		5D3C6E7D348E0D899D4FFB86 /* DataPrivacyViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 982732059F8188168569B7D2 /* DataPrivacyViewModel.swift */; };
 		62B67EFC2CF20E614849002E /* CalendarConnectServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5B400AFEA67C3FAF3B159FA /* CalendarConnectServiceTests.swift */; };
 		63534DCCE76D13DFD020E997 /* PreferencesCaptureView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 228B068F0A95497B58F6AE6C /* PreferencesCaptureView.swift */; };
@@ -59,6 +61,7 @@
 		7FD3F9CAB633CA03C3E9C555 /* HomeBandRefreshUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E9915B3B685F6E060EC37209 /* HomeBandRefreshUITests.swift */; };
 		81D335F532389EE4A10241C4 /* PreferencesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 436F6B34CEF04422CB364DA7 /* PreferencesView.swift */; };
 		8624EE2A62D9D2D09CAD74C5 /* FirebaseCore in Frameworks */ = {isa = PBXBuildFile; productRef = 578AB598BC8BEC0015BB7658 /* FirebaseCore */; };
+		8BA3C782FD1A35B3DF52A271 /* PreferencesSyncCoordinatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0ABF73E2CEBF222399530641 /* PreferencesSyncCoordinatorTests.swift */; };
 		8BFA8C3C5CA4444A4863AA27 /* HealthPrimingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A4250BED5A2A76DCC40D205 /* HealthPrimingView.swift */; };
 		8CC3B479E41531C58B923DD0 /* FirebaseAuth in Frameworks */ = {isa = PBXBuildFile; productRef = D7321BF4221FEF5CC24F8BC0 /* FirebaseAuth */; };
 		8E58CF0CFB40ADD5AF629801 /* BackgroundBandRefreshSchedulerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8BBA1942CEB49482A333456B /* BackgroundBandRefreshSchedulerTests.swift */; };
@@ -73,20 +76,19 @@
 		AD6CB5E8329F0D2E4F46145F /* BandDeriver in Frameworks */ = {isa = PBXBuildFile; productRef = EFD5050A9841BB1BD16AD2DE /* BandDeriver */; };
 		AD791F0AFA6E91D520D28A3D /* HealthConnectService.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD23FB9A6EF0C74F13F7BD49 /* HealthConnectService.swift */; };
 		B4A03B15F291157968AD69C0 /* HealthSampleReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1DD9B5FA0BCC651BD47D7A76 /* HealthSampleReader.swift */; };
+		B6455619C480121F9FDC5978 /* ConsentSyncMapping.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97B440FB81F6EA3A9C11B6C0 /* ConsentSyncMapping.swift */; };
 		BB30280CEE55A1067CE80C7D /* BandUploadClientTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04D3A0B237B296CDC0CCBB9A /* BandUploadClientTests.swift */; };
 		BEFAB144FA2E4A7A0845BE98 /* FakeAuthService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 004B91EFC22563549B917811 /* FakeAuthService.swift */; };
 		BEFE34BEBF4329858F3194EC /* HealthKitSampleReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = A773E52CA6DCF45AFA3A0B52 /* HealthKitSampleReader.swift */; };
 		BF1CF59F001B7CAE01621C94 /* KairosApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF341935C3B2CBC215BC7E16 /* KairosApp.swift */; };
 		C3F941918410F71116A1E3CB /* BandPhraseCompleteMappingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 72739D709AE300BA34D8492E /* BandPhraseCompleteMappingTests.swift */; };
 		C65DCF48CDBB3B731E5A829C /* OnboardingFlowUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F840002AA4A48B78795616A0 /* OnboardingFlowUITests.swift */; };
-		D8A4B3C20F6E59A72C5BAF33 /* PreferencesDaysUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7F3A2B10E5D48961B4A9E22 /* PreferencesDaysUITests.swift */; };
 		C7F30896A5555738FFE6834F /* DemoFixtureSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = F582EA465E8626CE7316AB5F /* DemoFixtureSnapshot.swift */; };
 		C815146CAE902317D39D3472 /* BandUploadService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 26F577F92BB766502426C044 /* BandUploadService.swift */; };
 		C9267FD18BBDF2EC9273BA23 /* BandPhraseTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 015B66C29B884BAC5A105E13 /* BandPhraseTests.swift */; };
 		CC351CC84FA1A9D4067AF942 /* AuthService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 32E01D397E23DD723FB73297 /* AuthService.swift */; };
 		D1CE9908357C713FE6F522E3 /* FirebaseAuthService.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED2AC8A507E59B1BEF90BCB2 /* FirebaseAuthService.swift */; };
-		D3BE53D8646B6C79BD2A5865 /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 47A3586D625BB77492FE5203 /* GoogleService-Info.plist */; };
-		6F6C783489CFD657E41D6F54 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = B587348263E5F1E3C45866E4 /* PrivacyInfo.xcprivacy */; };
+		D35162C9F6ACD71D1CCC567C /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = C12D6F2A6C8784E5FDF98ABB /* PrivacyInfo.xcprivacy */; };
 		D4FABCE1634ACD32DEFB3225 /* BandUploadServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DD67613D65678B47BE2F643 /* BandUploadServiceTests.swift */; };
 		D7B926BC7D9B113DA3AC0CD8 /* AppEnvironmentTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D8CD9922E8758B7FCE724FF0 /* AppEnvironmentTests.swift */; };
 		D8A292D2EBCAB6447FB6F64E /* OnboardingContainerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 23D4B3ABBA316A764CA3FC67 /* OnboardingContainerView.swift */; };
@@ -97,6 +99,7 @@
 		F8435A7C750A446307C5B9E1 /* WelcomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF745B89549A1A75F4A3092D /* WelcomeView.swift */; };
 		F90B272F46A9788F08DC9ED9 /* OnboardingPreferences.swift in Sources */ = {isa = PBXBuildFile; fileRef = 523CED05F1A49D217C9615B2 /* OnboardingPreferences.swift */; };
 		FA927725FF82C931C04BF1A1 /* DemoFixtureSnapshotTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C86D125153FC539C27ED66A /* DemoFixtureSnapshotTests.swift */; };
+		FC4EBC37D7002825088D964E /* GoogleConnectClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A9B469196112511F31479B6 /* GoogleConnectClient.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -121,17 +124,14 @@
 		0134AC9630FD7A8AD3333B4B /* SlotsUploadClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SlotsUploadClient.swift; sourceTree = "<group>"; };
 		015B66C29B884BAC5A105E13 /* BandPhraseTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BandPhraseTests.swift; sourceTree = "<group>"; };
 		04D3A0B237B296CDC0CCBB9A /* BandUploadClientTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BandUploadClientTests.swift; sourceTree = "<group>"; };
+		0ABF73E2CEBF222399530641 /* PreferencesSyncCoordinatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreferencesSyncCoordinatorTests.swift; sourceTree = "<group>"; };
 		13C5F4E51EF70C8F92499B50 /* InviteEmailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InviteEmailView.swift; sourceTree = "<group>"; };
 		16D966FA6ECCABF05A11FEB7 /* EventKitSlotCollectorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EventKitSlotCollectorTests.swift; sourceTree = "<group>"; };
 		17971371FD4DDB4D05CAF5D4 /* EventKitCalendarConnectService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EventKitCalendarConnectService.swift; sourceTree = "<group>"; };
-		92B0E1E915FE230E6AEB941E /* GoogleConnectClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoogleConnectClient.swift; sourceTree = "<group>"; };
-		B7243BB997924F1D6AFC5846 /* GoogleOAuthSessionRunner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoogleOAuthSessionRunner.swift; sourceTree = "<group>"; };
-		08DD4E09E55EB5E37A47371E /* GoogleCalendarConnectService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoogleCalendarConnectService.swift; sourceTree = "<group>"; };
-		795BBAC4AC839F5ABC0D834E /* GoogleConnectClientTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoogleConnectClientTests.swift; sourceTree = "<group>"; };
-		C346A5B187C1D5919AE3F519 /* GoogleCalendarConnectServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoogleCalendarConnectServiceTests.swift; sourceTree = "<group>"; };
 		1860F8D321B6B36F934B8BF9 /* OnboardingViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingViewModel.swift; sourceTree = "<group>"; };
 		1C3823CA4C01AB0840A90CC1 /* BandUploadClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BandUploadClient.swift; sourceTree = "<group>"; };
 		1DD9B5FA0BCC651BD47D7A76 /* HealthSampleReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthSampleReader.swift; sourceTree = "<group>"; };
+		1F5483E5A11C9CF962698746 /* PreferencesDaysUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreferencesDaysUITests.swift; sourceTree = "<group>"; };
 		1F69A857897BC1CD9AB5DBC3 /* Kairos.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Kairos.entitlements; sourceTree = "<group>"; };
 		2229A9C7DB8BD6BE929F8BC7 /* DistressCheckinClientTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DistressCheckinClientTests.swift; sourceTree = "<group>"; };
 		225C2C52FDDE9CA7AA327D36 /* SignInView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SignInView.swift; sourceTree = "<group>"; };
@@ -145,12 +145,14 @@
 		32E01D397E23DD723FB73297 /* AuthService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthService.swift; sourceTree = "<group>"; };
 		352472024120B3204487CAC9 /* FirebaseAuthServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FirebaseAuthServiceTests.swift; sourceTree = "<group>"; };
 		37A60DDE1E0BA007E245B00B /* DataPrivacyUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DataPrivacyUITests.swift; sourceTree = "<group>"; };
+		37C89900673F9D2ED781EBA1 /* GoogleCalendarConnectService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoogleCalendarConnectService.swift; sourceTree = "<group>"; };
 		3975558B363CB3F79EA08464 /* ConsentStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConsentStore.swift; sourceTree = "<group>"; };
+		3A9B469196112511F31479B6 /* GoogleConnectClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoogleConnectClient.swift; sourceTree = "<group>"; };
 		3DD750FEA75CF49DBAD8F0A5 /* CalendarConnectService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalendarConnectService.swift; sourceTree = "<group>"; };
 		3E55CC8AA69A81049C4E1B40 /* OnboardingDoneView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingDoneView.swift; sourceTree = "<group>"; };
+		40873C9CC821B9D5C43C74F2 /* PreferencesSyncCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreferencesSyncCoordinator.swift; sourceTree = "<group>"; };
 		436F6B34CEF04422CB364DA7 /* PreferencesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreferencesView.swift; sourceTree = "<group>"; };
 		478AEB73C00F600B95DFB6ED /* HTTPPreferencesClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HTTPPreferencesClient.swift; sourceTree = "<group>"; };
-		47A3586D625BB77492FE5203 /* GoogleService-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = "GoogleService-Info.plist"; sourceTree = "<group>"; };
 		4948F7F9E33A7407C8ED4107 /* AccountDeletionClientTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountDeletionClientTests.swift; sourceTree = "<group>"; };
 		49EAEC5F7CD83DD4F879C396 /* DemoModeUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DemoModeUITests.swift; sourceTree = "<group>"; };
 		4A4250BED5A2A76DCC40D205 /* HealthPrimingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthPrimingView.swift; sourceTree = "<group>"; };
@@ -160,11 +162,11 @@
 		51F1ED7C8D58C781BCDB3B96 /* AccountDeletionClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountDeletionClient.swift; sourceTree = "<group>"; };
 		523CED05F1A49D217C9615B2 /* OnboardingPreferences.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingPreferences.swift; sourceTree = "<group>"; };
 		53152D0BCC96925FA1700C4A /* PreferencesViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreferencesViewModel.swift; sourceTree = "<group>"; };
-		A1D9C4E70F3B48521C6E7B90 /* WeekdayCircleRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WeekdayCircleRow.swift; sourceTree = "<group>"; };
 		573F23B4CACDB25A2DC2C2A7 /* KairosUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = KairosUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		58C8019FF79B107631D11796 /* HealthKitMappingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthKitMappingTests.swift; sourceTree = "<group>"; };
 		5A82EF295CA9A39C85CF828B /* FakeHealthConnectService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FakeHealthConnectService.swift; sourceTree = "<group>"; };
 		5B803826F5975368BA52E5A3 /* BandDeriver */ = {isa = PBXFileReference; lastKnownFileType = folder; name = BandDeriver; path = Packages/BandDeriver; sourceTree = SOURCE_ROOT; };
+		6063A46680E185C44BFC1FE0 /* WeekdayCircleRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WeekdayCircleRow.swift; sourceTree = "<group>"; };
 		6DD67613D65678B47BE2F643 /* BandUploadServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BandUploadServiceTests.swift; sourceTree = "<group>"; };
 		72739D709AE300BA34D8492E /* BandPhraseCompleteMappingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BandPhraseCompleteMappingTests.swift; sourceTree = "<group>"; };
 		73D89500F1B93597A399595F /* AppEnvironment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppEnvironment.swift; sourceTree = "<group>"; };
@@ -174,6 +176,7 @@
 		906D28DF23B49DDF5A107AD3 /* AnyAuthService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnyAuthService.swift; sourceTree = "<group>"; };
 		96A335C05EAF6892306241EA /* low_poor_heavy.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = low_poor_heavy.json; sourceTree = "<group>"; };
 		979B13A562A502EA847BE47D /* EventKitSlotCollector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EventKitSlotCollector.swift; sourceTree = "<group>"; };
+		97B440FB81F6EA3A9C11B6C0 /* ConsentSyncMapping.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConsentSyncMapping.swift; sourceTree = "<group>"; };
 		982732059F8188168569B7D2 /* DataPrivacyViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DataPrivacyViewModel.swift; sourceTree = "<group>"; };
 		9C38373AAAD69B2D16624B3F /* BandPhrase.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BandPhrase.swift; sourceTree = "<group>"; };
 		9E2BF4D48A0B97F35146C037 /* OnboardingCompletionStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingCompletionStoreTests.swift; sourceTree = "<group>"; };
@@ -187,6 +190,7 @@
 		BA30CBDE195BF342CC787C18 /* FakeHealthSampleReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FakeHealthSampleReader.swift; sourceTree = "<group>"; };
 		BE3581DD6AE13D5FD334DD48 /* CalendarConnectView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalendarConnectView.swift; sourceTree = "<group>"; };
 		BFA3B0083B469D4C9A742E80 /* HealthKitConnectService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthKitConnectService.swift; sourceTree = "<group>"; };
+		C12D6F2A6C8784E5FDF98ABB /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		D0E22A4A5D05FA07EF526832 /* HealthKitMapping.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthKitMapping.swift; sourceTree = "<group>"; };
 		D55928D7FAB2A67D7155263D /* SlotsUploadClientTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SlotsUploadClientTests.swift; sourceTree = "<group>"; };
 		D8CD9922E8758B7FCE724FF0 /* AppEnvironmentTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppEnvironmentTests.swift; sourceTree = "<group>"; };
@@ -194,18 +198,20 @@
 		DD23FB9A6EF0C74F13F7BD49 /* HealthConnectService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthConnectService.swift; sourceTree = "<group>"; };
 		E43372EFD253509C9CD5A7F7 /* Kairos.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Kairos.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		E5B400AFEA67C3FAF3B159FA /* CalendarConnectServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalendarConnectServiceTests.swift; sourceTree = "<group>"; };
+		E5EA8444E6F16A8B893E10C7 /* GoogleOAuthSessionRunner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoogleOAuthSessionRunner.swift; sourceTree = "<group>"; };
 		E771470C893B0E25767E0707 /* PreferencesStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreferencesStoreTests.swift; sourceTree = "<group>"; };
 		E8A36025B7AD02753E4BE229 /* HealthConnectServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthConnectServiceTests.swift; sourceTree = "<group>"; };
 		E9915B3B685F6E060EC37209 /* HomeBandRefreshUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeBandRefreshUITests.swift; sourceTree = "<group>"; };
+		EA08692D3C94F3B5B558289D /* GoogleCalendarConnectServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoogleCalendarConnectServiceTests.swift; sourceTree = "<group>"; };
 		EA7FFC5026A29219C3E41AFC /* ConsentStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConsentStoreTests.swift; sourceTree = "<group>"; };
+		EB4A32DEE6E0611CBC123040 /* GoogleConnectClientTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoogleConnectClientTests.swift; sourceTree = "<group>"; };
 		EC4787586F95302AD40228E1 /* RootTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootTabView.swift; sourceTree = "<group>"; };
 		ED2AC8A507E59B1BEF90BCB2 /* FirebaseAuthService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FirebaseAuthService.swift; sourceTree = "<group>"; };
+		F25F3738EEAD0D62A39FE27C /* GoogleService-Info.plist.example */ = {isa = PBXFileReference; path = "GoogleService-Info.plist.example"; sourceTree = "<group>"; };
 		F3E3E9584B35B304112B59BE /* DataPrivacyView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DataPrivacyView.swift; sourceTree = "<group>"; };
 		F582EA465E8626CE7316AB5F /* DemoFixtureSnapshot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DemoFixtureSnapshot.swift; sourceTree = "<group>"; };
-		C7F3A2B10E5D48961B4A9E22 /* PreferencesDaysUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreferencesDaysUITests.swift; sourceTree = "<group>"; };
 		F840002AA4A48B78795616A0 /* OnboardingFlowUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingFlowUITests.swift; sourceTree = "<group>"; };
 		F8589904AE116A9AB6BF516B /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
-		B587348263E5F1E3C45866E4 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		FAAA4BCFA1924F52FB9ECE68 /* OnboardingViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingViewModelTests.swift; sourceTree = "<group>"; };
 		FBD046B3AEEB33770FE49B3A /* HTTPPreferencesClientTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HTTPPreferencesClientTests.swift; sourceTree = "<group>"; };
 		FD9A80BBAA1D0602760907D1 /* PreferencesStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreferencesStore.swift; sourceTree = "<group>"; };
@@ -252,7 +258,7 @@
 			children = (
 				436F6B34CEF04422CB364DA7 /* PreferencesView.swift */,
 				53152D0BCC96925FA1700C4A /* PreferencesViewModel.swift */,
-				A1D9C4E70F3B48521C6E7B90 /* WeekdayCircleRow.swift */,
+				6063A46680E185C44BFC1FE0 /* WeekdayCircleRow.swift */,
 			);
 			path = Preferences;
 			sourceTree = "<group>";
@@ -264,7 +270,7 @@
 				49EAEC5F7CD83DD4F879C396 /* DemoModeUITests.swift */,
 				E9915B3B685F6E060EC37209 /* HomeBandRefreshUITests.swift */,
 				F840002AA4A48B78795616A0 /* OnboardingFlowUITests.swift */,
-				C7F3A2B10E5D48961B4A9E22 /* PreferencesDaysUITests.swift */,
+				1F5483E5A11C9CF962698746 /* PreferencesDaysUITests.swift */,
 			);
 			path = KairosUITests;
 			sourceTree = "<group>";
@@ -316,6 +322,7 @@
 				51F1ED7C8D58C781BCDB3B96 /* AccountDeletionClient.swift */,
 				877248042152D9130C306B1B /* ConsentCategory.swift */,
 				3975558B363CB3F79EA08464 /* ConsentStore.swift */,
+				97B440FB81F6EA3A9C11B6C0 /* ConsentSyncMapping.swift */,
 				B296210DE438456FA56ADAC0 /* DataLedger.swift */,
 			);
 			path = Privacy;
@@ -372,9 +379,9 @@
 				17971371FD4DDB4D05CAF5D4 /* EventKitCalendarConnectService.swift */,
 				979B13A562A502EA847BE47D /* EventKitSlotCollector.swift */,
 				87883220B1E6ED8FACDE2899 /* FakeCalendarConnectService.swift */,
-				08DD4E09E55EB5E37A47371E /* GoogleCalendarConnectService.swift */,
-				92B0E1E915FE230E6AEB941E /* GoogleConnectClient.swift */,
-				B7243BB997924F1D6AFC5846 /* GoogleOAuthSessionRunner.swift */,
+				37C89900673F9D2ED781EBA1 /* GoogleCalendarConnectService.swift */,
+				3A9B469196112511F31479B6 /* GoogleConnectClient.swift */,
+				E5EA8444E6F16A8B893E10C7 /* GoogleOAuthSessionRunner.swift */,
 				0134AC9630FD7A8AD3333B4B /* SlotsUploadClient.swift */,
 			);
 			path = Calendar;
@@ -385,6 +392,7 @@
 			children = (
 				478AEB73C00F600B95DFB6ED /* HTTPPreferencesClient.swift */,
 				FD9A80BBAA1D0602760907D1 /* PreferencesStore.swift */,
+				40873C9CC821B9D5C43C74F2 /* PreferencesSyncCoordinator.swift */,
 			);
 			path = Preferences;
 			sourceTree = "<group>";
@@ -436,14 +444,15 @@
 				16D966FA6ECCABF05A11FEB7 /* EventKitSlotCollectorTests.swift */,
 				2D6A4C9BB1EC590903905D4E /* FakeAuthServiceTests.swift */,
 				352472024120B3204487CAC9 /* FirebaseAuthServiceTests.swift */,
-				C346A5B187C1D5919AE3F519 /* GoogleCalendarConnectServiceTests.swift */,
-				795BBAC4AC839F5ABC0D834E /* GoogleConnectClientTests.swift */,
+				EA08692D3C94F3B5B558289D /* GoogleCalendarConnectServiceTests.swift */,
+				EB4A32DEE6E0611CBC123040 /* GoogleConnectClientTests.swift */,
 				E8A36025B7AD02753E4BE229 /* HealthConnectServiceTests.swift */,
 				58C8019FF79B107631D11796 /* HealthKitMappingTests.swift */,
 				FBD046B3AEEB33770FE49B3A /* HTTPPreferencesClientTests.swift */,
 				9E2BF4D48A0B97F35146C037 /* OnboardingCompletionStoreTests.swift */,
 				FAAA4BCFA1924F52FB9ECE68 /* OnboardingViewModelTests.swift */,
 				E771470C893B0E25767E0707 /* PreferencesStoreTests.swift */,
+				0ABF73E2CEBF222399530641 /* PreferencesSyncCoordinatorTests.swift */,
 				D55928D7FAB2A67D7155263D /* SlotsUploadClientTests.swift */,
 			);
 			path = KairosTests;
@@ -452,10 +461,10 @@
 		AF115EB5B62BBED56B7F3D1D /* Kairos */ = {
 			isa = PBXGroup;
 			children = (
-				47A3586D625BB77492FE5203 /* GoogleService-Info.plist */,
+				F25F3738EEAD0D62A39FE27C /* GoogleService-Info.plist.example */,
 				F8589904AE116A9AB6BF516B /* Info.plist */,
 				1F69A857897BC1CD9AB5DBC3 /* Kairos.entitlements */,
-				B587348263E5F1E3C45866E4 /* PrivacyInfo.xcprivacy */,
+				C12D6F2A6C8784E5FDF98ABB /* PrivacyInfo.xcprivacy */,
 				8AEC6A23A85E972C05CDD1CD /* App */,
 				644362E69DA8A65130AAC0FB /* Auth */,
 				80FDE47C4B987DD9D957E16C /* Calendar */,
@@ -630,9 +639,9 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				D3BE53D8646B6C79BD2A5865 /* GoogleService-Info.plist in Resources */,
+				0630721A0DE53A006BE0EF47 /* GoogleService-Info.plist.example in Resources */,
+				D35162C9F6ACD71D1CCC567C /* PrivacyInfo.xcprivacy in Resources */,
 				9DC2D9692EE8EB42D1B0EFE5 /* low_poor_heavy.json in Resources */,
-				6F6C783489CFD657E41D6F54 /* PrivacyInfo.xcprivacy in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -655,6 +664,7 @@
 				6892DC69C4EFDB1601532A5F /* CalendarConnectView.swift in Sources */,
 				5426495D4B30779EF69930C9 /* ConsentCategory.swift in Sources */,
 				F7DB4AC6D32A963B5B44B118 /* ConsentStore.swift in Sources */,
+				B6455619C480121F9FDC5978 /* ConsentSyncMapping.swift in Sources */,
 				8FE0A9B26F600D0690B79682 /* DataLedger.swift in Sources */,
 				938A8919524210CC7C00BDCA /* DataPrivacyView.swift in Sources */,
 				5D3C6E7D348E0D899D4FFB86 /* DataPrivacyViewModel.swift in Sources */,
@@ -668,9 +678,9 @@
 				A3D6FC91F0342DE952D04D7B /* FakeHealthConnectService.swift in Sources */,
 				ECC6FA6062A9B86A5ADEF21B /* FakeHealthSampleReader.swift in Sources */,
 				D1CE9908357C713FE6F522E3 /* FirebaseAuthService.swift in Sources */,
-				B375FB2AC702553D88DA4BE3 /* GoogleCalendarConnectService.swift in Sources */,
-				F8912F936B7FECC05C556F11 /* GoogleConnectClient.swift in Sources */,
-				EBB19ACFD7D3557B26CFBDC4 /* GoogleOAuthSessionRunner.swift in Sources */,
+				08D2B87B3AE39149C33B9E04 /* GoogleCalendarConnectService.swift in Sources */,
+				FC4EBC37D7002825088D964E /* GoogleConnectClient.swift in Sources */,
+				48E1EF0B20F0DD6E0BEA81B8 /* GoogleOAuthSessionRunner.swift in Sources */,
 				F090F01EA08C63A67547E85C /* HTTPPreferencesClient.swift in Sources */,
 				AD791F0AFA6E91D520D28A3D /* HealthConnectService.swift in Sources */,
 				3C61699E9F5C2F963DD3300F /* HealthKitConnectService.swift in Sources */,
@@ -690,13 +700,14 @@
 				49C74A0B853348C590543823 /* OnboardingViewModel.swift in Sources */,
 				63534DCCE76D13DFD020E997 /* PreferencesCaptureView.swift in Sources */,
 				2B602594952A11D6A3D64C96 /* PreferencesStore.swift in Sources */,
+				07D10EDE96DC595198387A1B /* PreferencesSyncCoordinator.swift in Sources */,
 				81D335F532389EE4A10241C4 /* PreferencesView.swift in Sources */,
 				45DBB6E52A510728108BF511 /* PreferencesViewModel.swift in Sources */,
-				B2E8D5F81A4C59630D7F8CA1 /* WeekdayCircleRow.swift in Sources */,
 				10AE3607B8D511671B55527A /* RootTabView.swift in Sources */,
 				1D1637F7FC73408E0112D944 /* RootView.swift in Sources */,
 				521A47358CD27B02D9C16AAB /* SignInView.swift in Sources */,
 				7455A0B4A6296C6D46955B02 /* SlotsUploadClient.swift in Sources */,
+				57E916C1258D28B63FC9D1CA /* WeekdayCircleRow.swift in Sources */,
 				F8435A7C750A446307C5B9E1 /* WelcomeView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -709,7 +720,7 @@
 				4563EE45FD2125ABDBA5461A /* DemoModeUITests.swift in Sources */,
 				7FD3F9CAB633CA03C3E9C555 /* HomeBandRefreshUITests.swift in Sources */,
 				C65DCF48CDBB3B731E5A829C /* OnboardingFlowUITests.swift in Sources */,
-				D8A4B3C20F6E59A72C5BAF33 /* PreferencesDaysUITests.swift in Sources */,
+				5043FE6F78A70703C1D27B0F /* PreferencesDaysUITests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -732,14 +743,15 @@
 				549457CBC77822D3D92FB5CB /* EventKitSlotCollectorTests.swift in Sources */,
 				490F84B9BA8820E310EE058D /* FakeAuthServiceTests.swift in Sources */,
 				1220BFB2B4C206E76265BA67 /* FirebaseAuthServiceTests.swift in Sources */,
-				21C8827AF07A8C7E820F1F0C /* GoogleCalendarConnectServiceTests.swift in Sources */,
-				0A8BE93B2A008AB66F551248 /* GoogleConnectClientTests.swift in Sources */,
+				317A352686F4C8BC82A404C1 /* GoogleCalendarConnectServiceTests.swift in Sources */,
+				49D4CD9B6150546093D9AEE5 /* GoogleConnectClientTests.swift in Sources */,
 				03ABF5B79BF0A4DF19FCB098 /* HTTPPreferencesClientTests.swift in Sources */,
 				520F1EF92716CB48483D7236 /* HealthConnectServiceTests.swift in Sources */,
 				494369D3C770E5687D15D54B /* HealthKitMappingTests.swift in Sources */,
 				3318F2A2B22E8CD0E4E21047 /* OnboardingCompletionStoreTests.swift in Sources */,
 				9320334E96BB00107FDF75E0 /* OnboardingViewModelTests.swift in Sources */,
 				343E47FA4AA502A4D1B1597B /* PreferencesStoreTests.swift in Sources */,
+				8BA3C782FD1A35B3DF52A271 /* PreferencesSyncCoordinatorTests.swift in Sources */,
 				24F7149D46F5148A58DA2382 /* SlotsUploadClientTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

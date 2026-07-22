@@ -1,20 +1,24 @@
 name: Apple CI
-# Manual-only (issue: GitHub Actions spending cap blown by automatic macOS
-# runs). This workflow only runs `xcodebuild test` against a simulator — it
-# is a correctness check, not part of any deployment path (there is no
-# TestFlight/App Store Connect upload here; that's a manual/local Xcode
-# step). macOS runners bill at ~10x Linux per-minute rates, and this repo
-# has no automated iOS deploy that depends on it running in CI, so it no
-# longer runs on every push/PR. Trigger it by hand from the Actions tab, or
-# `gh workflow run "Apple CI"`, when you specifically want a clean-room
-# confidence check (e.g. before a submission-critical merge). Day to day,
-# run the same command locally instead — see the "run" step below, or
-# open apps/ios/Kairos.xcodeproj in Xcode and Cmd+U.
+# Builds and runs the iOS unit + UI tests on a simulator (unsigned — there is
+# no TestFlight/App Store upload here). This is a public repo, so macOS
+# runners are free; unlike the origin repo (where a spending cap forced
+# manual-only runs) this now runs automatically on any change under
+# `apps/ios/**`, plus on demand via the Actions tab or `gh workflow run "Apple CI"`.
+#
+# The Xcode project is GENERATED from `apps/ios/project.yml` with XcodeGen at
+# the start of every run, so the checked-in `.xcodeproj` can never drift out
+# of sync with the files on disk (a file added to the tree but not the project
+# is what previously broke the build — issue #223). project.yml is the single
+# source of truth.
 on:
+  pull_request:
+    paths:
+      - "apps/ios/**"
+      - ".github/workflows/apple-ci.yml"
   workflow_dispatch: {}
 
-# macOS runners bill at 10x Linux minutes — cancel a superseded run instead
-# of letting it finish once a newer commit lands on the same branch/PR.
+# Cancel a superseded run instead of letting it finish once a newer commit
+# lands on the same branch/PR.
 concurrency:
   group: apple-ci-${{ github.ref }}
   cancel-in-progress: true
@@ -24,6 +28,10 @@ jobs:
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
+      - name: Install XcodeGen
+        run: brew install xcodegen
+      - name: Generate Xcode project from project.yml (single source of truth)
+        run: cd apps/ios && xcodegen generate
       - name: iOS unit + UI tests (simulator, unsigned)
         run: |
           xcodebuild test \
