@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { DevotionalOutput } from '@kairos/shared-contracts';
+import { LANGUAGE_TAGS, type DevotionalOutput } from '@kairos/shared-contracts';
 import {
   SECTION_BREAK_MS,
   STILLNESS_MS,
@@ -110,7 +110,9 @@ describe('buildDevotionalSsml', () => {
     const verseIdx = ssml.indexOf('Do not be anxious about anything.');
     expect(referenceIdx).toBeGreaterThan(-1);
     expect(verseIdx).toBeGreaterThan(referenceIdx);
-    expect(ssml).toContain("That was Philippians 4:6-7 — it'll be here when you want to come back.");
+    expect(ssml).toContain(
+      "That was Philippians 4:6-7 — it'll be here when you want to come back.",
+    );
   });
 
   it('joins multiple verse references with "and" in the closing recap', () => {
@@ -130,7 +132,9 @@ describe('buildDevotionalSsml', () => {
     const ssml = buildDevotionalSsml(twoVerses);
     expect(ssml).toContain('From Philippians 4:6-7.');
     expect(ssml).toContain('From John 3:16.');
-    expect(ssml).toContain("That was Philippians 4:6-7 and John 3:16 — it'll be here when you want to come back.");
+    expect(ssml).toContain(
+      "That was Philippians 4:6-7 and John 3:16 — it'll be here when you want to come back.",
+    );
   });
 
   it('handles multiple verses, each with its own break + attribution', () => {
@@ -217,7 +221,9 @@ describe('buildDevotionalSsml — stillness (docs/14 §5.2)', () => {
 
 describe('buildDevotionalSsml — lectio (docs/14 §5.4 / issue #92)', () => {
   it('is unaffected by lectio=false (default) — same output as omitting the parameter', () => {
-    expect(buildDevotionalSsml(baseDevotional, 'off', false)).toBe(buildDevotionalSsml(baseDevotional));
+    expect(buildDevotionalSsml(baseDevotional, 'off', false)).toBe(
+      buildDevotionalSsml(baseDevotional),
+    );
   });
 
   it('speaks the verse twice, at rate=0.95 then rate=0.85, and never speaks devotionalBody', () => {
@@ -277,7 +283,9 @@ describe('buildDevotionalSsml — lectio (docs/14 §5.4 / issue #92)', () => {
     const ssml = buildDevotionalSsml(twoVerses, 'off', true);
     expect(ssml).toContain('Do not be anxious about anything.');
     expect(ssml).not.toContain('For God so loved the world.');
-    expect(ssml).toContain("That was Philippians 4:6-7 and John 3:16 — it'll be here when you want to come back.");
+    expect(ssml).toContain(
+      "That was Philippians 4:6-7 and John 3:16 — it'll be here when you want to come back.",
+    );
   });
 });
 
@@ -335,7 +343,8 @@ describe('buildDevotionalSsmlSegments — §3.4 inter-section break preservation
     const segments = buildDevotionalSsmlSegments(extended, 500);
     const bodySegmentIdx = segments.findIndex((s) => s.includes('Sentence number 0 '));
     const nextBodySegmentIdx = segments.findIndex(
-      (s, i) => i > bodySegmentIdx && s.includes('Sentence number') && !s.includes('Sentence number 0 '),
+      (s, i) =>
+        i > bodySegmentIdx && s.includes('Sentence number') && !s.includes('Sentence number 0 '),
     );
     if (nextBodySegmentIdx > -1 && nextBodySegmentIdx === bodySegmentIdx + 1) {
       expect(segments[bodySegmentIdx]).not.toMatch(/<break/);
@@ -417,5 +426,120 @@ describe('buildDevotionalSsmlSegments', () => {
     for (const seg of segments) {
       expect(Buffer.byteLength(seg, 'utf8')).toBeLessThanOrEqual(maxBytes);
     }
+  });
+});
+
+describe('per-language spoken phrases (story O4 #316)', () => {
+  // Every fixed English connective line the builder used to hard-code.
+  // "Hard-coded English speech must not play inside a Spanish devotional"
+  // is asserted as ABSENCE of these — a translation table that existed but
+  // was never consulted (the mutation this suite must catch) leaves them in.
+  const ENGLISH_PHRASES = [
+    'A moment of',
+    'From ',
+    "Let's sit with this",
+    'still here',
+    'Once more, slower',
+    'That was',
+    'when you want to come back',
+  ];
+
+  const NON_ENGLISH_TAGS = LANGUAGE_TAGS.filter((tag) => tag !== 'en');
+
+  it('omitting the language argument is byte-identical to en — existing callers unchanged', () => {
+    expect(buildDevotionalSsml(baseDevotional, 'brief', false, 'en')).toBe(
+      buildDevotionalSsml(baseDevotional, 'brief'),
+    );
+    expect(buildDevotionalSsml(baseDevotional, 'full', true, 'en')).toBe(
+      buildDevotionalSsml(baseDevotional, 'full', true),
+    );
+  });
+
+  it('es SSML contains no English connective phrase and does contain the Spanish ones', () => {
+    const ssml = buildDevotionalSsml(baseDevotional, 'brief', false, 'es');
+    for (const phrase of ENGLISH_PHRASES) {
+      expect(ssml).not.toContain(phrase);
+    }
+    expect(ssml).toContain('Un momento de gratitude.');
+    expect(ssml).toContain('De Philippians 4:6-7.');
+    expect(ssml).toContain('Quedémonos un momento con esto — yo llevo el tiempo.');
+    expect(ssml).toContain('…aquí sigo.');
+    expect(ssml).toContain('aquí estará cuando quieras volver');
+  });
+
+  it('no language ships English connective speech — asserted for all five non-en tags', () => {
+    for (const tag of NON_ENGLISH_TAGS) {
+      const ssml = buildDevotionalSsml(baseDevotional, 'brief', false, tag);
+      for (const phrase of ENGLISH_PHRASES) {
+        expect(ssml, `language=${tag} leaked "${phrase}"`).not.toContain(phrase);
+      }
+    }
+  });
+
+  it('lectio localizes its cue lines too — "Once more, slower." must not survive in es', () => {
+    const ssml = buildDevotionalSsml(
+      { ...baseDevotional, journalingPrompt: 'Where did you meet God today?' },
+      'brief',
+      true,
+      'es',
+    );
+    expect(ssml).not.toContain('Once more, slower.');
+    expect(ssml).toContain('Una vez más, más despacio.');
+    // Generated CONTENT (the model's own prompt text) is O3's concern, not
+    // the phrase table's — it passes through untouched.
+    expect(ssml).toContain('Where did you meet God today?');
+  });
+
+  it('stillness and lectio timings are unchanged across languages — only the words differ', () => {
+    // Acceptance (#316): "Stillness/lectio timings unchanged across
+    // languages." Compare the exact <break> tag sequence, which encodes
+    // every pause the listener experiences.
+    const breaksOf = (ssml: string) => ssml.match(/<break time="\d+ms"\/>/g);
+    for (const stillness of ['brief', 'full'] as const) {
+      for (const lectio of [false, true]) {
+        const en = breaksOf(buildDevotionalSsml(baseDevotional, stillness, lectio, 'en'));
+        for (const tag of NON_ENGLISH_TAGS) {
+          expect(breaksOf(buildDevotionalSsml(baseDevotional, stillness, lectio, tag))).toEqual(en);
+        }
+      }
+    }
+  });
+
+  it('zh joins multiple references with 、and 和 rather than the English comma/and', () => {
+    const twoVerses: DevotionalOutput = {
+      ...baseDevotional,
+      verses: [
+        ...baseDevotional.verses,
+        {
+          usfm: 'JHN.3.16',
+          versionId: 43,
+          reference: 'John 3:16',
+          fetchedText: 'For God so loved the world.',
+          attribution: 'Chinese Standard Bible',
+        },
+      ],
+    };
+    const ssml = buildDevotionalSsml(twoVerses, 'off', false, 'zh');
+    expect(ssml).toContain('Philippians 4:6-7和John 3:16');
+    expect(ssml).not.toContain('Philippians 4:6-7 and John 3:16');
+  });
+
+  it('the segmented (long-script) path is localized identically to the single-document path', () => {
+    // The phrases appear in TWO code paths (buildDevotionalSsml and the
+    // per-section segments builder); a fix that only touched one would pass
+    // every single-document test and still speak English on extended
+    // devotionals.
+    const longBody = 'word '.repeat(2000).trim();
+    const extended: DevotionalOutput = {
+      ...baseDevotional,
+      format: 'extended',
+      devotionalBody: longBody,
+    };
+    const joined = buildDevotionalSsmlSegments(extended, 800, 'brief', false, 'es').join('');
+    for (const phrase of ENGLISH_PHRASES) {
+      expect(joined).not.toContain(phrase);
+    }
+    expect(joined).toContain('Un momento de gratitude.');
+    expect(joined).toContain('Eso fue Philippians 4:6-7 — aquí estará cuando quieras volver.');
   });
 });

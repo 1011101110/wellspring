@@ -76,10 +76,53 @@ export const VOICE_CATALOG: Readonly<Record<VoiceLabel, string>> = Object.freeze
  * voices: a value outside this set cannot have come from the picker, so honoring
  * it would mean synthesizing in a voice no user could have chosen and no test
  * covers. Broadening this to the full catalog is a real option, but it needs a
- * fresh live `voices.list` verification pass (the last one is dated 2026-07-02
- * in ttsService.ts's header) — do not widen it from memory.
+ * fresh live `voices.list` verification pass (last verified 2026-07-23, see
+ * the locale note on `localizeVoiceName` below) — do not widen it from memory.
+ *
+ * The names here stay in `en-US-*` form on purpose even though the product
+ * now speaks six languages (Epic O #311, story O4 #316): the en-US name is
+ * the CANONICAL stored/validated form, and the language-appropriate name is
+ * derived at synthesis time by `localizeVoiceName`. See its doc for why.
  */
 export const ALLOWED_VOICE_NAMES: readonly string[] = Object.freeze(Object.values(VOICE_CATALOG));
+
+/**
+ * Matches a Chirp 3 HD voice name and captures (1) its locale prefix and
+ * (2) the voice suffix, e.g. `en-US-Chirp3-HD-Achernar` -> `en-US` +
+ * `Achernar`. The locale group accepts both two-letter-language locales
+ * (`en-US`) and three-letter ones (`cmn-CN` — Chirp 3 HD's Chinese locale).
+ */
+const CHIRP3_HD_NAME = /^([a-z]{2,3}-[A-Z]{2})-Chirp3-HD-(.+)$/;
+
+/**
+ * Re-homes a Chirp 3 HD voice name into another Cloud TTS locale, keeping
+ * the voice suffix the user chose: `en-US-Chirp3-HD-Achernar` + `de-DE` ->
+ * `de-DE-Chirp3-HD-Achernar` (Epic O #311 decision 4, story O4 #316).
+ *
+ * Safe because Chirp 3 HD uses IDENTICAL name suffixes across locales —
+ * live-verified 2026-07-23 against voices.list: es-US, es-ES, fr-FR, de-DE,
+ * pt-BR, and cmn-CN each carry the same 30 suffixes as en-US. The Chinese
+ * locale is `cmn-CN`; `zh-CN` has ZERO Chirp 3 HD voices, which is why the
+ * target locale must always come from `LANGUAGE_CATALOG[tag].ttsLocale`
+ * (language.ts) rather than being re-derived from the language tag here.
+ *
+ * A name that doesn't follow the Chirp 3 HD scheme is returned unchanged:
+ * such a value can only be a deployment-configured voice (TtsService's
+ * constructor deliberately accepts voices outside the catalog), and
+ * mangling it into a locale it may not exist in would trade a working
+ * wrong-locale voice for AUDIO_UNAVAILABLE.
+ *
+ * Deliberately pure and total (never throws, never returns null) so the
+ * synthesis path can call it unconditionally after allow-list validation:
+ * validation stays on the canonical en-US form (`resolveVoiceName` /
+ * `ALLOWED_VOICE_NAMES` above, unchanged), and the swap happens last —
+ * a user's language switch never rewrites their stored voice.
+ */
+export function localizeVoiceName(voiceName: string, ttsLocale: string): string {
+  const match = CHIRP3_HD_NAME.exec(voiceName);
+  if (!match) return voiceName;
+  return `${ttsLocale}-Chirp3-HD-${match[2]}`;
+}
 
 /**
  * Resolves whatever is sitting in `preferences.voice` to a voice name Cloud TTS

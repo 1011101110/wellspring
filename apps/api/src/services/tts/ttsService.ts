@@ -26,7 +26,15 @@
  * for in §6 "Long scripts").
  */
 
-import { resolveVoiceName, type DevotionalOutput, type Stillness } from '@kairos/shared-contracts';
+import {
+  DEFAULT_LANGUAGE,
+  LANGUAGE_CATALOG,
+  localizeVoiceName,
+  resolveVoiceName,
+  type DevotionalOutput,
+  type LanguageTag,
+  type Stillness,
+} from '@kairos/shared-contracts';
 import { buildDevotionalSsmlSegments } from './ssmlBuilder.js';
 
 /** Canonical error code for TTS failure — Foundation §4.5 / §6 error-code list. */
@@ -121,6 +129,7 @@ export class TtsService {
     stillness: Stillness = 'off',
     lectio = false,
     voiceName?: string,
+    language?: LanguageTag,
   ): Promise<SynthesizeResult> {
     // Per-request voice (#202). Before this, the voice came only from the
     // constructor, so `preferences.voice` had no path to Cloud TTS at all and
@@ -134,8 +143,33 @@ export class TtsService {
     // Absent argument = keep the constructor voice, so existing callers that
     // pass three arguments are unaffected.
     const requestedVoice = voiceName === undefined ? this.voiceName : resolveVoiceName(voiceName);
-    const effectiveVoice = requestedVoice ?? this.voiceName;
-    const segments = buildDevotionalSsmlSegments(devotional, this.maxSegmentBytes, stillness, lectio);
+    const canonicalVoice = requestedVoice ?? this.voiceName;
+
+    // Per-request language (Epic O #311 decision 4, story O4 #316), same
+    // absent-argument contract as the voice above: existing four-argument
+    // callers keep the constructor languageCode and the canonical (en-US)
+    // voice byte-for-byte.
+    //
+    // The caller passes the user's LANGUAGE (the BCP-47 primary subtag in
+    // `users.language`), not a TTS locale — the locale is looked up here via
+    // the catalog's `ttsLocale` so the zh -> cmn-CN trap (`zh-CN` has ZERO
+    // Chirp 3 HD voices) is decided in exactly one place (language.ts) and
+    // cannot be re-derived wrong at a call site. Validation happened on the
+    // canonical en-US form above; the locale swap comes LAST, so an es user
+    // with voice `warm` hears `es-US-Chirp3-HD-Achernar` — same voice
+    // suffix, their language (suffix parity across locales live-verified
+    // 2026-07-23, see localizeVoiceName).
+    const languageCode =
+      language === undefined ? this.languageCode : LANGUAGE_CATALOG[language].ttsLocale;
+    const effectiveVoice =
+      language === undefined ? canonicalVoice : localizeVoiceName(canonicalVoice, languageCode);
+    const segments = buildDevotionalSsmlSegments(
+      devotional,
+      this.maxSegmentBytes,
+      stillness,
+      lectio,
+      language ?? DEFAULT_LANGUAGE,
+    );
     let client: TtsClientLike;
     try {
       client = await this.getClient();
@@ -154,7 +188,7 @@ export class TtsService {
       try {
         const [response] = await client.synthesizeSpeech({
           input: { ssml },
-          voice: { languageCode: this.languageCode, name: effectiveVoice },
+          voice: { languageCode, name: effectiveVoice },
           audioConfig: { audioEncoding: 'MP3', speakingRate: this.speakingRate },
         });
         const content = response.audioContent;
@@ -175,7 +209,10 @@ export class TtsService {
       charCount,
       // The voice actually synthesized with, not the one requested — so a
       // caller (and the orchestrator's success log) can see when a stale
-      // preference was silently degraded to the default (#202).
+      // preference was silently degraded to the default (#202). Post-#316
+      // this is the locale-swapped name (e.g. `es-US-Chirp3-HD-Achernar`),
+      // i.e. what Cloud TTS was actually asked for — never an en-US name
+      // dressed up as a Spanish synthesis or vice versa.
       voiceName: effectiveVoice,
     };
   }

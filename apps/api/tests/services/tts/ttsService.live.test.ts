@@ -22,7 +22,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import type { DevotionalOutput } from '@kairos/shared-contracts';
+import { LANGUAGE_CATALOG, LANGUAGE_TAGS, type DevotionalOutput } from '@kairos/shared-contracts';
 import { TtsService } from '../../../src/services/tts/ttsService.js';
 import { LocalFileAudioStorage } from '../../../src/services/audio/audioStorage.js';
 import fixture from '../../../../../fixtures/snapshots/moderate_fair_moderate.json' with { type: 'json' };
@@ -111,4 +111,38 @@ describe.skipIf(!runLive)('TtsService — LIVE (real Google Cloud Text-to-Speech
     const fileStat = await stat(mp3Path);
     expect(fileStat.size).toBe(result.audio.length);
   }, 60_000);
+
+  it('synthesizes real audio in every shipped language — locale-swapped voice accepted by Cloud TTS (story O4 #316)', async () => {
+    // The acceptance item "live synth smoke-test per shipped language,
+    // result recorded on the issue (merged ≠ works)": unit tests prove the
+    // request we BUILD carries es-US/…/cmn-CN, but only Cloud TTS itself can
+    // prove those locale-swapped names exist server-side. A deliberately
+    // tiny script keeps the six synthesis calls cheap.
+    const micro: DevotionalOutput = {
+      format: 'micro',
+      theme: 'peace',
+      verses: [
+        {
+          usfm: 'PHP.4.6',
+          versionId: 3034,
+          reference: 'Philippians 4:6',
+          fetchedText: 'Do not be anxious about anything.',
+          attribution: 'Berean Standard Bible (BSB). Public domain.',
+        },
+      ],
+      devotionalBody: 'A short steady word.',
+      cardSummary: 'Peace.',
+      prayer: 'Amen.',
+    };
+
+    const service = new TtsService(); // real client, ADC auth
+    for (const tag of LANGUAGE_TAGS) {
+      const result = await service.synthesize(micro, 'off', false, undefined, tag);
+      expect(result.audio.length, `language=${tag} returned no audio`).toBeGreaterThan(1000);
+      expect(result.voiceName.startsWith(LANGUAGE_CATALOG[tag].ttsLocale)).toBe(true);
+      console.log(
+        `[TTS live] language=${tag} voice=${result.voiceName} audioBytes=${result.audio.length}`,
+      );
+    }
+  }, 120_000);
 });

@@ -212,6 +212,27 @@ describe('GenerateNowOrchestrator', () => {
     );
   });
 
+  it("threads the user's stored language into TTS synthesis, defaulting to en (story O4 #316)", async () => {
+    // The users.language column (O2 #314) must reach TtsService.synthesize,
+    // where the voice locale and the spoken connective phrases follow it —
+    // a column nothing reads is exactly the bug Epic O opened with.
+    const esUser = await makeUser('language-es');
+    await repos.users.updateProfile(asVerifiedUserId(esUser.id), { language: 'es' });
+    const enUser = await makeUser('language-default');
+
+    const tts = fakeTts();
+    const orchestrator = buildOrchestrator({ tts });
+
+    await orchestrator.generateNow({ userId: esUser.id, date: '2026-07-02' });
+    await orchestrator.generateNow({ userId: enUser.id, date: '2026-07-02' });
+
+    const calls = (tts.synthesize as ReturnType<typeof vi.fn>).mock.calls;
+    // Fifth argument is the language tag; TtsService derives the locale
+    // (es -> es-US, zh -> cmn-CN) so the orchestrator never handles locales.
+    expect(calls[0][4]).toBe('es');
+    expect(calls[1][4]).toBe('en');
+  });
+
   it('uses neutral default bands when no daily_bands row exists for the date, never fabricating an extreme signal', async () => {
     const user = await makeUser('nobands');
     const engine = fakeEngine();

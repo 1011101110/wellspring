@@ -4,8 +4,10 @@ import {
   DEFAULT_VOICE_NAME,
   VOICE_CATALOG,
   VOICE_LABELS,
+  localizeVoiceName,
   resolveVoiceName,
 } from '../src/voice.js';
+import { LANGUAGE_CATALOG, LANGUAGE_TAGS } from '../src/language.js';
 
 describe('resolveVoiceName (issue #202)', () => {
   it('maps every iOS picker label to a real Chirp 3 HD voice id', () => {
@@ -44,5 +46,61 @@ describe('resolveVoiceName (issue #202)', () => {
 
   it('the default voice is itself allowed — the fallback can never be invalid', () => {
     expect(ALLOWED_VOICE_NAMES).toContain(DEFAULT_VOICE_NAME);
+  });
+});
+
+describe('localizeVoiceName (story O4 #316)', () => {
+  it('re-homes every allowed voice into every catalog locale, keeping the suffix', () => {
+    // The whole premise of the locale swap (epic #311 decision 4): Chirp 3 HD
+    // uses identical name suffixes across locales (live-verified 2026-07-23),
+    // so a user's chosen voice survives a language switch as prefix + same
+    // suffix — for ALL six languages, not just the ones a test happened to
+    // spot-check.
+    for (const tag of LANGUAGE_TAGS) {
+      const locale = LANGUAGE_CATALOG[tag].ttsLocale;
+      for (const name of ALLOWED_VOICE_NAMES) {
+        const suffix = name.split('Chirp3-HD-')[1];
+        expect(localizeVoiceName(name, locale)).toBe(`${locale}-Chirp3-HD-${suffix}`);
+      }
+    }
+  });
+
+  it('Chinese lands on cmn-CN, never zh-CN — the locale that actually has Chirp 3 HD voices', () => {
+    // zh-CN has ZERO Chirp 3 HD voices (live-verified 2026-07-23); cmn-CN has
+    // 30. The catalog encodes this so it cannot be re-derived wrong, and this
+    // test pins the two facts together: the zh entry IS cmn-CN, and swapping
+    // through it produces a cmn-CN name.
+    expect(LANGUAGE_CATALOG.zh.ttsLocale).toBe('cmn-CN');
+    const swapped = localizeVoiceName(DEFAULT_VOICE_NAME, LANGUAGE_CATALOG.zh.ttsLocale);
+    expect(swapped).toBe('cmn-CN-Chirp3-HD-Achernar');
+    expect(swapped.startsWith('zh-CN')).toBe(false);
+  });
+
+  it('swapping into en-US is the identity for every allowed voice — en output stays byte-identical', () => {
+    for (const name of ALLOWED_VOICE_NAMES) {
+      expect(localizeVoiceName(name, LANGUAGE_CATALOG.en.ttsLocale)).toBe(name);
+    }
+  });
+
+  it('parses a three-letter-language source locale (cmn-CN) back out — the swap round-trips', () => {
+    // The locale group must accept cmn-CN on the INPUT side too, or a voice
+    // already localized to Chinese could never follow the user back to
+    // another language.
+    expect(localizeVoiceName('cmn-CN-Chirp3-HD-Kore', 'en-US')).toBe('en-US-Chirp3-HD-Kore');
+  });
+
+  it('keeps a multi-part suffix intact rather than truncating at the first dash', () => {
+    expect(localizeVoiceName('en-US-Chirp3-HD-Some-Star', 'de-DE')).toBe(
+      'de-DE-Chirp3-HD-Some-Star',
+    );
+  });
+
+  it('returns a non-Chirp3-HD name unchanged — a configured off-catalog voice is not mangled', () => {
+    // TtsService's constructor deliberately accepts deployment-configured
+    // voices outside the catalog; forcing one into a locale it may not exist
+    // in would trade working audio for AUDIO_UNAVAILABLE.
+    expect(localizeVoiceName('en-GB-Neural2-A', 'de-DE')).toBe('en-GB-Neural2-A');
+    expect(localizeVoiceName('warm', 'de-DE')).toBe('warm');
+    expect(localizeVoiceName('', 'de-DE')).toBe('');
   });
 });
