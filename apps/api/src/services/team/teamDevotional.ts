@@ -21,7 +21,7 @@
  * takes an email list + time + optional theme, generates once, and sends
  * one multi-attendee invite) is not built yet — see the Epic I follow-up.
  */
-import type { Tradition } from '@kairos/shared-contracts';
+import type { LanguageTag, Tradition } from '@kairos/shared-contracts';
 import type { DevotionalEngine, GenerateDevotionalResult } from '../devotionalEngine.js';
 import { NO_SIGNALS_OBSERVED, type DurationPreference } from '../gloo/instructionsBuilder.js';
 import { NEUTRAL_DEFAULT_BANDS } from '../orchestrator/generateNowOrchestrator.js';
@@ -32,6 +32,14 @@ export interface GenerateTeamDevotionalParams {
   translation: string;
   /** Default YouVersion versionId the model should prefer. */
   preferredVersionId: number;
+  /**
+   * Devotional content language (Epic O #311, O3 #315), passed straight
+   * through to the engine — the organizer's choice for the group, since a
+   * team devotional has no single user row to read it from. Callers
+   * setting this must keep `preferredVersionId` inside that language's
+   * `LANGUAGE_CATALOG` entry. Omitted → English, today's behavior.
+   */
+  language?: LanguageTag;
   /**
    * The organizer's optional thematic focus (e.g. "this week: perseverance").
    * Deliberate disclosure — the organizer's own words, on behalf of the
@@ -65,6 +73,7 @@ export function generateTeamDevotional(
     tradition: params.tradition,
     translation: params.translation,
     preferredVersionId: params.preferredVersionId,
+    language: params.language,
     durationPreference: params.durationPreference,
     date: params.date,
     liturgicalSeasonsEnabled: params.liturgicalSeasonsEnabled,

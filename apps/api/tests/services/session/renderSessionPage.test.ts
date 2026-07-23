@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { LengthFeelSchema, TimeFeelSchema } from '@kairos/shared-contracts';
 import { escapeHtml } from '../../../src/services/session/html.js';
 import {
   renderGoneOrUnknownPage,
@@ -145,14 +146,76 @@ describe('renderGoneOrUnknownPage', () => {
   });
 });
 
-describe('renderSessionCompletePage (#297)', () => {
+describe('renderSessionCompletePage (#297, #321)', () => {
+  const token = '00000000-0000-4000-8000-00000000cafe';
+
   it('is a full HTML page with a calm confirmation, not a raw JSON blob', () => {
-    const html = renderSessionCompletePage();
+    const html = renderSessionCompletePage({ token, feedbackSubmitted: false });
     expect(html).toContain('<!doctype html>');
     expect(html).toContain('Completed');
     expect(html).toContain('thank you for being here');
     // The bug was the user landing on the POST handler's JSON; the friendly
     // page must never look like that response.
     expect(html).not.toContain('"ok":true');
+  });
+
+  it('renders the feedback form before feedback exists, POSTing to the P1 route (#321 state a)', () => {
+    const html = renderSessionCompletePage({ token, feedbackSubmitted: false });
+
+    expect(html).toContain(`action="/session/${token}/feedback"`);
+    expect(html).toContain('method="post"');
+    // The four settled questions + the note, in the epic's copy voice.
+    expect(html).toContain('Did this meet you today?');
+    expect(html).toContain('More on this topic?');
+    expect(html).toContain('The length felt');
+    expect(html).toContain('The time of day was');
+    expect(html).toContain('Anything else on your heart?');
+    // Zero-JS mechanics: no script anywhere, note capped at the contract's 500.
+    expect(html).not.toContain('<script');
+    expect(html).toContain('maxlength="500"');
+  });
+
+  it('every radio value matches the P1 contract exactly — rename either side and this fails (#321 mutation check)', () => {
+    const html = renderSessionCompletePage({ token, feedbackSubmitted: false });
+
+    const radioValues = (name: string): string[] =>
+      [...html.matchAll(new RegExp(`name="${name}" value="([^"]+)"`, 'g'))].map((m) => m[1]!);
+
+    // Booleans post as the strings the route normalizes back to booleans.
+    expect(radioValues('contentHelpful')).toEqual(['true', 'false']);
+    expect(radioValues('topicMore')).toEqual(['true', 'false']);
+    // Enum radios carry the schema's values verbatim, in display order.
+    expect(radioValues('lengthFeel')).toEqual([...LengthFeelSchema.options]);
+    expect(radioValues('timeFeel')).toEqual([...TimeFeelSchema.options]);
+    // The note input posts under the contract's key.
+    expect(html).toContain('name="note"');
+  });
+
+  it('shows the thanked state and NO form once feedback exists (#321 state b — never nag twice)', () => {
+    const html = renderSessionCompletePage({ token, feedbackSubmitted: true });
+
+    expect(html).toContain('Thank you &mdash; this shapes what comes next.');
+    expect(html).not.toContain('<form');
+    expect(html).not.toContain('Did this meet you today?');
+    // The confirmation itself is unchanged.
+    expect(html).toContain('thank you for being here');
+  });
+
+  it('never references attendance, frequency, or history in either state (Foundation §9)', () => {
+    for (const feedbackSubmitted of [false, true]) {
+      const html = renderSessionCompletePage({ token, feedbackSubmitted });
+      // Grace may notice; it may never charge (#271): no streaks, tallies,
+      // guilt, or "you haven't" anywhere near this moment.
+      expect(html).not.toMatch(/streak|missed|in a row|attendance|frequency|you haven&#39;t|so far this/i);
+      // No digits about the user's practice: the only digits allowed are
+      // structural — markup/attributes (token URL, maxlength, viewport,
+      // CSS units) and character entities (&#10003; the checkmark) — never
+      // the human-readable text itself.
+      const visibleText = html
+        .replace(/<style>[\s\S]*?<\/style>/, '')
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/&#?\w+;/g, ' ');
+      expect(visibleText).not.toMatch(/\d/);
+    }
   });
 });

@@ -25,11 +25,36 @@ export interface PreferencesRow {
   sabbath_enabled: boolean;
   sabbath_session: boolean;
   liturgical_seasons_enabled: boolean;
+  /**
+   * Adaptive rhythm (Epic P #312 / P5 #324, migration 1722500000000).
+   * `min_per_week`/`adaptive_enabled` are user-owned; the three
+   * `adaptive_*` columns are the cadence engine's own state and are
+   * server-written only — see `updateAdaptiveState` below and the
+   * migration comment for the ownership split.
+   */
+  min_per_week: number;
+  adaptive_enabled: boolean;
+  /** NULL = never adapted; the policy treats that as the ceiling (`|active_days|`). */
+  adaptive_days_per_week: number | null;
+  /** Last decision's reason code — the `CadenceReason` union (cadencePolicy.ts), CHECK-constrained in the DB. */
+  adaptive_reason: string | null;
+  /** When the adaptive state last CHANGED (steps/clamps only, never holds) — the one-step-per-week limiter's clock. */
+  adaptive_decided_at: Date | null;
   updated_at: Date;
 }
 
+/**
+ * The client-writable field set. The `adaptive_*` state columns are
+ * excluded at the type level, not just by convention: `update` below is
+ * the path `PUT /v1/preferences` reaches, and a request body must never
+ * be able to move the engine's ladder position or reset its rate
+ * limiter. `updateAdaptiveState` is the state columns' only door.
+ */
 export type PreferencesUpdate = Partial<
-  Omit<PreferencesRow, 'user_id' | 'updated_at'>
+  Omit<
+    PreferencesRow,
+    'user_id' | 'updated_at' | 'adaptive_days_per_week' | 'adaptive_reason' | 'adaptive_decided_at'
+  >
 >;
 
 /**
@@ -92,6 +117,8 @@ export class PreferencesRepository {
          sabbath_enabled = COALESCE($16::boolean, sabbath_enabled),
          sabbath_session = COALESCE($17::boolean, sabbath_session),
          liturgical_seasons_enabled = COALESCE($18::boolean, liturgical_seasons_enabled),
+         min_per_week = COALESCE($20::smallint, min_per_week),
+         adaptive_enabled = COALESCE($21::boolean, adaptive_enabled),
          updated_at = now()
        WHERE user_id = $1
        RETURNING *`,
@@ -116,9 +143,41 @@ export class PreferencesRepository {
         updates.liturgical_seasons_enabled ?? null,
         // $19 — see the duration_preference CASE above. Presence, not value.
         updates.duration_preference !== undefined,
+        updates.min_per_week ?? null,
+        updates.adaptive_enabled ?? null,
       ],
     );
     return result.rows[0] ?? null;
+  }
+
+  /**
+   * The ONLY write path for the cadence engine's state columns (P5 #324) —
+   * `update` above cannot name them (excluded from `PreferencesUpdate` at
+   * the type level), so a client body can never reach them.
+   *
+   * Call this only when the decision CHANGED the state (a step or a
+   * clamp), never on a hold. `adaptive_decided_at` is doing double duty as
+   * (a) the one-step-per-week rate limiter's clock and (b) P4's definition
+   * of "since back-off" (`reengagedSinceBackoff` compares joins against
+   * the newest `easing_back` decision) — recording a no-op hold would push
+   * that timestamp forward every day and hold the rate-limit window shut
+   * forever, freezing a backed-off user below their ceiling. Idempotent in
+   * the sense #324 requires: same decision inputs produce the same state,
+   * and the caller skipping unchanged writes is what makes re-runs no-ops.
+   */
+  async updateAdaptiveState(
+    userId: VerifiedUserId,
+    state: { daysPerWeek: number; reason: string; decidedAt: Date },
+  ): Promise<void> {
+    await this.db.query(
+      `UPDATE preferences SET
+         adaptive_days_per_week = $2,
+         adaptive_reason = $3,
+         adaptive_decided_at = $4,
+         updated_at = now()
+       WHERE user_id = $1`,
+      [userId, state.daysPerWeek, state.reason, state.decidedAt],
+    );
   }
 
   /** Users opted into the evening examen cadence (issue #77) — fan-out target for /internal/trigger-examen-run, mirroring UsersRepository.listWithActiveGoogleCalendar's shape. */

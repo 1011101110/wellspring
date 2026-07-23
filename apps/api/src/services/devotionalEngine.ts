@@ -28,14 +28,17 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   CARD_SUMMARY_HARD_LIMIT,
+  DEFAULT_LANGUAGE,
   DevotionalOutputSchema,
   GetBibleVerseArgsSchema,
   GET_BIBLE_VERSE_TOOL_NAME,
+  LANGUAGE_CATALOG,
   fallbackKey,
   nearestFallbackKey,
   parseFallbackKey,
   type BandInput,
   type DevotionalOutput,
+  type LanguageTag,
   type SlotType,
   type Tradition,
 } from '@kairos/shared-contracts';
@@ -221,6 +224,17 @@ export interface GenerateDevotionalParams {
   translation: string;
   /** Default YouVersion versionId the model should prefer when calling get_bible_verse. */
   preferredVersionId: number;
+  /**
+   * Devotional content language (Epic O #311, story O3 #315). Two jobs:
+   * threaded to `buildInstructions` (the "write everything in {language}"
+   * directive, emitted only for non-en), and it selects which
+   * `LANGUAGE_CATALOG` fallback chain the tool executor walks when
+   * get_bible_verse hits `LICENSE_UNAVAILABLE` — the chain never crosses
+   * into another language (O1/#313 / DEC-K12: a wrong-language verse is
+   * worse than an honestly-flagged failure). Defaults to `'en'`, which is
+   * byte-identical to pre-Epic-O behavior.
+   */
+  language?: LanguageTag;
   durationPreference?: DurationPreference;
   /** Defaults to 'standard'. 'examen' is the evening reflection (docs/14 §5.3, issue #77). */
   slotType?: SlotType;
@@ -259,6 +273,21 @@ interface ToolCallLogEntry {
   name: string;
   argsJson: string;
   output: string;
+}
+
+/**
+ * Per-generation state the tool executor needs (O3 #315): which language's
+ * `LICENSE_UNAVAILABLE` fallback chain to walk, the anti-hallucination
+ * ground-truth map, and the versionIds already proven unlicensed this
+ * generation (so a second verse fetch doesn't re-walk dead chain links).
+ * Built fresh in `generate()` — never shared across generations, since
+ * licensing can change server-side and a stale negative would silently
+ * skip a now-valid version forever.
+ */
+interface GenerationToolContext {
+  language: LanguageTag;
+  fetchedTexts: Map<string, FetchedVerse>;
+  unlicensedVersionIds: Set<number>;
 }
 
 // --- Fixture fallback -----------------------------------------------------------
@@ -522,6 +551,44 @@ export function findFetchedTextMismatches(
   return problems;
 }
 
+// --- Per-language LICENSE_UNAVAILABLE fallback chain (Epic O #311, O3 #315) ----
+
+/**
+ * The ordered versionIds to try after `failedVersionId` came back
+ * `LICENSE_UNAVAILABLE`: the language's default first (the strongest
+ * in-language substitute — relevant when the user's stored ALTERNATE, e.g.
+ * es 147 RVES, is what failed), then the catalog's pinned
+ * `fallbackVersionIds`, minus the id that just failed and any id already
+ * proven unlicensed earlier in this generation.
+ *
+ * This generalizes the documented en chain (BSB 3034 → WEBUS 206 → ASV 12,
+ * docs/03 §3) to every `LANGUAGE_CATALOG` entry, and its hard boundary is
+ * the point (O1/#313, DEC-K12): the candidates come from exactly ONE
+ * language's entry, so an exhausted chain returns `[]` and the caller
+ * degrades to the (English, flagged) fixture path — never to a verse in a
+ * different language spliced into the devotional. pt's chain is empty by
+ * catalog construction (BLT is the only licensed pt option), so a pt
+ * license failure goes straight to `[]`.
+ */
+export function licenseFallbackCandidates(
+  language: LanguageTag,
+  failedVersionId: number,
+  alreadyUnlicensed: ReadonlySet<number>,
+): number[] {
+  const entry = LANGUAGE_CATALOG[language];
+  const chain = [entry.defaultVersionId, ...entry.fallbackVersionIds];
+  // De-dupe while preserving order (defaultVersionId could in principle
+  // reappear in a fallback list) and drop everything already known to fail.
+  const seen = new Set<number>();
+  const candidates: number[] = [];
+  for (const versionId of chain) {
+    if (versionId === failedVersionId || alreadyUnlicensed.has(versionId) || seen.has(versionId)) continue;
+    seen.add(versionId);
+    candidates.push(versionId);
+  }
+  return candidates;
+}
+
 // --- Truncation detection -----------------------------------------------------
 
 /**
@@ -623,9 +690,9 @@ export class DevotionalEngine {
    * the call_id/id values on the turns' function_call output items, which
    * are emitted in the same order the executor is invoked.
    */
-  private buildToolExecutor(fetchedTexts: Map<string, FetchedVerse>, toolLog?: ToolCallLogEntry[]) {
+  private buildToolExecutor(context: GenerationToolContext, toolLog?: ToolCallLogEntry[]) {
     return async (name: string, argsJson: string): Promise<string> => {
-      const output = await this.executeTool(name, argsJson, fetchedTexts);
+      const output = await this.executeTool(name, argsJson, context);
       if (toolLog) {
         toolLog.push({ name, argsJson, output });
       }
@@ -633,7 +700,8 @@ export class DevotionalEngine {
     };
   }
 
-  private async executeTool(name: string, argsJson: string, fetchedTexts: Map<string, FetchedVerse>): Promise<string> {
+  private async executeTool(name: string, argsJson: string, context: GenerationToolContext): Promise<string> {
+    const { fetchedTexts } = context;
     if (name !== GET_BIBLE_VERSE_TOOL_NAME) {
       return JSON.stringify({
         ok: false,
@@ -674,7 +742,68 @@ export class DevotionalEngine {
       const fetched: FetchedVerse = { text: envelope.data.text, reference: envelope.data.reference };
       fetchedTexts.set(`${parsedArgs.data.usfm}::${parsedArgs.data.versionId}`, fetched);
       fetchedTexts.set(`${envelope.data.usfm}::${envelope.data.versionId}`, fetched);
+      return JSON.stringify(envelope);
     }
+
+    if (envelope.error.code === 'LICENSE_UNAVAILABLE') {
+      // Per-language fallback chain (O3 #315), generalizing the documented
+      // en BSB→WEBUS→ASV pattern via LANGUAGE_CATALOG. Same language ONLY —
+      // an exhausted chain falls through to the original failure envelope,
+      // which (with no other version to cite) drives the generation to the
+      // English fixture path rather than ever splicing a verse from another
+      // language into this devotional (DEC-K12).
+      context.unlicensedVersionIds.add(parsedArgs.data.versionId);
+      const candidates = licenseFallbackCandidates(
+        context.language,
+        parsedArgs.data.versionId,
+        context.unlicensedVersionIds,
+      );
+      for (const candidateVersionId of candidates) {
+        const retried = await this.youVersionClient.getVerse(parsedArgs.data.usfm, candidateVersionId);
+        if (retried.ok) {
+          this.logger.info('LICENSE_UNAVAILABLE — substituted a same-language fallback version', {
+            language: context.language,
+            requestedVersionId: parsedArgs.data.versionId,
+            servedVersionId: candidateVersionId,
+            usfm: parsedArgs.data.usfm,
+          });
+          const fetched: FetchedVerse = { text: retried.data.text, reference: retried.data.reference };
+          fetchedTexts.set(`${parsedArgs.data.usfm}::${candidateVersionId}`, fetched);
+          fetchedTexts.set(`${retried.data.usfm}::${retried.data.versionId}`, fetched);
+          // Surface the substitution to the model inside the envelope's meta
+          // so it can cite the SERVED versionId in verses[] (the JSON schema
+          // + anti-hallucination check both key on the tool result's id).
+          return JSON.stringify({
+            ...retried,
+            meta: {
+              ...retried.meta,
+              version_fallback: {
+                requested_version_id: parsedArgs.data.versionId,
+                served_version_id: candidateVersionId,
+                reason: 'LICENSE_UNAVAILABLE',
+              },
+            },
+          });
+        }
+        if (retried.error.code === 'LICENSE_UNAVAILABLE') {
+          // Remember it so a later tool call in this generation doesn't
+          // burn a round-trip re-proving the same unlicensed id.
+          context.unlicensedVersionIds.add(candidateVersionId);
+          continue;
+        }
+        // A non-license failure (rate limit, passage missing in this
+        // version, upstream outage) is a different problem the model should
+        // see as-is rather than have masked by further version-hopping.
+        return JSON.stringify(retried);
+      }
+      this.logger.error('LICENSE_UNAVAILABLE — fallback chain exhausted for language, no cross-language retry (DEC-K12)', {
+        language: context.language,
+        requestedVersionId: parsedArgs.data.versionId,
+        usfm: parsedArgs.data.usfm,
+        candidatesTried: candidates,
+      });
+    }
+
     return JSON.stringify(envelope);
   }
 
@@ -769,6 +898,10 @@ export class DevotionalEngine {
     const { bands, tradition, translation, preferredVersionId, durationPreference } = params;
     const slotType: SlotType = params.slotType ?? 'standard';
     const lectio = params.lectio ?? false;
+    // Defaulting to 'en' keeps every pre-Epic-O caller byte-identical: no
+    // language directive in the instructions, and the fallback chain is the
+    // same en chain that was previously the only one (O3 #315).
+    const language: LanguageTag = params.language ?? DEFAULT_LANGUAGE;
 
     if (this.forceFixture) {
       // PROVIDERS=fixture kill switch (docs/06 §6 / issue #91) — never call
@@ -795,6 +928,7 @@ export class DevotionalEngine {
       prayerIntention: params.prayerIntention,
       theme: params.theme,
       inviteContext: params.inviteContext,
+      language,
     });
     const format = resolveTargetFormat(bands, durationPreference, slotType);
 
@@ -802,7 +936,10 @@ export class DevotionalEngine {
 
     const fetchedTexts = new Map<string, FetchedVerse>();
     const toolLog: ToolCallLogEntry[] = [];
-    const toolExecutor = this.buildToolExecutor(fetchedTexts, toolLog);
+    const toolExecutor = this.buildToolExecutor(
+      { language, fetchedTexts, unlicensedVersionIds: new Set<number>() },
+      toolLog,
+    );
 
     const initialInput: CreateResponseRequest['input'] = [{ role: 'user', content: userContent }];
     const initialRequest = this.buildRequest(instructions, format, initialInput);
@@ -910,6 +1047,13 @@ export class DevotionalEngine {
     }
 
     // --- Second failure: fixture fallback (Foundation §5, API spec §2.5.3) --
+    //
+    // The fixture corpus is ENGLISH-ONLY by decision (epic #311 §3): an
+    // honest English fallback beats a machine-translated one, so a non-en
+    // user reaching this path gets English content. The response already
+    // carries `source: 'fixture'` (surfaced as `isFixtureFallback` by the
+    // orchestrator), and the orchestrator additionally logs the language
+    // mismatch for non-en users. Per-language fixtures are the P2 follow-up.
     return { devotional: loadFixtureDevotional(this.fixturesDir, bands), source: 'fixture' };
   }
 }

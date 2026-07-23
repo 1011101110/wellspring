@@ -26,3 +26,5 @@ export * from './freeBusy.js';
 export * from './liturgy.js';
 // N9 (#268): the journal — kept, user-owned, never sent to the model.
 export * from './journal.js';
+// EPIC P (#312) / P1 (#320): the post-Amen feedback moment.
+export * from './sessionFeedback.js';

@@ -20,10 +20,11 @@ import {
   clampCardSummary,
   detectLikelyTruncation,
   findFetchedTextMismatches,
+  licenseFallbackCandidates,
   loadFixtureDevotional,
   type DevotionalEngineLogger,
 } from '../../src/services/devotionalEngine.js';
-import { CARD_SUMMARY_HARD_LIMIT } from '@kairos/shared-contracts';
+import { CARD_SUMMARY_HARD_LIMIT, LANGUAGE_CATALOG } from '@kairos/shared-contracts';
 
 const FIXTURES_DIR = new URL('../../../../fixtures/snapshots', import.meta.url).pathname;
 
@@ -994,5 +995,296 @@ describe('clampCardSummary (issue #295)', () => {
     const b = { cardSummary: 42 };
     clampCardSummary(b);
     expect(b.cardSummary).toBe(42);
+  });
+});
+
+// --- Content language (Epic O #311, story O3 #315) ---------------------------
+
+/**
+ * Routes YouVersion calls PER VERSION ID — unlike `youVersionFetch` above,
+ * which answers every version identically. Needed to exercise the
+ * LICENSE_UNAVAILABLE fallback chain: version A must 403 while version B
+ * serves text, within one generation. A 403 on the passages endpoint plus a
+ * 200 on the bible-detail endpoint is exactly the live-verified signature
+ * YouVersionClient disambiguates into LICENSE_UNAVAILABLE (see its header).
+ */
+function multiVersionYouVersionFetch(
+  passageByVersion: Record<number, { status: number; text?: string }>,
+): YvFetchLike {
+  function jsonRoute(body: unknown, status = 200) {
+    return { ok: status >= 200 && status < 300, status, json: async () => body, text: async () => JSON.stringify(body) };
+  }
+  return (vi.fn(async (url: string) => {
+    const path = url.replace('https://api.youversion.com', '');
+    if (/^\/v1\/bibles\/\d+\/index$/.test(path)) {
+      return jsonRoute(fakeIndex());
+    }
+    const passageMatch = path.match(/^\/v1\/bibles\/(\d+)\/passages\//);
+    if (passageMatch) {
+      const versionId = Number(passageMatch[1]);
+      const route = passageByVersion[versionId];
+      if (!route) {
+        // An unrouted version id means the code under test fetched a version
+        // this test never authorized — most importantly, one from ANOTHER
+        // language. Surfaced as a transport error (the client maps it to
+        // UPSTREAM_UNAVAILABLE); the URL assertions below catch it hard.
+        throw new Error(`Unexpected passage fetch for versionId ${versionId} in test: ${path}`);
+      }
+      if (route.status === 200) {
+        return jsonRoute({ id: 'MAT.11.28-30', content: route.text, reference: 'Matthew 11:28-30' });
+      }
+      return jsonRoute({ message: 'forbidden' }, route.status);
+    }
+    const detailMatch = path.match(/^\/v1\/bibles\/(\d+)$/);
+    if (detailMatch) {
+      // Always 200: the id is real, just (per the passage route) unlicensed —
+      // the LICENSE_UNAVAILABLE half of the 403 disambiguation, never
+      // BIBLE_NOT_FOUND.
+      return jsonRoute(fakeBibleDetail(Number(detailMatch[1])));
+    }
+    throw new Error(`Unexpected YouVersion path in test: ${path}`);
+  }) as unknown) as YvFetchLike;
+}
+
+/** All passage-fetch versionIds hit during the test, in call order. */
+function passageVersionIds(yvFetch: YvFetchLike): number[] {
+  return (yvFetch as unknown as ReturnType<typeof vi.fn>).mock.calls
+    .map(([url]) => (url as string).match(/\/v1\/bibles\/(\d+)\/passages\//)?.[1])
+    .filter((id): id is string => id !== undefined)
+    .map(Number);
+}
+
+describe('licenseFallbackCandidates — per-language LICENSE_UNAVAILABLE chain (O3 #315)', () => {
+  it('generalizes the documented en chain: BSB 3034 failing yields WEBUS 206 then ASV 12, in order', () => {
+    expect(licenseFallbackCandidates('en', 3034, new Set([3034]))).toEqual([206, 12]);
+  });
+
+  it("tries the language DEFAULT first when the user's stored alternate fails (es 147 → 3365)", () => {
+    // The chain is not only "default's fallbacks": a user may have stored an
+    // in-catalog alternate, and the strongest in-language substitute for it
+    // is the language default.
+    expect(licenseFallbackCandidates('es', 147, new Set([147]))).toEqual([3365]);
+  });
+
+  it('es default failing yields the pinned RVES fallback', () => {
+    expect(licenseFallbackCandidates('es', 3365, new Set([3365]))).toEqual([147]);
+  });
+
+  it('pt has an EMPTY chain by catalog construction — straight to the fixture error path, never another language', () => {
+    expect(licenseFallbackCandidates('pt', 3254, new Set([3254]))).toEqual([]);
+  });
+
+  it('skips versionIds already proven unlicensed earlier in the generation', () => {
+    expect(licenseFallbackCandidates('en', 3034, new Set([3034, 206]))).toEqual([12]);
+  });
+
+  it('never proposes a versionId outside the language own catalog, for any language (DEC-K12)', () => {
+    for (const tag of Object.keys(LANGUAGE_CATALOG) as Array<keyof typeof LANGUAGE_CATALOG>) {
+      const entry = LANGUAGE_CATALOG[tag];
+      for (const failed of entry.versionIds) {
+        const candidates = licenseFallbackCandidates(tag, failed, new Set([failed]));
+        for (const candidate of candidates) {
+          expect(entry.versionIds).toContain(candidate);
+        }
+      }
+    }
+  });
+});
+
+describe('DevotionalEngine — content language (O3 #315)', () => {
+  const SPANISH_TEXT =
+    'Venid a mí todos los que estáis cansados y agobiados, y yo os haré descansar. ¿No es Él fiel?';
+
+  function spanishDevotionalJson(versionId: number) {
+    return validDevotionalJson({
+      verses: [
+        {
+          usfm: 'MAT.11.28-30',
+          versionId,
+          reference: 'Matthew 11:28-30',
+          fetchedText: SPANISH_TEXT,
+          attribution: 'Berean Standard Bible (BSB) — Public domain.',
+        },
+      ],
+      devotionalBody: 'Una breve reflexión sobre el descanso que Dios ofrece a los cansados.',
+      cardSummary: 'Ven a mí y descansa en Él hoy.',
+      prayer: 'Señor, dame descanso hoy. Amén.',
+    });
+  }
+
+  it("threads language to buildInstructions: language='es' puts the Spanish directive in the Gloo request", async () => {
+    const glooFetch = vi
+      .fn()
+      .mockResolvedValueOnce(glooJsonRes(functionCallTurn('call_1')))
+      .mockResolvedValueOnce(glooJsonRes(messageTurn(validDevotionalJson())));
+
+    const engine = buildEngine(glooFetch as unknown as GlooFetchLike);
+    await engine.generate({
+      bands: LOW_POOR_HEAVY,
+      tradition: 'general',
+      translation: 'BSB',
+      preferredVersionId: 3034,
+      language: 'es',
+    });
+
+    const [, init] = glooFetch.mock.calls[0] as [string, { body: string }];
+    const body = JSON.parse(init.body);
+    expect(body.instructions).toContain('entirely in Spanish');
+  });
+
+  it('omitted language defaults to en: no language directive at all (pre-Epic-O behavior preserved)', async () => {
+    const glooFetch = vi
+      .fn()
+      .mockResolvedValueOnce(glooJsonRes(functionCallTurn('call_1')))
+      .mockResolvedValueOnce(glooJsonRes(messageTurn(validDevotionalJson())));
+
+    const engine = buildEngine(glooFetch as unknown as GlooFetchLike);
+    await engine.generate({ bands: LOW_POOR_HEAVY, tradition: 'general', translation: 'BSB', preferredVersionId: 3034 });
+
+    const [, init] = glooFetch.mock.calls[0] as [string, { body: string }];
+    const body = JSON.parse(init.body);
+    expect(body.instructions).not.toContain('entirely in');
+  });
+
+  it('walks the SAME-LANGUAGE fallback chain on LICENSE_UNAVAILABLE and serves the substitute to the model', async () => {
+    // es: model asks for the default 3365, which 403s (real id, unlicensed);
+    // the executor must retry 147 (the pinned es fallback) and hand the model
+    // 147's text — with the substitution surfaced in the envelope meta so the
+    // model cites the SERVED id in verses[].
+    const yvFetch = multiVersionYouVersionFetch({
+      3365: { status: 403 },
+      147: { status: 200, text: SPANISH_TEXT },
+    });
+    const glooFetch = vi
+      .fn()
+      .mockResolvedValueOnce(
+        glooJsonRes({
+          ...functionCallTurn('call_1'),
+          output: [
+            {
+              type: 'function_call',
+              id: 'fc_1',
+              call_id: 'call_1',
+              name: 'get_bible_verse',
+              arguments: JSON.stringify({ usfm: 'MAT.11.28-MAT.11.30', versionId: 3365 }),
+            },
+          ],
+        }),
+      )
+      .mockResolvedValueOnce(glooJsonRes(messageTurn(spanishDevotionalJson(147))));
+
+    const logger = spyLogger();
+    const engine = buildEngine(glooFetch as unknown as GlooFetchLike, yvFetch, logger);
+    const result = await engine.generate({
+      bands: LOW_POOR_HEAVY,
+      tradition: 'general',
+      translation: 'Palabra de Dios para ti',
+      preferredVersionId: 3365,
+      language: 'es',
+    });
+
+    // The generation SUCCEEDED on the fallback version — no fixture.
+    expect(result.source).toBe('gloo');
+    expect(result.devotional.verses[0]?.versionId).toBe(147);
+    expect(result.devotional.verses[0]?.fetchedText).toBe(SPANISH_TEXT);
+
+    // Chain order: the requested es version, then the es fallback — nothing else.
+    expect(passageVersionIds(yvFetch)).toEqual([3365, 147]);
+
+    // The substitution is legible to the model: the function_call_output sent
+    // back on the second Gloo turn carries the version_fallback meta.
+    const [, secondInit] = glooFetch.mock.calls[1] as [string, { body: string }];
+    const secondBody = JSON.parse(secondInit.body);
+    const outputItem = (secondBody.input as Array<{ type: string; output?: string }>).find(
+      (item) => item.type === 'function_call_output',
+    );
+    expect(outputItem?.output).toContain('"version_fallback"');
+    expect(outputItem?.output).toContain('"served_version_id":147');
+
+    // And legible to ops (#193): the substitution is logged, not silent.
+    expect(logger.info).toHaveBeenCalledWith(
+      'LICENSE_UNAVAILABLE — substituted a same-language fallback version',
+      expect.objectContaining({ language: 'es', requestedVersionId: 3365, servedVersionId: 147 }),
+    );
+  });
+
+  it('an EXHAUSTED chain degrades to the English fixture — never a cross-language verse (DEC-K12)', async () => {
+    // pt: BLT 3254 is the only licensed pt option, so its chain is empty by
+    // catalog construction. When it 403s there is nothing in-language to try;
+    // the model gets the failure envelope, cannot cite a fetched verse, and
+    // the generation lands on the (English, isFixtureFallback-flagged)
+    // fixture. What must NOT happen: a fetch for any en/es/... versionId.
+    const yvFetch = multiVersionYouVersionFetch({ 3254: { status: 403 } });
+    const failedJson = validDevotionalJson({
+      verses: [
+        {
+          usfm: 'MAT.11.28-30',
+          versionId: 3254,
+          reference: 'Matthew 11:28-30',
+          fetchedText: 'texto inventado', // never fetched — anti-hallucination rejects it
+          attribution: 'BLT',
+        },
+      ],
+    });
+    const glooFetch = vi
+      .fn()
+      .mockResolvedValueOnce(
+        glooJsonRes({
+          ...functionCallTurn('call_1'),
+          output: [
+            {
+              type: 'function_call',
+              id: 'fc_1',
+              call_id: 'call_1',
+              name: 'get_bible_verse',
+              arguments: JSON.stringify({ usfm: 'MAT.11.28-MAT.11.30', versionId: 3254 }),
+            },
+          ],
+        }),
+      )
+      .mockResolvedValueOnce(glooJsonRes(messageTurn(failedJson)))
+      // Repair round-trip returns the same fabrication → second failure → fixture.
+      .mockResolvedValueOnce(glooJsonRes(messageTurn(failedJson)));
+
+    const logger = spyLogger();
+    const engine = buildEngine(glooFetch as unknown as GlooFetchLike, yvFetch, logger);
+    const result = await engine.generate({
+      bands: LOW_POOR_HEAVY,
+      tradition: 'general',
+      translation: 'Bíblia Livre Para Todos',
+      preferredVersionId: 3254,
+      language: 'pt',
+    });
+
+    expect(result.source).toBe('fixture');
+    // ONLY the pt version was ever fetched — the chain never crossed languages.
+    expect(passageVersionIds(yvFetch)).toEqual([3254]);
+    expect(logger.error).toHaveBeenCalledWith(
+      'LICENSE_UNAVAILABLE — fallback chain exhausted for language, no cross-language retry (DEC-K12)',
+      expect.objectContaining({ language: 'pt', requestedVersionId: 3254 }),
+    );
+  });
+
+  it('the byte-identical anti-hallucination check holds on accented, non-ASCII fetched text (issue #315 acceptance)', async () => {
+    // The versionId-enforcement mechanism is unchanged; this verifies no
+    // ASCII/normalization assumption breaks when the fetched text carries
+    // accents and inverted punctuation (á/í/¿…?) — the strip-noise regex and
+    // exact comparison must treat them as ordinary characters.
+    const glooFetch = vi
+      .fn()
+      .mockResolvedValueOnce(glooJsonRes(functionCallTurn('call_1')))
+      .mockResolvedValueOnce(glooJsonRes(messageTurn(spanishDevotionalJson(3034))));
+
+    const engine = buildEngine(glooFetch as unknown as GlooFetchLike, youVersionFetch(SPANISH_TEXT));
+    const result = await engine.generate({
+      bands: LOW_POOR_HEAVY,
+      tradition: 'general',
+      translation: 'BSB',
+      preferredVersionId: 3034,
+      language: 'es',
+    });
+
+    expect(result.source).toBe('gloo');
+    expect(result.devotional.verses[0]?.fetchedText).toBe(SPANISH_TEXT);
   });
 });

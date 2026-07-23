@@ -51,6 +51,7 @@ const sessionService = new SessionService({
   glooSummaryService,
   glooEngagementSummaries: repositories.glooEngagementSummaries,
   prayerIntentions: repositories.prayerIntentions,
+  sessionFeedback: repositories.sessionFeedback,
 });
 
 /**

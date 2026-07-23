@@ -1,5 +1,23 @@
 import type { Queryable, VerifiedUserId } from './types.js';
 
+/**
+ * One calendar-scheduled standard-slot devotional and whether its session
+ * was ever engaged with — the row shape behind the P4 attendance read
+ * model (`services/rhythm/attendanceSignals.ts`, issue #323).
+ *
+ * This type never leaves the server process. It IS per-event history —
+ * exactly what Foundation §9 forbids on any API surface — which is why
+ * `AttendanceSignals` (the only exported shape) reduces it to aggregates
+ * before anything else sees it.
+ */
+export interface ScheduledAttendanceRow {
+  devotional_id: string;
+  /** The calendar event's gap start — when the invitation stood. */
+  scheduled_at: Date;
+  joined_at: Date | null;
+  completed_at: Date | null;
+}
+
 export interface SessionRow {
   token: string;
   devotional_id: string;
@@ -106,6 +124,82 @@ export class SessionsRepository {
       [userId, startInclusive, endExclusive],
     );
     return Number(result.rows[0]?.count ?? '0');
+  }
+
+  /**
+   * The P4 attendance denominator (issue #323): calendar-scheduled,
+   * standard-slot devotionals whose event has already ENDED, newest
+   * first, each with the strongest engagement its sessions ever showed.
+   *
+   * The three exclusions the epic demands are structural here, not
+   * post-filtered:
+   *
+   *  - `d.slot_type = 'standard'` — examen rows never enter (and examen
+   *    generation passes `skipCalendar: true` anyway, so they'd also fail
+   *    the join).
+   *  - The INNER JOIN on `calendar_events` — generate-now (#238 passes
+   *    `skipCalendar: true`, userScoped.ts) and distress sessions
+   *    (`distressSignalOverride` forces the calendar step off,
+   *    generateNowOrchestrator step 6) insert no event row, so a
+   *    devotional the user never had a standing invitation to cannot
+   *    count against them. Absence of the row IS the exclusion.
+   *  - `ce.gap_end_at <= $3` — an event still in the future (or happening
+   *    right now) is not yet an unjoined invitation; only finished
+   *    windows are judged. `>= $2` makes the trailing-window boundary
+   *    inclusive at exactly `windowStart` (day 28 counts).
+   *
+   * `max()` over a LEFT-joined `sessions`: the FK is not unique, and if
+   * ANY session for the devotional was joined/completed, the invitation
+   * was met — a join must only ever count FOR the user. LEFT (not inner)
+   * because sessions rows are purged 7 days after expiry (Privacy
+   * §retention) while this window is 28 days: an old scheduled devotional
+   * whose session aged out reads as unjoined here. That bias is accepted
+   * and bounded — the trailing `consecutiveUnjoined` run only looks at
+   * the newest rows (inside retention), and the decayed score weighs a
+   * 28-day-old event at ~0.12 — but it is why `engagedScore` is
+   * documented as a smoothed trend, not a precise attendance ratio.
+   */
+  async listScheduledAttendance(
+    userId: VerifiedUserId,
+    windowStartInclusive: Date,
+    endInclusive: Date,
+  ): Promise<ScheduledAttendanceRow[]> {
+    const result = await this.db.query<ScheduledAttendanceRow>(
+      `SELECT d.id AS devotional_id,
+              ce.gap_start_at AS scheduled_at,
+              max(s.joined_at) AS joined_at,
+              max(s.completed_at) AS completed_at
+         FROM devotionals d
+         JOIN calendar_events ce
+           ON ce.devotional_id = d.id AND ce.user_id = d.user_id
+         LEFT JOIN sessions s
+           ON s.devotional_id = d.id AND s.user_id = d.user_id
+        WHERE d.user_id = $1
+          AND d.slot_type = 'standard'
+          AND ce.gap_end_at >= $2
+          AND ce.gap_end_at <= $3
+        GROUP BY d.id, ce.gap_start_at
+        ORDER BY ce.gap_start_at DESC`,
+      [userId, windowStartInclusive, endInclusive],
+    );
+    return result.rows;
+  }
+
+  /**
+   * Most recent join across ALL of this user's sessions — scheduled or
+   * not. Deliberately broader than `listScheduledAttendance`: the epic's
+   * ramp-up rule is "ANY joined session after a back-off", and a
+   * generate-now or distress session may only ever count FOR the user.
+   * Someone leaning on "make one now" during a backed-off stretch is
+   * re-engaging, and the ladder should climb for them.
+   */
+  async latestJoinedAt(userId: VerifiedUserId, sinceInclusive: Date): Promise<Date | null> {
+    const result = await this.db.query<{ last_joined_at: Date | null }>(
+      `SELECT max(joined_at) AS last_joined_at FROM sessions
+        WHERE user_id = $1 AND joined_at >= $2`,
+      [userId, sinceInclusive],
+    );
+    return result.rows[0]?.last_joined_at ?? null;
   }
 
   async listForUser(userId: VerifiedUserId): Promise<SessionRow[]> {

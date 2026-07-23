@@ -17,7 +17,7 @@
  * expiry", i.e. there is a real window where an expired token is still
  * a row in the table and must still 404 identically).
  */
-import type { GlooEngagementSummary } from '@kairos/shared-contracts';
+import type { GlooEngagementSummary, SessionFeedbackBody } from '@kairos/shared-contracts';
 import type { AudioStorage, SignedUrlOptions } from '../audio/audioStorage.js';
 import {
   asVerifiedUserId,
@@ -25,6 +25,7 @@ import {
   type DevotionalsRepository,
   type GlooEngagementSummariesRepository,
   type PrayerIntentionsRepository,
+  type SessionFeedbackRepository,
   type SessionsRepository,
 } from '../../db/repositories/index.js';
 import type { GlooSummaryService } from '../gloo/glooSummaryService.js';
@@ -33,6 +34,20 @@ import type { SessionPageData } from './renderSessionPage.js';
 export type SessionLookupResult = { kind: 'not_found' } | { kind: 'ok'; page: SessionPageData };
 
 export type SessionCompleteResult = { kind: 'not_found' } | { kind: 'ok'; completedAt: Date };
+
+/**
+ * `not_joined` (P1 #320's joined-gate): the token is real and live but the
+ * session was never opened — feedback about a devotional nobody saw is
+ * noise the policy engine must not ingest. Distinct from `not_found` so
+ * the route can answer 409 (see routes/session.ts for why that is not an
+ * enumeration leak) instead of lying with the "gone" page.
+ */
+export type SessionFeedbackResult = { kind: 'not_found' } | { kind: 'not_joined' } | { kind: 'ok' };
+
+/** What the post-Amen confirmation page needs (P2 #321): whose form to render, and whether to render it at all. */
+export type SessionCompletionViewResult =
+  | { kind: 'not_found' }
+  | { kind: 'ok'; token: string; feedbackSubmitted: boolean };
 
 export interface SessionServiceLogger {
   error(msg: string, meta?: Record<string, unknown>): void;
@@ -66,6 +81,15 @@ export interface SessionServiceDeps {
    * if one was submitted.
    */
   prayerIntentions?: PrayerIntentionsRepository;
+  /**
+   * Session feedback (EPIC P #312, stories #320/#321) — optional like the
+   * other feature deps so existing callers/tests don't need to construct
+   * it. When missing, `recordFeedback` accepts-and-drops (same posture as
+   * `prayerIntentions`: the public flow must never error because an
+   * optional feature wasn't wired) and the completion page simply always
+   * shows the form.
+   */
+  sessionFeedback?: SessionFeedbackRepository;
 }
 
 export class SessionService {
@@ -79,6 +103,7 @@ export class SessionService {
   private readonly glooSummaryService: GlooSummaryService | undefined;
   private readonly glooEngagementSummaries: GlooEngagementSummariesRepository | undefined;
   private readonly prayerIntentions: PrayerIntentionsRepository | undefined;
+  private readonly sessionFeedback: SessionFeedbackRepository | undefined;
 
   constructor(deps: SessionServiceDeps) {
     this.sessions = deps.sessions;
@@ -91,6 +116,7 @@ export class SessionService {
     this.glooSummaryService = deps.glooSummaryService;
     this.glooEngagementSummaries = deps.glooEngagementSummaries;
     this.prayerIntentions = deps.prayerIntentions;
+    this.sessionFeedback = deps.sessionFeedback;
   }
 
   /**
@@ -237,6 +263,79 @@ export class SessionService {
     }
 
     return { kind: 'ok', completedAt };
+  }
+
+  /**
+   * Records end-of-session feedback (P1 #320). Gates, in order:
+   *  - unknown/expired token → `not_found` (identical to every other
+   *    session route — enumeration safety, docs/04 §5.4);
+   *  - never-joined session → `not_joined`. Joined, NOT completed, is the
+   *    bar (#320: "someone can give feedback without tapping Amen") —
+   *    `joined_at` is set on first page open, so anyone who actually saw
+   *    the devotional passes.
+   *
+   * Upsert semantics (one row per session, per-column COALESCE) live in
+   * SessionFeedbackRepository.upsert. Unlike the prayer-intention write
+   * this is AWAITED, not fire-and-forget: the caller 303-redirects the
+   * browser to the completion page, which immediately re-reads this row
+   * to decide form-vs-thanked — a race there would re-show the form
+   * right after the user sent feedback, exactly the double-ask #321's
+   * "never nag twice" rule forbids.
+   */
+  async recordFeedback(token: string, input: SessionFeedbackBody): Promise<SessionFeedbackResult> {
+    const session = await this.sessions.findByToken(token);
+    if (!session) {
+      return { kind: 'not_found' };
+    }
+    if (session.expires_at.getTime() <= this.now().getTime()) {
+      return { kind: 'not_found' };
+    }
+    if (!session.joined_at) {
+      return { kind: 'not_joined' };
+    }
+
+    if (this.sessionFeedback) {
+      const ownerId = asVerifiedUserId(session.user_id);
+      await this.sessionFeedback.upsert(ownerId, {
+        sessionToken: session.token,
+        devotionalId: session.devotional_id,
+        contentHelpful: input.contentHelpful,
+        topicMore: input.topicMore,
+        lengthFeel: input.lengthFeel,
+        timeFeel: input.timeFeel,
+        note: input.note,
+      });
+    }
+
+    return { kind: 'ok' };
+  }
+
+  /**
+   * Data for the post-Amen confirmation page (P2 #321): whether feedback
+   * already exists decides form vs thanked state (grace: once submitted,
+   * never re-asked). Deliberately lighter than `getSessionView` — no
+   * devotional/audio load and no `markJoined` (arriving here means the
+   * session page itself was already opened, or the caller skipped it via
+   * the JSON API, in which case a synthetic "join" would be a false
+   * attendance signal for the policy engine, #323).
+   */
+  async getCompletionView(token: string): Promise<SessionCompletionViewResult> {
+    const session = await this.sessions.findByToken(token);
+    if (!session) {
+      return { kind: 'not_found' };
+    }
+    if (session.expires_at.getTime() <= this.now().getTime()) {
+      return { kind: 'not_found' };
+    }
+
+    let feedbackSubmitted = false;
+    if (this.sessionFeedback) {
+      const ownerId = asVerifiedUserId(session.user_id);
+      feedbackSubmitted =
+        (await this.sessionFeedback.findBySessionToken(ownerId, session.token)) !== null;
+    }
+
+    return { kind: 'ok', token: session.token, feedbackSubmitted };
   }
 
   private async sendGlooSummary(

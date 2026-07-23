@@ -1196,3 +1196,154 @@ describe('GenerateNowOrchestrator', () => {
     );
   });
 });
+
+/**
+ * Content-language resolution (Epic O #311, story O3 #315).
+ *
+ * `loadPreferences` is the single place `users.language` + `users.translation_id`
+ * become the engine's `language`/`preferredVersionId`/`translation` triple, so
+ * these tests pin its three rules: a stored in-catalog translation is honored;
+ * a stored translation OUTSIDE the stored language's catalog snaps to the
+ * language default (never a mixed-language devotional, DEC-K12); and the
+ * en/no-row default is byte-compatible with pre-Epic-O behavior. Plus the
+ * fixture-mismatch flag: a non-en user served the (English-only) fixture
+ * corpus gets an explicit log marker, not an inferable absence.
+ */
+describe('GenerateNowOrchestrator — content language resolution (O3 #315)', () => {
+  it("honors a stored translation that belongs to the user's language (es + PDDPT 3365)", async () => {
+    const user = await makeUser('lang-es-default', { translationId: 3365 });
+    await repos.users.updateProfile(asVerifiedUserId(user.id), { language: 'es' });
+    const engine = fakeEngine();
+    const orchestrator = buildOrchestrator({ engine });
+
+    await orchestrator.generateNow({ userId: user.id, date: '2026-07-02' });
+
+    expect(engine.generate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        language: 'es',
+        preferredVersionId: 3365,
+        translation: 'Palabra de Dios para ti',
+      }),
+    );
+  });
+
+  it('honors a stored in-catalog ALTERNATE, not just the language default (es + RVES 147)', async () => {
+    const user = await makeUser('lang-es-alternate', { translationId: 147 });
+    await repos.users.updateProfile(asVerifiedUserId(user.id), { language: 'es' });
+    const engine = fakeEngine();
+    const orchestrator = buildOrchestrator({ engine });
+
+    await orchestrator.generateNow({ userId: user.id, date: '2026-07-02' });
+
+    expect(engine.generate).toHaveBeenCalledWith(
+      expect.objectContaining({ language: 'es', preferredVersionId: 147, translation: 'Reina-Valera Antigua' }),
+    );
+  });
+
+  it('snaps an out-of-language stored translation to the language default, and logs the substitution (#193)', async () => {
+    // A user who switched to 'es' while a stale en versionId lingered in
+    // translation_id: honoring 3034 would generate Spanish prose around an
+    // English Bible — the mixed-language outcome DEC-K12 forbids.
+    const user = await makeUser('lang-es-stale-en', { translationId: 3034 });
+    await repos.users.updateProfile(asVerifiedUserId(user.id), { language: 'es' });
+    const engine = fakeEngine();
+    const logger = { error: vi.fn(), info: vi.fn() };
+    const orchestrator = buildOrchestrator({ engine, logger });
+
+    await orchestrator.generateNow({ userId: user.id, date: '2026-07-02' });
+
+    expect(engine.generate).toHaveBeenCalledWith(
+      expect.objectContaining({ language: 'es', preferredVersionId: 3365 }),
+    );
+    expect(logger.info).toHaveBeenCalledWith(
+      'Stored translation_id is not in the stored language catalog — using the language default',
+      expect.objectContaining({ language: 'es', storedTranslationId: 3034, fallbackVersionId: 3365 }),
+    );
+  });
+
+  it("the default user is unchanged: language 'en', BSB 3034, no substitution log", async () => {
+    const user = await makeUser('lang-default-en');
+    const engine = fakeEngine();
+    const logger = { error: vi.fn(), info: vi.fn() };
+    const orchestrator = buildOrchestrator({ engine, logger });
+
+    await orchestrator.generateNow({ userId: user.id, date: '2026-07-02' });
+
+    expect(engine.generate).toHaveBeenCalledWith(
+      expect.objectContaining({ language: 'en', preferredVersionId: 3034, translation: 'BSB' }),
+    );
+    expect(logger.info).not.toHaveBeenCalledWith(
+      'Stored translation_id is not in the stored language catalog — using the language default',
+      expect.anything(),
+    );
+  });
+
+  it("preferencesOverride without language defaults to 'en' (escape hatch keeps today's behavior)", async () => {
+    const user = await makeUser('lang-override-default');
+    const engine = fakeEngine();
+    const orchestrator = buildOrchestrator({ engine });
+
+    await orchestrator.generateNow({
+      userId: user.id,
+      date: '2026-07-02',
+      preferencesOverride: { tradition: 'general', translation: 'BSB', preferredVersionId: 3034 },
+    });
+
+    expect(engine.generate).toHaveBeenCalledWith(expect.objectContaining({ language: 'en' }));
+  });
+
+  it('preferencesOverride can opt into a language explicitly', async () => {
+    const user = await makeUser('lang-override-es');
+    const engine = fakeEngine();
+    const orchestrator = buildOrchestrator({ engine });
+
+    await orchestrator.generateNow({
+      userId: user.id,
+      date: '2026-07-02',
+      preferencesOverride: {
+        tradition: 'general',
+        translation: 'Palabra de Dios para ti',
+        preferredVersionId: 3365,
+        language: 'es',
+      },
+    });
+
+    expect(engine.generate).toHaveBeenCalledWith(
+      expect.objectContaining({ language: 'es', preferredVersionId: 3365 }),
+    );
+  });
+
+  it('flags the language mismatch when a non-English user is served the English fixture (epic #311 §3)', async () => {
+    const user = await makeUser('lang-fixture-mismatch', { translationId: 3365 });
+    await repos.users.updateProfile(asVerifiedUserId(user.id), { language: 'es' });
+    const engine = fakeEngine({ devotional: SAMPLE_DEVOTIONAL, source: 'fixture' });
+    const logger = { error: vi.fn(), info: vi.fn() };
+    const orchestrator = buildOrchestrator({ engine, logger });
+
+    const result = await orchestrator.generateNow({ userId: user.id, date: '2026-07-02' });
+
+    expect(result.source).toBe('fixture');
+    expect(logger.info).toHaveBeenCalledWith(
+      expect.stringContaining('Fixture fallback served in English to a non-English user'),
+      expect.objectContaining({ language: 'es', fixtureLanguageMismatch: true }),
+    );
+    // The row still carries the ordinary fixture flag — the mismatch log is
+    // additive, not a replacement surface.
+    const devotionalRow = await repos.devotionals.getById(asVerifiedUserId(user.id), result.devotionalId);
+    expect(devotionalRow!.is_fixture_fallback).toBe(true);
+  });
+
+  it('does NOT emit the mismatch flag for an English user on the fixture path', async () => {
+    const user = await makeUser('lang-fixture-en');
+    const engine = fakeEngine({ devotional: SAMPLE_DEVOTIONAL, source: 'fixture' });
+    const logger = { error: vi.fn(), info: vi.fn() };
+    const orchestrator = buildOrchestrator({ engine, logger });
+
+    await orchestrator.generateNow({ userId: user.id, date: '2026-07-02' });
+
+    expect(logger.info).not.toHaveBeenCalledWith(
+      expect.stringContaining('Fixture fallback served in English to a non-English user'),
+      expect.anything(),
+    );
+  });
+});
