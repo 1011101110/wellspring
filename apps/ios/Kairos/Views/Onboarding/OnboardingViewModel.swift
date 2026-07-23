@@ -94,6 +94,13 @@ public final class OnboardingViewModel: ObservableObject {
         await performSignIn { try await self.authService.signInWithApple() }
     }
 
+    /// Sign in with Google — the web app's MVP provider (docs/01_PRD.md F1).
+    /// Shares `performSignIn`'s exact loading/success/error handling with the
+    /// Apple path; only the invoked `AuthService` method differs.
+    public func signInWithGoogle() async {
+        await performSignIn { try await self.authService.signInWithGoogle() }
+    }
+
     public func signInWithEmail(email: String, password: String) async {
         await performSignIn { try await self.authService.signInWithEmail(email: email, password: password) }
     }
