@@ -89,6 +89,14 @@ function fakeEngine(
   return { generate: vi.fn().mockResolvedValue(result) } as unknown as DevotionalEngine;
 }
 
+/** Manifest rows the fake TTS "measured" — Q1 (#331): the orchestrator stores them next to the MP3. */
+const FAKE_MANIFEST = [
+  { section: 'greeting' as const, startSec: 0, endSec: 1.5, text: 'A moment of Rest for the weary.' },
+  { section: 'scripture' as const, startSec: 1.5, endSec: 6, text: 'From Matthew 11:28. Come to me.' },
+  { section: 'reflection' as const, startSec: 6, endSec: 12, text: 'A short devotional body about rest.' },
+  { section: 'prayer' as const, startSec: 12, endSec: 15, text: 'Lord, grant me rest.' },
+];
+
 function fakeTts(shouldFail = false): TtsService {
   return {
     synthesize: shouldFail
@@ -98,6 +106,7 @@ function fakeTts(shouldFail = false): TtsService {
           segmentCount: 1,
           charCount: 42,
           voiceName: 'en-US-Chirp3-HD-Achernar',
+          manifest: FAKE_MANIFEST,
         }),
   } as unknown as TtsService;
 }
@@ -124,11 +133,14 @@ function buildOrchestrator(opts: {
   logger?: { error: ReturnType<typeof vi.fn>; info: ReturnType<typeof vi.fn> };
   deliveryProvider?: DeliveryProvider;
   meetBotDispatch?: ConstructorParameters<typeof GenerateNowOrchestrator>[0]['meetBotDispatch'];
+  audioStorage?: LocalFileAudioStorage;
 } = {}) {
-  const audioStorage = new LocalFileAudioStorage({
-    rootDir: audioRootDir,
-    signingSecret: 'a'.repeat(32),
-  });
+  const audioStorage =
+    opts.audioStorage ??
+    new LocalFileAudioStorage({
+      rootDir: audioRootDir,
+      signingSecret: 'a'.repeat(32),
+    });
   return new GenerateNowOrchestrator({
     users: repos.users,
     preferences: repos.preferences,
@@ -193,6 +205,42 @@ describe('GenerateNowOrchestrator', () => {
         preferredVersionId: 3034,
         translation: 'BSB',
       }),
+    );
+  });
+
+  it('stores the timing manifest next to the MP3 on success (Q1 #331)', async () => {
+    const user = await makeUser('manifest');
+    const audioStorage = new LocalFileAudioStorage({
+      rootDir: audioRootDir,
+      signingSecret: 'a'.repeat(32),
+    });
+    const orchestrator = buildOrchestrator({ audioStorage });
+
+    const result = await orchestrator.generateNow({ userId: user.id, date: '2026-07-02' });
+
+    expect(result.audio.status).toBe('uploaded');
+    const stored = await audioStorage.getManifest(result.devotionalId);
+    expect(stored).toEqual(FAKE_MANIFEST);
+  });
+
+  it('a manifest upload failure does NOT fail generation or flip audio to unavailable (Q1 #331)', async () => {
+    const user = await makeUser('manifest-fail');
+    const audioStorage = new LocalFileAudioStorage({
+      rootDir: audioRootDir,
+      signingSecret: 'a'.repeat(32),
+    });
+    vi.spyOn(audioStorage, 'uploadManifest').mockRejectedValue(new Error('bucket sneezed'));
+    const logger = { error: vi.fn(), info: vi.fn() };
+    const orchestrator = buildOrchestrator({ audioStorage, logger });
+
+    const result = await orchestrator.generateNow({ userId: user.id, date: '2026-07-02' });
+
+    // Generation succeeded, audio stayed uploaded, and the failure is legible.
+    expect(result.audio.status).toBe('uploaded');
+    expect(await audioStorage.getManifest(result.devotionalId)).toBeNull();
+    expect(logger.error).toHaveBeenCalledWith(
+      expect.stringContaining('manifest'),
+      expect.objectContaining({ devotionalId: result.devotionalId }),
     );
   });
 

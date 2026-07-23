@@ -289,14 +289,30 @@ describe('buildDevotionalSsml — lectio (docs/14 §5.4 / issue #92)', () => {
   });
 });
 
-describe('buildDevotionalSsmlSegments — lectio (issue #92)', () => {
-  it('single-segment path (fits under maxBytes) matches buildDevotionalSsml with lectio', () => {
-    const segments = buildDevotionalSsmlSegments(baseDevotional, 10_000, 'off', true);
-    expect(segments).toHaveLength(1);
-    expect(segments[0]).toBe(buildDevotionalSsml(baseDevotional, 'off', true));
+describe('buildDevotionalSsmlSegments — lectio (issue #92 / Q1 #331)', () => {
+  it('labels lectio sections in script order: greeting, scripture (both readings), stillness, prayer, stillness, scripture recap', () => {
+    const segments = buildDevotionalSsmlSegments(baseDevotional, 10_000, 'brief', true);
+    expect(segments.map((s) => s.section)).toEqual([
+      'greeting',
+      'scripture',
+      'stillness',
+      'prayer',
+      'stillness',
+      'scripture',
+    ]);
   });
 
-  it('splits into per-section segments when forced under a tiny maxBytes, still carrying both prosody readings, the question, stillness, and the recap', () => {
+  it('labels the spoken lectio question as reflection — it plays the role the body plays in the standard format', () => {
+    const withQuestion: DevotionalOutput = {
+      ...baseDevotional,
+      journalingPrompt: 'Where did you notice this today?',
+    };
+    const segments = buildDevotionalSsmlSegments(withQuestion, 4500, 'off', true);
+    const question = segments.find((s) => s.text.includes('Where did you notice this today?'));
+    expect(question?.section).toBe('reflection');
+  });
+
+  it('carries both prosody readings, the question, stillness, and the recap across segments, and never speaks the body', () => {
     const withQuestion: DevotionalOutput = {
       ...baseDevotional,
       journalingPrompt: 'Where did you notice this today?',
@@ -304,15 +320,23 @@ describe('buildDevotionalSsmlSegments — lectio (issue #92)', () => {
     const segments = buildDevotionalSsmlSegments(withQuestion, 300, 'brief', true);
     expect(segments.length).toBeGreaterThan(1);
     for (const seg of segments) {
-      expect(seg.startsWith('<speak>')).toBe(true);
-      expect(seg.endsWith('</speak>')).toBe(true);
+      expect(seg.ssml.startsWith('<speak>')).toBe(true);
+      expect(seg.ssml.endsWith('</speak>')).toBe(true);
     }
-    expect(segments.some((s) => s.includes('<prosody rate="0.95">'))).toBe(true);
-    expect(segments.some((s) => s.includes('<prosody rate="0.85">'))).toBe(true);
-    expect(segments.some((s) => s.includes('Where did you notice this today?'))).toBe(true);
-    expect(segments.some((s) => s.includes("Let's sit with this"))).toBe(true);
-    expect(segments.some((s) => s.includes('That was Philippians'))).toBe(true);
-    expect(segments.some((s) => s.includes('Today has been steady'))).toBe(false);
+    expect(segments.some((s) => s.ssml.includes('<prosody rate="0.95">'))).toBe(true);
+    expect(segments.some((s) => s.ssml.includes('<prosody rate="0.85">'))).toBe(true);
+    expect(segments.some((s) => s.ssml.includes('Where did you notice this today?'))).toBe(true);
+    expect(segments.some((s) => s.ssml.includes("Let's sit with this"))).toBe(true);
+    expect(segments.some((s) => s.ssml.includes('That was Philippians'))).toBe(true);
+    expect(segments.some((s) => s.ssml.includes('Today has been steady'))).toBe(false);
+  });
+
+  it("lectio's scripture caption text speaks the verse twice around the once-more cue, with no prosody markup", () => {
+    const segments = buildDevotionalSsmlSegments(baseDevotional, 10_000, 'off', true);
+    const scripture = segments.find((s) => s.section === 'scripture')!;
+    expect(scripture.text).toBe(
+      'From Philippians 4:6-7. Do not be anxious about anything. Once more, slower. Do not be anxious about anything. Berean Standard Bible (BSB).',
+    );
   });
 });
 
@@ -329,54 +353,106 @@ describe('buildDevotionalSsmlSegments — §3.4 inter-section break preservation
   it('gives every true section-boundary segment a trailing break inside its own <speak> (greeting, verse, prayer)', () => {
     const segments = buildDevotionalSsmlSegments(extended, 500);
     expect(segments.length).toBeGreaterThan(1);
-    const greetingSeg = segments.find((s) => s.includes('A moment of'))!;
-    const verseSeg = segments.find((s) => s.includes('Do not be anxious'))!;
-    const prayerSeg = segments.find((s) => s.includes('Father, thank You'))!;
+    const greetingSeg = segments.find((s) => s.ssml.includes('A moment of'))!;
+    const verseSeg = segments.find((s) => s.ssml.includes('Do not be anxious'))!;
+    const prayerSeg = segments.find((s) => s.ssml.includes('Father, thank You'))!;
     [greetingSeg, verseSeg, prayerSeg].forEach((seg) => {
-      expect(seg).toMatch(/<break time="\d+ms"\/><\/speak>$/);
+      expect(seg.ssml).toMatch(/<break time="\d+ms"\/><\/speak>$/);
     });
     // final segment (reference recap) has nothing after it, so no trailing break needed
-    expect(segments[segments.length - 1]).not.toMatch(/<break/);
+    expect(segments[segments.length - 1]!.ssml).not.toMatch(/<break/);
   });
 
   it('does not insert a break between pure byte-limit body sub-chunks', () => {
     const segments = buildDevotionalSsmlSegments(extended, 500);
-    const bodySegmentIdx = segments.findIndex((s) => s.includes('Sentence number 0 '));
+    const bodySegmentIdx = segments.findIndex((s) => s.ssml.includes('Sentence number 0 '));
     const nextBodySegmentIdx = segments.findIndex(
       (s, i) =>
-        i > bodySegmentIdx && s.includes('Sentence number') && !s.includes('Sentence number 0 '),
+        i > bodySegmentIdx &&
+        s.ssml.includes('Sentence number') &&
+        !s.ssml.includes('Sentence number 0 '),
     );
     if (nextBodySegmentIdx > -1 && nextBodySegmentIdx === bodySegmentIdx + 1) {
-      expect(segments[bodySegmentIdx]).not.toMatch(/<break/);
+      expect(segments[bodySegmentIdx]!.ssml).not.toMatch(/<break/);
     }
   });
 
   it('includes a stillness segment (with its own trailing break) after the verse and after the prayer when enabled', () => {
     const segments = buildDevotionalSsmlSegments(extended, 500, 'brief');
-    const stillnessSegments = segments.filter((s) => s.includes("Let's sit with this"));
+    const stillnessSegments = segments.filter((s) => s.ssml.includes("Let's sit with this"));
     expect(stillnessSegments).toHaveLength(2);
     stillnessSegments.forEach((seg) => {
-      expect(sumBreakMs(seg)).toBeGreaterThanOrEqual(STILLNESS_MS.brief);
-      expect(seg.endsWith('</speak>')).toBe(true);
-      expect(seg).toMatch(/<break time="\d+ms"\/><\/speak>$/);
+      expect(seg.section).toBe('stillness');
+      expect(sumBreakMs(seg.ssml)).toBeGreaterThanOrEqual(STILLNESS_MS.brief);
+      expect(seg.ssml.endsWith('</speak>')).toBe(true);
+      expect(seg.ssml).toMatch(/<break time="\d+ms"\/><\/speak>$/);
     });
-  });
-
-  it('single-segment path (fits under maxBytes) also carries stillness through', () => {
-    const segments = buildDevotionalSsmlSegments(baseDevotional, 10_000, 'brief');
-    expect(segments).toHaveLength(1);
-    expect(segments[0]).toBe(buildDevotionalSsml(baseDevotional, 'brief'));
   });
 });
 
-describe('buildDevotionalSsmlSegments', () => {
-  it('returns a single segment when the full SSML fits under maxBytes', () => {
+describe('buildDevotionalSsmlSegments — labeled sections (Q1 #331)', () => {
+  it('always returns per-section labeled segments in script order, even for a script that fits one request', () => {
+    // The pre-#331 fits-under-maxBytes fast path (one <speak> for the whole
+    // script) is deliberately gone: the Stage timing manifest needs a
+    // per-section MP3 per synthesis call.
     const segments = buildDevotionalSsmlSegments(baseDevotional, 10_000);
-    expect(segments).toHaveLength(1);
-    expect(segments[0]).toBe(buildDevotionalSsml(baseDevotional));
+    expect(segments.map((s) => s.section)).toEqual([
+      'greeting',
+      'scripture',
+      'reflection',
+      'prayer',
+      'scripture', // closing reference recap — timingManifest.ts
+    ]);
   });
 
-  it('splits into multiple <speak> segments when the script exceeds maxBytes', () => {
+  it('the concatenated segment SSML carries every spoken line of the single-document build', () => {
+    const joined = buildDevotionalSsmlSegments(baseDevotional, 10_000)
+      .map((s) => s.ssml)
+      .join('');
+    const single = buildDevotionalSsml(baseDevotional);
+    // Strip tags: the words spoken must be identical even though the
+    // <speak> boundaries differ.
+    const words = (ssml: string) => ssml.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+    expect(words(joined)).toBe(words(single));
+  });
+
+  it('carries the plain (pre-escape) spoken text per segment, with escapeSsml applied to ssml and NOT to text', () => {
+    const withAmpersand: DevotionalOutput = {
+      ...baseDevotional,
+      devotionalBody: 'Faith & hope go together.',
+    };
+    const segments = buildDevotionalSsmlSegments(withAmpersand, 10_000);
+    const reflection = segments.find((s) => s.section === 'reflection')!;
+    expect(reflection.ssml).toContain('Faith &amp; hope go together.');
+    expect(reflection.text).toBe('Faith & hope go together.');
+    for (const seg of segments) {
+      expect(seg.text).not.toContain('&amp;');
+      expect(seg.text).not.toContain('<');
+    }
+  });
+
+  it('scripture text speaks the lead-in, verse, and short attribution; greeting and recap texts match the spoken phrases', () => {
+    const segments = buildDevotionalSsmlSegments(baseDevotional, 10_000);
+    expect(segments[0]!.text).toBe('A moment of gratitude.');
+    expect(segments[1]!.text).toBe(
+      'From Philippians 4:6-7. Do not be anxious about anything. Berean Standard Bible (BSB).',
+    );
+    expect(segments[segments.length - 1]!.text).toBe(
+      "That was Philippians 4:6-7 — it'll be here when you want to come back.",
+    );
+  });
+
+  it('stillness segments carry empty caption text', () => {
+    const segments = buildDevotionalSsmlSegments(baseDevotional, 10_000, 'brief');
+    const stillness = segments.filter((s) => s.section === 'stillness');
+    expect(stillness).toHaveLength(2);
+    for (const seg of stillness) {
+      expect(seg.text).toBe('');
+      expect(seg.ssml).toContain("Let's sit with this");
+    }
+  });
+
+  it('labels every byte-limit body sub-chunk reflection, in order', () => {
     const longBody = Array.from(
       { length: 200 },
       (_, i) => `Sentence number ${i} about steady grace today.`,
@@ -387,14 +463,20 @@ describe('buildDevotionalSsmlSegments', () => {
       devotionalBody: longBody,
     };
     const segments = buildDevotionalSsmlSegments(extended, 500);
-    expect(segments.length).toBeGreaterThan(1);
+    const reflections = segments.filter((s) => s.section === 'reflection');
+    expect(reflections.length).toBeGreaterThan(1);
+    // Adjacent in the segment list (the manifest writer coalesces them).
+    const first = segments.findIndex((s) => s.section === 'reflection');
+    reflections.forEach((seg, i) => {
+      expect(segments[first + i]).toBe(seg);
+    });
+    expect(reflections.map((s) => s.text).join(' ')).toBe(longBody);
     for (const seg of segments) {
-      expect(seg.startsWith('<speak>')).toBe(true);
-      expect(seg.endsWith('</speak>')).toBe(true);
+      expect(seg.ssml.startsWith('<speak>')).toBe(true);
+      expect(seg.ssml.endsWith('</speak>')).toBe(true);
     }
-    // concatenated segments still contain the verse and prayer content
-    expect(segments.some((s) => s.includes('Do not be anxious'))).toBe(true);
-    expect(segments.some((s) => s.includes('Father, thank You'))).toBe(true);
+    expect(segments.some((s) => s.ssml.includes('Do not be anxious'))).toBe(true);
+    expect(segments.some((s) => s.ssml.includes('Father, thank You'))).toBe(true);
   });
 
   it('splits a single long sentence-free body chunk on word boundaries so no segment exceeds maxBytes (docs/14 §3.8 / issue #90)', () => {
@@ -407,8 +489,8 @@ describe('buildDevotionalSsmlSegments', () => {
     const maxBytes = 800;
     const segments = buildDevotionalSsmlSegments(extended, maxBytes);
     expect(segments.length).toBeGreaterThan(1);
-    for (const seg of segments) {
-      expect(Buffer.byteLength(seg, 'utf8')).toBeLessThanOrEqual(maxBytes);
+    for (const seg of segments.filter((s) => s.section === 'reflection')) {
+      expect(Buffer.byteLength(seg.ssml, 'utf8')).toBeLessThanOrEqual(maxBytes);
     }
   });
 
@@ -423,8 +505,8 @@ describe('buildDevotionalSsmlSegments', () => {
     };
     const maxBytes = 300;
     const segments = buildDevotionalSsmlSegments(extended, maxBytes);
-    for (const seg of segments) {
-      expect(Buffer.byteLength(seg, 'utf8')).toBeLessThanOrEqual(maxBytes);
+    for (const seg of segments.filter((s) => s.section === 'reflection')) {
+      expect(Buffer.byteLength(seg.ssml, 'utf8')).toBeLessThanOrEqual(maxBytes);
     }
   });
 });
@@ -535,7 +617,9 @@ describe('per-language spoken phrases (story O4 #316)', () => {
       format: 'extended',
       devotionalBody: longBody,
     };
-    const joined = buildDevotionalSsmlSegments(extended, 800, 'brief', false, 'es').join('');
+    const joined = buildDevotionalSsmlSegments(extended, 800, 'brief', false, 'es')
+      .map((s) => s.ssml)
+      .join('');
     for (const phrase of ENGLISH_PHRASES) {
       expect(joined).not.toContain(phrase);
     }

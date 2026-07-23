@@ -34,8 +34,10 @@ import {
   type DevotionalOutput,
   type LanguageTag,
   type Stillness,
+  type TimingManifestEntry,
 } from '@kairos/shared-contracts';
-import { buildDevotionalSsmlSegments } from './ssmlBuilder.js';
+import { buildDevotionalSsmlSegments, type LabeledSsmlSegment } from './ssmlBuilder.js';
+import { decodeMp3ToPcm } from '../livekit/decodeMp3ToPcm.js';
 
 /** Canonical error code for TTS failure — Foundation §4.5 / §6 error-code list. */
 export const AUDIO_UNAVAILABLE = 'AUDIO_UNAVAILABLE' as const;
@@ -54,11 +56,19 @@ export class TtsServiceError extends Error {
 export interface SynthesizeResult {
   /** Concatenated MP3 bytes for the full devotional script. */
   audio: Buffer;
-  /** Number of SSML segments synthesized (1 unless the script needed splitting — API spec §6). */
+  /** Number of SSML segments synthesized (one per section since Q1 #331 — API spec §6). */
   segmentCount: number;
   /** Total SSML input characters sent to Cloud TTS across all segments — for cost-smoke logging (issue #29 acceptance). */
   charCount: number;
   voiceName: string;
+  /**
+   * Per-section timing manifest (Q1 #331): coalesced, script-ordered rows
+   * measured from each segment's own MP3→PCM decode. Empty when duration
+   * measurement failed (e.g. ffmpeg unavailable) — measurement is
+   * best-effort and must never cost the caller their audio; callers treat
+   * an empty manifest as "no manifest" and skip storing it.
+   */
+  manifest: TimingManifestEntry[];
 }
 
 /**
@@ -83,6 +93,14 @@ export interface TtsServiceOptions {
   speakingRate?: number;
   /** Max SSML input bytes per segment before splitting (API spec §6 "Long scripts"). */
   maxSegmentBytes?: number;
+  /**
+   * MP3→PCM decoder used to measure per-segment durations for the timing
+   * manifest (Q1 #331). Injectable so unit tests can map fake MP3 buffers
+   * to PCM of known length without spawning ffmpeg. Defaults to the real
+   * `decodeMp3ToPcm` (services/livekit — the exact math the epic verified:
+   * bytes / (sampleRate × 2) for mono s16le).
+   */
+  decodeMp3?: (mp3: Buffer, options?: { sampleRate?: number }) => Promise<Buffer>;
 }
 
 const DEFAULT_VOICE = 'en-US-Chirp3-HD-Achernar';
@@ -90,11 +108,22 @@ const DEFAULT_LANGUAGE_CODE = 'en-US';
 const DEFAULT_SPEAKING_RATE = 0.95;
 const DEFAULT_MAX_SEGMENT_BYTES = 4500;
 
+/**
+ * Sample rate for manifest duration measurement — 16000 keeps the decode
+ * cheap (story #331: "any of Attendee's supported rates is fine"); the
+ * measured duration is rate-independent since it divides back out.
+ */
+const MANIFEST_SAMPLE_RATE = 16_000;
+
 export class TtsService {
   private readonly voiceName: string;
   private readonly languageCode: string;
   private readonly speakingRate: number;
   private readonly maxSegmentBytes: number;
+  private readonly decodeMp3: (
+    mp3: Buffer,
+    options?: { sampleRate?: number },
+  ) => Promise<Buffer>;
   private clientPromise: Promise<TtsClientLike> | undefined;
   private readonly injectedClient: TtsClientLike | undefined;
 
@@ -104,6 +133,7 @@ export class TtsService {
     this.languageCode = options.languageCode ?? DEFAULT_LANGUAGE_CODE;
     this.speakingRate = options.speakingRate ?? DEFAULT_SPEAKING_RATE;
     this.maxSegmentBytes = options.maxSegmentBytes ?? DEFAULT_MAX_SEGMENT_BYTES;
+    this.decodeMp3 = options.decodeMp3 ?? decodeMp3ToPcm;
   }
 
   /** Lazily constructs the real `TextToSpeechClient` (ADC auth) unless a fake client was injected for tests. */
@@ -183,11 +213,11 @@ export class TtsService {
     const buffers: Buffer[] = [];
     let charCount = 0;
 
-    for (const ssml of segments) {
-      charCount += ssml.length;
+    for (const segment of segments) {
+      charCount += segment.ssml.length;
       try {
         const [response] = await client.synthesizeSpeech({
-          input: { ssml },
+          input: { ssml: segment.ssml },
           voice: { languageCode, name: effectiveVoice },
           audioConfig: { audioEncoding: 'MP3', speakingRate: this.speakingRate },
         });
@@ -207,6 +237,7 @@ export class TtsService {
       audio: Buffer.concat(buffers),
       segmentCount: segments.length,
       charCount,
+      manifest: await this.measureManifest(segments, buffers),
       // The voice actually synthesized with, not the one requested — so a
       // caller (and the orchestrator's success log) can see when a stale
       // preference was silently degraded to the default (#202). Post-#316
@@ -215,5 +246,55 @@ export class TtsService {
       // dressed up as a Spanish synthesis or vice versa.
       voiceName: effectiveVoice,
     };
+  }
+
+  /**
+   * Q1 (#331): derives the per-section timing manifest from the segment
+   * MP3 buffers, exactly where they still exist as separate buffers.
+   * Duration math per segment: decode to mono s16le PCM, then
+   * `pcmBytes / (sampleRate × 2)` (decodeMp3ToPcm.ts).
+   *
+   * Boundaries are accumulated once and rounded once (milliseconds), so
+   * each row's `startSec` is EXACTLY the previous row's `endSec` — the
+   * Stage page's section lookup has no gaps to fall into.
+   *
+   * Adjacent same-section segments (byte-limit body chunks, multiple
+   * verses) coalesce into one row spanning their combined time, with
+   * their caption texts joined — Q3's caption interpolation works over
+   * the combined text.
+   *
+   * Best-effort: any decode failure returns `[]` rather than throwing —
+   * the manifest must never cost the caller their audio (same posture as
+   * the orchestrator's non-fatal manifest upload).
+   */
+  private async measureManifest(
+    segments: LabeledSsmlSegment[],
+    buffers: Buffer[],
+  ): Promise<TimingManifestEntry[]> {
+    try {
+      const boundaries: number[] = [0];
+      let offsetSec = 0;
+      for (const buffer of buffers) {
+        const pcm = await this.decodeMp3(buffer, { sampleRate: MANIFEST_SAMPLE_RATE });
+        offsetSec += pcm.length / (MANIFEST_SAMPLE_RATE * 2);
+        boundaries.push(Math.round(offsetSec * 1000) / 1000);
+      }
+
+      const manifest: TimingManifestEntry[] = [];
+      segments.forEach((segment, i) => {
+        const startSec = boundaries[i] as number;
+        const endSec = boundaries[i + 1] as number;
+        const previous = manifest[manifest.length - 1];
+        if (previous && previous.section === segment.section) {
+          previous.endSec = endSec;
+          previous.text = [previous.text, segment.text].filter((t) => t.length > 0).join(' ');
+          return;
+        }
+        manifest.push({ section: segment.section, startSec, endSec, text: segment.text });
+      });
+      return manifest;
+    } catch {
+      return [];
+    }
   }
 }

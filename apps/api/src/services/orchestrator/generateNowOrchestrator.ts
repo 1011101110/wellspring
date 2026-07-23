@@ -335,7 +335,6 @@ export class GenerateNowOrchestrator {
     language: LanguageTag;
     translation: string;
     preferredVersionId: number;
-    language: LanguageTag;
     stillness: Stillness;
     lectio: boolean;
     liturgicalSeasonsEnabled: boolean;
@@ -380,12 +379,6 @@ export class GenerateNowOrchestrator {
       });
     }
     const translation = versionIdToLabel(preferredVersionId);
-    // `language` is a users-table column with a NOT NULL 'en' default and a
-    // write path that validates against the LanguageTag enum (#314), so no
-    // re-validation here — the `??` covers only the no-user-row case, same
-    // as tradition/translation above. Consumed by the TTS step (O4 #316):
-    // the voice locale and the spoken connective phrases follow it.
-    const language = user?.language ?? DEFAULT_LANGUAGE;
     // `stillness` is a plain `text` column (see shared-contracts'
     // PreferencesResponseDataSchema comment) — an unrecognized value
     // stored out-of-band would otherwise silently fall through to Cloud
@@ -461,7 +454,6 @@ export class GenerateNowOrchestrator {
       language,
       translation,
       preferredVersionId,
-      language,
       stillness,
       lectio,
       liturgicalSeasonsEnabled,
@@ -614,7 +606,6 @@ export class GenerateNowOrchestrator {
       language,
       translation,
       preferredVersionId,
-      language,
       stillness,
       lectio,
       liturgicalSeasonsEnabled,
@@ -649,9 +640,6 @@ export class GenerateNowOrchestrator {
           // on the deployment default.
           durationPreference: undefined as DevotionalFormat | undefined,
           voiceName: DEFAULT_VOICE_NAME,
-          // Same reasoning as the voice above: no preferences row was read,
-          // so the TTS language lands on the default ('en' — O4 #316).
-          language: DEFAULT_LANGUAGE,
           ...params.preferencesOverride,
         }
       : await this.loadPreferences(userId);
@@ -792,6 +780,26 @@ export class GenerateNowOrchestrator {
       const stored = await this.audioStorage.upload(devotionalRow.id, synthesized.audio);
       await this.devotionals.setAudioObject(verifiedUserId, devotionalRow.id, stored.objectKey);
       audio = { status: 'uploaded', objectKey: stored.objectKey };
+
+      // Stage timing manifest (Q1 #331) — written right after the MP3 it
+      // describes. Its OWN try/catch, inside the audio-success path: a
+      // manifest failure must NOT fail generation and must NOT flip the
+      // already-uploaded audio to `unavailable` — the Stage page simply
+      // degrades to no-captions (same posture as other non-fatal audio
+      // issues). An empty manifest means duration measurement itself
+      // failed in TtsService; nothing useful to store.
+      if ((synthesized.manifest?.length ?? 0) > 0) {
+        try {
+          await this.audioStorage.uploadManifest(devotionalRow.id, synthesized.manifest);
+        } catch (err) {
+          this.logger.error('Timing-manifest upload failed — continuing without captions (#331)', {
+            userId,
+            devotionalId: devotionalRow.id,
+            reason: err instanceof Error ? err.message : String(err),
+          });
+        }
+      }
+
       this.logger.info('TTS + upload succeeded', {
         userId,
         devotionalId: devotionalRow.id,

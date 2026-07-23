@@ -1,8 +1,25 @@
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { LocalFileAudioStorage, audioObjectKey } from '../../../src/services/audio/audioStorage.js';
+import type { TimingManifest } from '@kairos/shared-contracts';
+import {
+  GcsAudioStorage,
+  LocalFileAudioStorage,
+  audioObjectKey,
+  manifestObjectKey,
+  type GcsClientLike,
+  type GcsFileLike,
+} from '../../../src/services/audio/audioStorage.js';
+
+/** Fixture manifest reused by the Local and GCS manifest suites below (Q1 #331). */
+const SAMPLE_MANIFEST: TimingManifest = [
+  { section: 'greeting', startSec: 0, endSec: 1.5, text: 'A moment of peace.' },
+  { section: 'scripture', startSec: 1.5, endSec: 5.5, text: 'From Philippians 4:6-7. …' },
+  { section: 'stillness', startSec: 5.5, endSec: 21, text: '' },
+  { section: 'reflection', startSec: 21, endSec: 30, text: 'A steady word.' },
+  { section: 'prayer', startSec: 30, endSec: 34, text: 'Father, thank You. Amen.' },
+];
 
 describe('LocalFileAudioStorage', () => {
   let rootDir: string;
@@ -185,5 +202,120 @@ describe('LocalFileAudioStorage', () => {
       const { url: urlB } = await storage.getSignedUrl('dev-1');
       expect(urlA).not.toBe(urlB);
     });
+  });
+});
+
+/* ------------------------------------------------------------------ *
+ * Timing manifest storage — Q1 (kairos-devotional #331).
+ * ------------------------------------------------------------------ */
+
+describe('LocalFileAudioStorage — timing manifest (Q1 #331)', () => {
+  let rootDir: string;
+
+  beforeEach(async () => {
+    rootDir = await mkdtemp(path.join(tmpdir(), 'kairos-audio-manifest-'));
+  });
+
+  afterEach(async () => {
+    await rm(rootDir, { recursive: true, force: true });
+  });
+
+  const build = () => new LocalFileAudioStorage({ rootDir, signingSecret: 'a'.repeat(32) });
+
+  it('manifestObjectKey lives next to the MP3 key', () => {
+    expect(manifestObjectKey('abc-123')).toBe('devotionals/abc-123.mp3.manifest.json');
+  });
+
+  it('round-trips a manifest', async () => {
+    const storage = build();
+    const { objectKey } = await storage.uploadManifest('dev-1', SAMPLE_MANIFEST);
+    expect(objectKey).toBe(manifestObjectKey('dev-1'));
+    expect(await storage.getManifest('dev-1')).toEqual(SAMPLE_MANIFEST);
+  });
+
+  it('returns null for an absent manifest', async () => {
+    expect(await build().getManifest('never-uploaded')).toBeNull();
+  });
+
+  it('returns null (never throws) for corrupt or schema-invalid JSON', async () => {
+    const storage = build();
+    const filePath = path.join(rootDir, manifestObjectKey('dev-corrupt'));
+    await mkdir(path.dirname(filePath), { recursive: true });
+    await writeFile(filePath, 'not json at all', 'utf8');
+    expect(await storage.getManifest('dev-corrupt')).toBeNull();
+
+    await writeFile(filePath, JSON.stringify([{ section: 'nope', startSec: 0 }]), 'utf8');
+    expect(await storage.getManifest('dev-corrupt')).toBeNull();
+  });
+
+  it('delete removes the manifest along with the audio (retention lifecycle)', async () => {
+    const storage = build();
+    await storage.upload('dev-1', Buffer.from('audio'));
+    await storage.uploadManifest('dev-1', SAMPLE_MANIFEST);
+    await storage.delete('dev-1');
+    expect(await storage.exists('dev-1')).toBe(false);
+    expect(await storage.getManifest('dev-1')).toBeNull();
+    // Still idempotent with a manifest-less devotional.
+    await expect(storage.delete('dev-1')).resolves.toBeUndefined();
+  });
+});
+
+describe('GcsAudioStorage — timing manifest via the fake bucket types (Q1 #331)', () => {
+  /** In-memory GcsClientLike: one Map of objectKey → saved bytes. */
+  function fakeGcs() {
+    const objects = new Map<string, Buffer>();
+    const client: GcsClientLike = {
+      bucket: () => ({
+        file: (name: string): GcsFileLike => ({
+          save: async (data: Buffer) => {
+            objects.set(name, Buffer.from(data));
+          },
+          exists: async () => [objects.has(name)] as [boolean],
+          getSignedUrl: async () => [`https://storage.googleapis.com/test/${name}`] as [string],
+          delete: async (options?: { ignoreNotFound?: boolean }) => {
+            if (!objects.has(name) && !options?.ignoreNotFound) throw new Error('404');
+            objects.delete(name);
+          },
+          download: async () => {
+            const data = objects.get(name);
+            if (!data) throw new Error('404');
+            return [data] as [Buffer];
+          },
+        }),
+      }),
+    };
+    return { client, objects };
+  }
+
+  it('round-trips a manifest through save/download under the manifest key', async () => {
+    const { client, objects } = fakeGcs();
+    const storage = new GcsAudioStorage({ bucketName: 'b', storageClient: client });
+
+    await storage.uploadManifest('dev-9', SAMPLE_MANIFEST);
+    expect([...objects.keys()]).toEqual([manifestObjectKey('dev-9')]);
+    expect(await storage.getManifest('dev-9')).toEqual(SAMPLE_MANIFEST);
+  });
+
+  it('returns null when the manifest object does not exist', async () => {
+    const { client } = fakeGcs();
+    const storage = new GcsAudioStorage({ bucketName: 'b', storageClient: client });
+    expect(await storage.getManifest('missing')).toBeNull();
+  });
+
+  it('returns null for schema-invalid stored JSON', async () => {
+    const { client, objects } = fakeGcs();
+    objects.set(manifestObjectKey('dev-bad'), Buffer.from('[{"section":"nope"}]', 'utf8'));
+    const storage = new GcsAudioStorage({ bucketName: 'b', storageClient: client });
+    expect(await storage.getManifest('dev-bad')).toBeNull();
+  });
+
+  it('delete removes both the audio and the manifest objects', async () => {
+    const { client, objects } = fakeGcs();
+    const storage = new GcsAudioStorage({ bucketName: 'b', storageClient: client });
+    await storage.upload('dev-9', Buffer.from('mp3'));
+    await storage.uploadManifest('dev-9', SAMPLE_MANIFEST);
+    expect(objects.size).toBe(2);
+    await storage.delete('dev-9');
+    expect(objects.size).toBe(0);
   });
 });
