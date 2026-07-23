@@ -123,14 +123,17 @@ public final class AppEnvironment: ObservableObject {
     /// retains it.
     ///
     /// Resolution order:
-    /// 1. `API_BASE_URL` in the main bundle's `Info.plist` (wired via
-    ///    `project.yml`'s `INFOPLIST_KEY_API_BASE_URL` build setting) —
-    ///    the real, shippable configuration point for any build
-    ///    (Debug or Release).
-    /// 2. In `DEBUG` builds only, when that key is absent/unset (e.g. a
-    ///    fresh checkout that hasn't regenerated the Xcode project yet),
-    ///    falls back to the real staging URL directly, so local
-    ///    development/testing keeps working without extra setup.
+    /// 1. `API_BASE_URL` in the main bundle's `Info.plist` — the real,
+    ///    shippable configuration point for any build (Debug or Release).
+    ///    It is wired by Info.plist variable substitution: the source plist
+    ///    holds `API_BASE_URL = $(API_BASE_URL)` and Xcode expands the
+    ///    `API_BASE_URL` build setting (see `project.yml`) into it at build
+    ///    time. (A custom `INFOPLIST_KEY_API_BASE_URL` build setting does NOT
+    ///    work — Xcode only synthesizes a fixed allowlist of Apple-known
+    ///    INFOPLIST_KEY_* keys and drops arbitrary ones.)
+    /// 2. In `DEBUG` builds only, when that key is empty/absent (the default —
+    ///    `project.yml` ships `API_BASE_URL` empty), falls back to the staging
+    ///    URL directly, so local development/testing works without extra setup.
     /// 3. Otherwise (a Release/TestFlight-shaped build missing the
     ///    Info.plist key entirely), falls back to a non-routable `.invalid`
     ///    host — real network calls fail closed with a network error
@@ -152,10 +155,11 @@ public final class AppEnvironment: ObservableObject {
         #endif
     }()
 
-    /// Placeholder staging API host for the open-source repo. Used as
-    /// `project.yml`'s Debug-config `API_BASE_URL` value and as this file's
-    /// own `DEBUG`-only fallback above. Point it at your own deployed API
-    /// host (kept out of source so the public repo carries no real infra URL).
+    /// Placeholder staging API host for the open-source repo — the `#if DEBUG`
+    /// fallback (resolution step 2 above) used when the `API_BASE_URL`
+    /// Info.plist key is empty, which is the default (`project.yml` ships
+    /// `API_BASE_URL` empty). Point it at your own deployed API host locally
+    /// (kept out of source so the public repo carries no real infra URL).
     public static let stagingAPIBaseURL = URL(string: "https://your-api-host.example.com")!
 
     public init(
