@@ -16,6 +16,7 @@ import type { FetchLike as GlooFetchLike } from '../../src/services/gloo/glooTok
 import {
   DevotionalEngine,
   DevotionalEngineFixtureError,
+  applyAuthoritativeFetchedText,
   detectLikelyTruncation,
   findFetchedTextMismatches,
   loadFixtureDevotional,
@@ -326,31 +327,6 @@ describe('DevotionalEngine.generate — fault injection: repair round-trip', () 
     expect(glooFetch).toHaveBeenCalledTimes(3);
   });
 
-  it('fires the repair round-trip when fetchedText is paraphrased instead of exact (anti-hallucination), then succeeds', async () => {
-    const paraphrased = JSON.parse(validDevotionalJson());
-    paraphrased.verses[0].fetchedText = 'Come unto me, all ye that labour, and I will give you rest.'; // NOT the exact tool text
-
-    const glooFetch = vi
-      .fn()
-      .mockResolvedValueOnce(glooJsonRes(functionCallTurn('call_1')))
-      .mockResolvedValueOnce(glooJsonRes(messageTurn(JSON.stringify(paraphrased))))
-      .mockResolvedValueOnce(glooJsonRes(messageTurn(validDevotionalJson())));
-
-    const engine = buildEngine(glooFetch as unknown as GlooFetchLike);
-    const result = await engine.generate({
-      bands: LOW_POOR_HEAVY,
-      tradition: 'general',
-      translation: 'BSB',
-      preferredVersionId: 3034,
-    });
-
-    expect(result.source).toBe('gloo_repaired');
-    const [, repairInit] = glooFetch.mock.calls[2] as [string, { body: string }];
-    const repairBody = JSON.parse(repairInit.body);
-    const lastItem = repairBody.input[repairBody.input.length - 1];
-    expect(lastItem.content).toContain('Anti-hallucination check failed');
-  });
-
   it('fires the repair round-trip when devotionalBody was truncated mid-sentence by max_output_tokens, then succeeds', async () => {
     // Live-verified 2026-07-02: a micro-format distress-checkin generation
     // truncated devotionalBody mid-clause while still producing syntactically
@@ -377,6 +353,121 @@ describe('DevotionalEngine.generate — fault injection: repair round-trip', () 
     const repairBody = JSON.parse(repairInit.body);
     const lastItem = repairBody.input[repairBody.input.length - 1];
     expect(lastItem.content).toContain('truncated');
+  });
+});
+
+describe('DevotionalEngine.generate — fetchedText is authoritative from the tool result (issue #295)', () => {
+  it('overrides a paraphrased fetchedText with the exact tool text and succeeds on the FIRST attempt (no repair)', async () => {
+    const paraphrased = JSON.parse(validDevotionalJson());
+    paraphrased.verses[0].fetchedText = 'Come unto me, all ye that labour, and I will give you rest.'; // NOT the exact tool text
+
+    const glooFetch = vi
+      .fn()
+      .mockResolvedValueOnce(glooJsonRes(functionCallTurn('call_1')))
+      .mockResolvedValueOnce(glooJsonRes(messageTurn(JSON.stringify(paraphrased))));
+
+    const engine = buildEngine(glooFetch as unknown as GlooFetchLike);
+    const result = await engine.generate({
+      bands: LOW_POOR_HEAVY,
+      tradition: 'general',
+      translation: 'BSB',
+      preferredVersionId: 3034,
+    });
+
+    // No repair round-trip needed: the engine substitutes the real YouVersion
+    // text by construction, so validation passes on attempt one.
+    expect(result.source).toBe('gloo');
+    expect(glooFetch).toHaveBeenCalledTimes(2);
+    expect(result.devotional.verses[0]?.fetchedText).toBe(EXACT_TEXT);
+  });
+
+  it('overrides an EMPTY fetchedText with the exact tool text and succeeds on the FIRST attempt (no repair, no Zod failure)', async () => {
+    const emptyText = JSON.parse(validDevotionalJson());
+    emptyText.verses[0].fetchedText = ''; // the observed "fetchedText must not be empty" failure mode
+
+    const glooFetch = vi
+      .fn()
+      .mockResolvedValueOnce(glooJsonRes(functionCallTurn('call_1')))
+      .mockResolvedValueOnce(glooJsonRes(messageTurn(JSON.stringify(emptyText))));
+
+    const engine = buildEngine(glooFetch as unknown as GlooFetchLike);
+    const result = await engine.generate({
+      bands: LOW_POOR_HEAVY,
+      tradition: 'general',
+      translation: 'BSB',
+      preferredVersionId: 3034,
+    });
+
+    expect(result.source).toBe('gloo');
+    expect(glooFetch).toHaveBeenCalledTimes(2);
+    expect(result.devotional.verses[0]?.fetchedText).toBe(EXACT_TEXT);
+  });
+
+  it('overrides a wrong reference with the exact tool reference while keeping the correct text', async () => {
+    const wrongRef = JSON.parse(validDevotionalJson());
+    wrongRef.verses[0].reference = 'Matthew 11:1'; // NOT the reference the tool returned
+
+    const glooFetch = vi
+      .fn()
+      .mockResolvedValueOnce(glooJsonRes(functionCallTurn('call_1')))
+      .mockResolvedValueOnce(glooJsonRes(messageTurn(JSON.stringify(wrongRef))));
+
+    const engine = buildEngine(glooFetch as unknown as GlooFetchLike);
+    const result = await engine.generate({
+      bands: LOW_POOR_HEAVY,
+      tradition: 'general',
+      translation: 'BSB',
+      preferredVersionId: 3034,
+    });
+
+    expect(result.source).toBe('gloo');
+    expect(glooFetch).toHaveBeenCalledTimes(2);
+    expect(result.devotional.verses[0]?.reference).toBe('Matthew 11:28-30');
+    expect(result.devotional.verses[0]?.fetchedText).toBe(EXACT_TEXT);
+  });
+});
+
+describe('applyAuthoritativeFetchedText (issue #295)', () => {
+  it('replaces an empty fetchedText with the exact tool text for a matching usfm/versionId', () => {
+    const fetchedTexts = new Map([['JHN.3.16::3034', { text: 'For God so loved the world...', reference: 'John 3:16' }]]);
+    const parsed = {
+      verses: [{ usfm: 'JHN.3.16', versionId: 3034, reference: 'wrong', fetchedText: '', attribution: 'x' }],
+    };
+    applyAuthoritativeFetchedText(parsed, fetchedTexts);
+    expect(parsed.verses[0].fetchedText).toBe('For God so loved the world...');
+    expect(parsed.verses[0].reference).toBe('John 3:16');
+  });
+
+  it('replaces a paraphrased fetchedText with the exact tool text', () => {
+    const fetchedTexts = new Map([['JHN.3.16::3034', { text: 'For God so loved the world...', reference: 'John 3:16' }]]);
+    const parsed = {
+      verses: [{ usfm: 'JHN.3.16', versionId: 3034, reference: 'John 3:16', fetchedText: 'God loved everyone a lot', attribution: 'x' }],
+    };
+    applyAuthoritativeFetchedText(parsed, fetchedTexts);
+    expect(parsed.verses[0].fetchedText).toBe('For God so loved the world...');
+  });
+
+  it('leaves a verse untouched when its usfm/versionId was never fetched (so the anti-hallucination check can still catch it)', () => {
+    const fetchedTexts = new Map<string, { text: string; reference: string }>();
+    const parsed = {
+      verses: [{ usfm: 'PSA.23.1', versionId: 3034, reference: 'Psalm 23:1', fetchedText: 'made up', attribution: 'x' }],
+    };
+    applyAuthoritativeFetchedText(parsed, fetchedTexts);
+    expect(parsed.verses[0].fetchedText).toBe('made up');
+    // And it is still flagged downstream.
+    const mismatches = findFetchedTextMismatches(
+      { verses: parsed.verses } as unknown as Parameters<typeof findFetchedTextMismatches>[0],
+      fetchedTexts,
+    );
+    expect(mismatches.length).toBeGreaterThan(0);
+  });
+
+  it('is a safe no-op on malformed input (non-object, missing verses, non-array verses)', () => {
+    const fetchedTexts = new Map<string, { text: string; reference: string }>();
+    expect(() => applyAuthoritativeFetchedText(null, fetchedTexts)).not.toThrow();
+    expect(() => applyAuthoritativeFetchedText('not json', fetchedTexts)).not.toThrow();
+    expect(() => applyAuthoritativeFetchedText({}, fetchedTexts)).not.toThrow();
+    expect(() => applyAuthoritativeFetchedText({ verses: 'nope' }, fetchedTexts)).not.toThrow();
   });
 });
 

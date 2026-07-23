@@ -404,6 +404,53 @@ export interface FetchedVerse {
   reference: string;
 }
 
+/**
+ * Overwrites each verse's `fetchedText` and `reference` with the exact
+ * values recorded from the `get_bible_verse` tool result for that
+ * usfm/versionId — BEFORE Zod validation and the anti-hallucination check
+ * (issue #295).
+ *
+ * Root cause of #295: the model was trusted to echo the exact YouVersion
+ * tool output back into each verse's `fetchedText`, and it is unreliable at
+ * it — sometimes leaving it empty (fails the "fetchedText must not be empty"
+ * Zod check), sometimes paraphrasing (fails the byte-exact anti-hallucination
+ * check). Both forced a slow repair round-trip or a canned-fixture fallback.
+ *
+ * By populating `fetchedText`/`reference` server-side from the recorded tool
+ * result (keyed by `usfm::versionId`), the displayed Scripture is now
+ * authoritative BY CONSTRUCTION: it is always exactly what YouVersion
+ * returned this generation, regardless of what the model echoed. The
+ * anti-hallucination guarantee is therefore strengthened (guaranteed, not
+ * merely checked) — the check downstream stays as defense-in-depth.
+ *
+ * A verse citing a usfm/versionId that was never actually fetched is left
+ * untouched (there is nothing authoritative to substitute), so
+ * `findFetchedTextMismatches` still flags a fabricated reference the model
+ * invented without calling the tool.
+ *
+ * Mutates `parsed` in place when it has the expected object/array shape and
+ * is a safe no-op on anything malformed (downstream validation rejects that).
+ */
+export function applyAuthoritativeFetchedText(
+  parsed: unknown,
+  fetchedTexts: Map<string, FetchedVerse>,
+): void {
+  if (typeof parsed !== 'object' || parsed === null) return;
+  const verses = (parsed as { verses?: unknown }).verses;
+  if (!Array.isArray(verses)) return;
+  for (const verse of verses) {
+    if (typeof verse !== 'object' || verse === null) continue;
+    const v = verse as { usfm?: unknown; versionId?: unknown; fetchedText?: unknown; reference?: unknown };
+    if (typeof v.usfm !== 'string' || typeof v.versionId !== 'number') continue;
+    const fetched = fetchedTexts.get(`${v.usfm}::${v.versionId}`);
+    if (fetched === undefined) continue;
+    // The tool result is the single source of truth for both fields — they
+    // are captured together from the same get_bible_verse response.
+    v.fetchedText = fetched.text;
+    v.reference = fetched.reference;
+  }
+}
+
 export function findFetchedTextMismatches(
   devotional: DevotionalOutput,
   fetchedTexts: Map<string, FetchedVerse>,
@@ -618,6 +665,13 @@ export class DevotionalEngine {
     } catch (err) {
       return { ok: false, problems: `Output was not valid JSON: ${(err as Error).message}`, rawText: text };
     }
+
+    // Make fetchedText/reference authoritative from the recorded tool result
+    // (issue #295) BEFORE Zod + anti-hallucination validation, so an empty or
+    // paraphrased value the model echoed can neither fail the "must not be
+    // empty" Zod check nor the byte-exact anti-hallucination check — the real
+    // YouVersion text is always what gets displayed and validated.
+    applyAuthoritativeFetchedText(parsed, fetchedTexts);
 
     const result = DevotionalOutputSchema.safeParse(parsed);
     if (!result.success) {
