@@ -124,7 +124,7 @@ final class PreferencesDaysUITests: XCTestCase {
             "A selected day must still be selected after navigating away and back"
         )
 
-        app.buttons["preferences.day.\(DayID.saturday)"].tap()
+        app.buttons["preferences.day.\(DayID.saturday)"].tapWhenReady()
         XCTAssertFalse(app.buttons["preferences.day.\(DayID.saturday)"].isSelected)
 
         returnToPreferencesTab()
@@ -147,7 +147,7 @@ final class PreferencesDaysUITests: XCTestCase {
         XCTAssertTrue(monday.waitForExistence(timeout: 10))
 
         for day in [DayID.tuesday, DayID.wednesday, DayID.thursday, DayID.friday] {
-            app.buttons["preferences.day.\(day)"].tap()
+            app.buttons["preferences.day.\(day)"].tapWhenReady()
         }
         XCTAssertTrue(monday.isSelected, "Monday should be the only day left selected")
 
@@ -190,7 +190,7 @@ final class PreferencesDaysUITests: XCTestCase {
         tapAfterScrollingIntoView(app.buttons["preferencesCapture.skip"])
 
         XCTAssertTrue(app.buttons["done.continue"].waitForExistence(timeout: 10))
-        app.buttons["done.continue"].tap()
+        app.buttons["done.continue"].tapWhenReady()
 
         XCTAssertTrue(app.tabBars.buttons["Home"].waitForExistence(timeout: 10))
         app.tabBars.buttons["Preferences"].tap()
@@ -204,23 +204,23 @@ final class PreferencesDaysUITests: XCTestCase {
 
     private func signInAndAdvanceToPreferences() {
         app.launch()
-        app.buttons["welcome.getStarted"].tap()
-        app.buttons["signIn.showEmailFallback"].tap()
+        app.buttons["welcome.getStarted"].tapWhenReady()
+        app.buttons["signIn.showEmailFallback"].tapWhenReady()
 
         type("test@example.com", into: app.textFields["signIn.emailField"])
         type("longenoughpassword", into: app.secureTextFields["signIn.passwordField"])
-        app.buttons["signIn.emailContinue"].tap()
+        app.buttons["signIn.emailContinue"].tapWhenReady()
 
         // Generous timeout: follows an async sign-in call, which on a loaded
         // CI simulator host takes noticeably longer than a same-screen wait.
         XCTAssertTrue(app.staticTexts["inviteEmail.headline"].waitForExistence(timeout: 15))
-        app.buttons["inviteEmail.confirm"].tap()
+        app.buttons["inviteEmail.confirm"].tapWhenReady()
 
         XCTAssertTrue(app.buttons["calendarConnect.skip"].waitForExistence(timeout: 10))
-        app.buttons["calendarConnect.skip"].tap()
+        app.buttons["calendarConnect.skip"].tapWhenReady()
 
         XCTAssertTrue(app.buttons["healthPriming.skip"].waitForExistence(timeout: 10))
-        app.buttons["healthPriming.skip"].tap()
+        app.buttons["healthPriming.skip"].tapWhenReady()
     }
 
     /// The preferences screen is a long `Form`; elements below the fold can
