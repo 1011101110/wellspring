@@ -28,6 +28,7 @@ import type { GoogleCalendarClient } from '../../../src/services/calendar/google
 import type { GoogleKmsService } from '../../../src/services/calendar/googleKmsService.js';
 import type { ConnectionsRepository, PrayerIntentionsRepository } from '../../../src/db/repositories/index.js';
 import type { DeliveryProvider } from '../../../src/services/delivery/deliveryProvider.js';
+import { ImmediateTaskScheduler } from '../../../src/services/tasks/immediateTaskScheduler.js';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -814,6 +815,128 @@ describe('GenerateNowOrchestrator', () => {
 
     const result = await orchestrator.generateNow({ userId: user.id, date: '2026-07-02' });
     expect(result.calendar).toMatchObject({ eventId: 'gcal-event-id-999' });
+  });
+
+  it('Q6 (#336): with ImmediateTaskScheduler as the transport, generate-now fires ONE immediate POST to /internal/dispatch-meetbot and returns without waiting on the dispatch', async () => {
+    const user = await makeUser('meetbot-immediate-dispatch', { timezone: 'America/Chicago' });
+    await repos.preferences.ensureExists(asVerifiedUserId(user.id));
+    await repos.connections.upsert(asVerifiedUserId(user.id), {
+      provider: 'google_calendar',
+      encryptedRefreshToken: Buffer.from('encrypted-token'),
+      encryptionIv: Buffer.alloc(12),
+      encryptionAuthTag: Buffer.alloc(16),
+      kmsKeyVersion: 'projects/test/locations/us/keyRings/k/cryptoKeys/key/cryptoKeyVersions/1',
+      scopes: ['https://www.googleapis.com/auth/calendar.events'],
+    });
+
+    const insertEventMock = vi.fn().mockResolvedValue({
+      eventId: 'gcal-event-immediate',
+      htmlLink: '',
+      meetUri: 'https://meet.google.com/abc-defg-hij',
+    });
+    const mockCalendarClient = {
+      withRefreshToken: vi.fn().mockReturnValue({
+        insertEvent: insertEventMock,
+        getFreeBusyBlocks: vi.fn().mockResolvedValue([]),
+        withRefreshToken: vi.fn().mockReturnThis() as never,
+      } as unknown as GoogleCalendarClient),
+    } as unknown as GoogleCalendarClient;
+    const mockKmsService = { decryptToken: vi.fn().mockResolvedValue('plaintext-refresh-token') } as unknown as GoogleKmsService;
+    const meetBotProvider: DeliveryProvider = {
+      kind: 'meetbot',
+      prepareDelivery: ({ sessionToken }) => ({
+        joinUrl: `http://localhost:8080/session/${sessionToken}`,
+        fallbackUrl: `http://localhost:8080/session/${sessionToken}`,
+      }),
+    };
+
+    // The dispatch route holds its response for the whole bot lifecycle
+    // (up to 20 min) — modelled by a fetch that NEVER settles. If the
+    // immediate path awaited the response anywhere, generateNow would hang
+    // here and the test would time out (#296: generation latency must not
+    // grow at all).
+    const fetchImpl = vi.fn().mockReturnValue(new Promise(() => {}));
+    const orchestrator = buildOrchestrator({
+      calendarClient: mockCalendarClient,
+      connections: repos.connections,
+      kmsService: mockKmsService,
+      deliveryProvider: meetBotProvider,
+      meetBotDispatch: {
+        taskScheduler: new ImmediateTaskScheduler({ fetchImpl: fetchImpl as unknown as typeof fetch }),
+        dispatchUrl: 'http://localhost:8080/internal/dispatch-meetbot',
+        internalApiToken: 'test-internal-token',
+      },
+    });
+
+    const result = await orchestrator.generateNow({ userId: user.id, date: '2026-07-02' });
+
+    // Exactly one POST, to our own dispatch route, with the internal token
+    // — the orchestrator call site is untouched; only the transport changed.
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchImpl.mock.calls[0]! as [string, { method: string; headers: Record<string, string>; body: string }];
+    expect(url).toBe('http://localhost:8080/internal/dispatch-meetbot');
+    expect(init.method).toBe('POST');
+    expect(init.headers['X-Internal-Token']).toBe('test-internal-token');
+    expect(JSON.parse(init.body)).toEqual({
+      meetingUrl: 'https://meet.google.com/abc-defg-hij',
+      devotionalId: result.devotionalId,
+    });
+  });
+
+  it('Q6 (#336): a synchronously-throwing send neither fails generation nor loses the calendar event (mutation check on log-and-continue)', async () => {
+    const user = await makeUser('meetbot-immediate-syncthrow', { timezone: 'America/Chicago' });
+    await repos.preferences.ensureExists(asVerifiedUserId(user.id));
+    await repos.connections.upsert(asVerifiedUserId(user.id), {
+      provider: 'google_calendar',
+      encryptedRefreshToken: Buffer.from('encrypted-token'),
+      encryptionIv: Buffer.alloc(12),
+      encryptionAuthTag: Buffer.alloc(16),
+      kmsKeyVersion: 'projects/test/locations/us/keyRings/k/cryptoKeys/key/cryptoKeyVersions/1',
+      scopes: ['https://www.googleapis.com/auth/calendar.events'],
+    });
+
+    const insertEventMock = vi.fn().mockResolvedValue({
+      eventId: 'gcal-event-syncthrow',
+      htmlLink: '',
+      meetUri: 'https://meet.google.com/abc-defg-hij',
+    });
+    const mockCalendarClient = {
+      withRefreshToken: vi.fn().mockReturnValue({
+        insertEvent: insertEventMock,
+        getFreeBusyBlocks: vi.fn().mockResolvedValue([]),
+        withRefreshToken: vi.fn().mockReturnThis() as never,
+      } as unknown as GoogleCalendarClient),
+    } as unknown as GoogleCalendarClient;
+    const mockKmsService = { decryptToken: vi.fn().mockResolvedValue('plaintext-refresh-token') } as unknown as GoogleKmsService;
+    const meetBotProvider: DeliveryProvider = {
+      kind: 'meetbot',
+      prepareDelivery: ({ sessionToken }) => ({
+        joinUrl: `http://localhost:8080/session/${sessionToken}`,
+        fallbackUrl: `http://localhost:8080/session/${sessionToken}`,
+      }),
+    };
+
+    const fetchImpl = vi.fn(() => {
+      throw new Error('sync boom');
+    });
+    const orchestrator = buildOrchestrator({
+      calendarClient: mockCalendarClient,
+      connections: repos.connections,
+      kmsService: mockKmsService,
+      deliveryProvider: meetBotProvider,
+      meetBotDispatch: {
+        taskScheduler: new ImmediateTaskScheduler({ fetchImpl: fetchImpl as unknown as typeof fetch }),
+        dispatchUrl: 'http://localhost:8080/internal/dispatch-meetbot',
+        internalApiToken: 'test-internal-token',
+      },
+    });
+
+    const result = await orchestrator.generateNow({ userId: user.id, date: '2026-07-02' });
+
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect(result.calendar).toMatchObject({ eventId: 'gcal-event-syncthrow' });
+    const calendarRows = await repos.calendarEvents.listForUser(asVerifiedUserId(user.id));
+    expect(calendarRows).toHaveLength(1);
   });
 
   it('skips calendar step with skipped="no_active_connection" when no active connection exists', async () => {

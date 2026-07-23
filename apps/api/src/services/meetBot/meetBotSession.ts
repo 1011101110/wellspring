@@ -155,17 +155,40 @@ export interface MeetBotDispatchResult {
   lastState?: BotStatus['state'];
 }
 
-export interface MeetBotDispatchParams {
+/**
+ * Dispatch mode (Epic Q, #335) — a discriminated union so a caller cannot
+ * assemble a bot that is half websocket-PCM, half voice-agent:
+ *
+ *  - `websocket`: the pre-Epic-Q path — the bot connects out to our
+ *    meetBotAudio websocket and we stream PCM (routes/meetBotAudio.ts).
+ *    Kept intact as the fallback mode; its payload must stay byte-identical
+ *    to before #335 (regression-asserted in meetBotDispatch.test.ts).
+ *  - `voice-agent`: the bot loads the Stage page in Attendee's container
+ *    and streams its video+audio into the call (`voice_agent_settings`,
+ *    live-confirmed shape — Q4 spike, kairos-devotional#334). The
+ *    supervision loop below is mode-independent: the page ends on its own
+ *    and the bot leaves/ends, with `sessionTimeoutMs` as the backstop.
+ */
+export type MeetBotDispatchParams = {
   meetingUrl: string;
   botName: string;
-  /** The real, publicly reachable meetBotAudio websocket URL for this devotional — see routes/meetBotAudio.ts. */
-  audioWebsocketUrl: string;
-  sampleRate?: AttendeeSampleRate;
   admissionTimeoutMs?: number;
-  /** Wall-clock budget for the whole post-admission bot lifecycle. Streaming happens externally (meetBotAudio.ts); this is just a generous supervision timeout. Default 20 minutes. */
+  /** Wall-clock budget for the whole post-admission bot lifecycle. Streaming/playback happens externally (meetBotAudio.ts or the Stage page itself); this is just a generous supervision timeout. Default 20 minutes. */
   sessionTimeoutMs?: number;
   pollIntervalMs?: number;
-}
+} & (
+  | {
+      mode: 'websocket';
+      /** The real, publicly reachable meetBotAudio websocket URL for this devotional — see routes/meetBotAudio.ts. */
+      audioWebsocketUrl: string;
+      sampleRate?: AttendeeSampleRate;
+    }
+  | {
+      mode: 'voice-agent';
+      /** Absolute https:// URL of the Stage page (`/stage/:token`) for this devotional. The token in it is a live capability — never log this URL. */
+      stageUrl: string;
+    }
+);
 
 export interface MeetBotDispatchDeps {
   attendeeClient: AttendeeClient;
@@ -197,18 +220,25 @@ export async function runMeetBotDispatch(
   const sleep = deps.sleep ?? realSleep;
   const logger = deps.logger ?? noopLogger;
 
-  const sampleRate = params.sampleRate ?? DEFAULT_SAMPLE_RATE;
   const admissionTimeoutMs = params.admissionTimeoutMs ?? DEFAULT_ADMISSION_TIMEOUT_MS;
   const sessionTimeoutMs = params.sessionTimeoutMs ?? DEFAULT_SESSION_TIMEOUT_MS;
   const pollIntervalMs = params.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
 
-  const { botId } = await attendeeClient.createBot({
-    meetingUrl: params.meetingUrl,
-    botName: params.botName,
-    audioWebsocketUrl: params.audioWebsocketUrl,
-    sampleRate,
-  });
-  logger.info({ botId, meetingUrl: params.meetingUrl }, 'meetBotDispatch: created bot');
+  const { botId } = await attendeeClient.createBot(
+    params.mode === 'voice-agent'
+      ? {
+          meetingUrl: params.meetingUrl,
+          botName: params.botName,
+          voiceAgentUrl: params.stageUrl,
+        }
+      : {
+          meetingUrl: params.meetingUrl,
+          botName: params.botName,
+          audioWebsocketUrl: params.audioWebsocketUrl,
+          sampleRate: params.sampleRate ?? DEFAULT_SAMPLE_RATE,
+        },
+  );
+  logger.info({ botId, meetingUrl: params.meetingUrl, mode: params.mode }, 'meetBotDispatch: created bot');
 
   const admission = await waitForAdmission(attendeeClient, botId, admissionTimeoutMs, pollIntervalMs, sleep, logger);
   if (!admission.ok) {

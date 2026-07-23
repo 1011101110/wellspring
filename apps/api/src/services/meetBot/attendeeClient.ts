@@ -11,19 +11,39 @@
  * (D4/#32) — decodeMp3ToPcm.ts now takes an options.sampleRate override
  * for exactly this reason.
  *
- * ⚠️ Must-confirm (docs/00_FOUNDATION.md §11): everything below is built
- * from Attendee's documentation, not exercised against a live account —
- * no attendee.dev account exists yet (tracked in issue #129, the H1a
- * spike). In particular:
+ * ⚠️ Must-confirm status (docs/00_FOUNDATION.md §11), updated with the
+ * live findings of the H1a spike (2026-07-07, issue #129) and the Q4
+ * voice-agent spike (2026-07-23, kairos-devotional#334):
  *   - `requestLeave`'s endpoint path is NOT documented anywhere found;
  *     `/api/v1/bots/{bot_id}/leave` follows the same
  *     `/bots/{bot_id}/<action>` shape as the one confirmed action
- *     endpoint (`delete_data`), but must be verified live before this
- *     path is trusted — until then, callers should treat `requestLeave`
+ *     endpoint (`delete_data`) — callers should treat `requestLeave`
  *     as best-effort (the bot will also leave on its own once the
- *     meeting ends or on a Fatal Error transition).
- *   - Meet-specific admission/lobby behavior (the "Waiting Room" state)
- *     has not been observed live.
+ *     meeting ends or on a Fatal Error transition). Q4 live data point:
+ *     `leave` on a `fatal_error` bot returns HTTP 400 (not 404), so this
+ *     method throws there; `safeLeave` (meetBotSession.ts) catches it and
+ *     still runs `delete_data`, which succeeds regardless.
+ *   - Meet-specific admission/lobby behavior for a VOICE-AGENT bot has
+ *     not been observed live (needs a host present to admit — owner
+ *     runbook in kairos-devotional#334).
+ *
+ * ✅ Confirmed live 2026-07-23 (Q4 spike, kairos-devotional#334 — full
+ * request/response transcripts there):
+ *   - `voice_agent_settings` is accepted on our app.attendee.dev account
+ *     (`ENABLE_VOICE_AGENTS` is on server-side). Shape: nested
+ *     `voice_agent_settings: { url }` OR `{ screenshare_url }` —
+ *     `screenshare_url` lives INSIDE `voice_agent_settings`, not
+ *     top-level, and the two are MUTUALLY EXCLUSIVE (sending both →
+ *     HTTP 400 "You cannot provide both url and screenshare_url"). The
+ *     schema is strict (`additionalProperties: false` — unknown keys are
+ *     rejected with a 400). URLs must be https://. The server auto-sets
+ *     `reserve_resources: true` when either URL is present.
+ *   - The container does NOT pre-fetch the voice-agent page: a bot that
+ *     failed to join (`could_not_join_meeting`) never requested the page
+ *     URL at all, so a failed dispatch cannot leak the page URL.
+ *   - `recording_settings: {format:'none'}` and `delete_data` behave
+ *     identically for a voice-agent bot (201 with
+ *     `recording_state: "not_started"`; `delete_data` → `data_deleted`).
  *
  * ⚠️ Known privacy gap, confirmed 2026-07-07 against Attendee's own
  * source (bots/serializers.py): recording defaults ON unless explicitly
@@ -70,9 +90,52 @@ export interface CreateBotParams {
    * Publicly reachable wss:// URL Attendee's service will connect out to
    * for bidirectional audio. Omit for a join-only bot (no speaking) —
    * e.g. an admission-behavior spike before the audio pipeline is wired.
+   * Websocket-PCM mode — mutually exclusive with the voice-agent fields
+   * below (see `assertCreateBotModeExclusive`).
    */
   audioWebsocketUrl?: string;
   sampleRate?: AttendeeSampleRate;
+  /**
+   * Voice-agent mode (Epic Q, kairos-devotional#330/#335): a publicly
+   * reachable https:// page Attendee's container loads; its video shows
+   * as the bot's webcam tile and its audio plays into the call. Maps to
+   * `voice_agent_settings: { url }` — shape confirmed live in the Q4
+   * spike (see file header).
+   */
+  voiceAgentUrl?: string;
+  /**
+   * Same as `voiceAgentUrl` but the page's video is presented via
+   * screenshare (main-stage treatment) instead of the webcam tile. Maps
+   * to `voice_agent_settings: { screenshare_url }`. Q4 live finding:
+   * Attendee REJECTS a bot with both `url` and `screenshare_url`, so
+   * this and `voiceAgentUrl` are mutually exclusive — there is never a
+   * second page instance, and no double-audio risk.
+   */
+  screenshareUrl?: string;
+}
+
+/**
+ * Mode exclusivity at the client boundary (#335 acceptance criteria):
+ *  - websocket-PCM mode (`audioWebsocketUrl`) and voice-agent mode
+ *    (`voiceAgentUrl`/`screenshareUrl`) are exclusive by design — one bot
+ *    speaks through exactly one mechanism;
+ *  - `voiceAgentUrl` and `screenshareUrl` are exclusive because Attendee
+ *    rejects both together (Q4 live finding, kairos-devotional#334) —
+ *    throwing here surfaces the mistake before a bot-creation round-trip.
+ * Called by BOTH the real client and `FakeAttendeeClient`, so unit tests
+ * exercise the same boundary production hits.
+ */
+export function assertCreateBotModeExclusive(params: CreateBotParams): void {
+  if (params.audioWebsocketUrl && (params.voiceAgentUrl || params.screenshareUrl)) {
+    throw new Error(
+      'createBot: audioWebsocketUrl (websocket-PCM mode) and voiceAgentUrl/screenshareUrl (voice-agent mode) are mutually exclusive',
+    );
+  }
+  if (params.voiceAgentUrl && params.screenshareUrl) {
+    throw new Error(
+      'createBot: voiceAgentUrl and screenshareUrl are mutually exclusive — Attendee rejects a bot with both (Q4 live finding, kairos-devotional#334)',
+    );
+  }
 }
 
 export interface CreateBotResult {
@@ -115,6 +178,7 @@ export class HttpAttendeeClient implements AttendeeClient {
   }
 
   async createBot(params: CreateBotParams): Promise<CreateBotResult> {
+    assertCreateBotModeExclusive(params);
     const body: Record<string, unknown> = {
       meeting_url: params.meetingUrl,
       bot_name: params.botName,
@@ -133,6 +197,16 @@ export class HttpAttendeeClient implements AttendeeClient {
           sample_rate: params.sampleRate ?? 16000,
         },
       };
+    }
+
+    // Voice-agent mode (Epic Q). Payload shape confirmed live 2026-07-23
+    // (Q4 spike — see file header): nested under voice_agent_settings,
+    // exactly one of url/screenshare_url, never alongside
+    // websocket_settings (both enforced above).
+    if (params.voiceAgentUrl) {
+      body['voice_agent_settings'] = { url: params.voiceAgentUrl };
+    } else if (params.screenshareUrl) {
+      body['voice_agent_settings'] = { screenshare_url: params.screenshareUrl };
     }
 
     const response = await fetch(`${ATTENDEE_API_BASE}/bots`, {

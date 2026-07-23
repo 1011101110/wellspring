@@ -18,6 +18,10 @@ import { buildLiveKitConfigFromEnv } from './services/delivery/liveKitConfig.js'
 import { LiveKitRoomProvider } from './services/delivery/liveKitRoomProvider.js';
 import { MeetBotProvider } from './services/delivery/meetBotProvider.js';
 import { GcpTaskScheduler } from './services/tasks/taskScheduler.js';
+import {
+  ImmediateTaskScheduler,
+  assertMeetBotDispatchConfigExclusive,
+} from './services/tasks/immediateTaskScheduler.js';
 import { HttpAttendeeClient } from './services/meetBot/attendeeClient.js';
 import { SessionFeedbackSignalSource } from './services/rhythm/sessionFeedbackSignalSource.js';
 
@@ -236,6 +240,21 @@ if (process.env.RESEND_API_KEY && process.env.INVITE_EMAIL_DOMAIN) {
  * so a deploy without these vars (e.g. a fresh env) is still inert and
  * falls back to LiveKit/HostedSessionProvider.
  */
+/**
+ * Q6 (#336): `MEETBOT_IMMEDIATE_DISPATCH=1` — the demo dispatch path.
+ * Same boolean-ish flag style as `PROVIDERS === 'fixture'` above. When
+ * set (plus ATTENDEE_API_KEY + INTERNAL_API_TOKEN), the orchestrator's
+ * `taskScheduler` is an `ImmediateTaskScheduler`: instead of enqueueing a
+ * Cloud Task for `gap_start_at`, it fire-and-forgets an immediate POST to
+ * our own /internal/dispatch-meetbot — same call site, same fire-time
+ * consent gate, same log-and-continue posture; only the transport
+ * changes. The exclusivity assert refuses to boot if the Cloud Tasks
+ * config is ALSO set — both live at once would dispatch two bots per
+ * devotional (the route is not idempotent).
+ */
+const meetBotImmediateDispatch = process.env.MEETBOT_IMMEDIATE_DISPATCH === '1';
+assertMeetBotDispatchConfigExclusive(process.env);
+
 let meetBotDispatchDeps: import('./services/orchestrator/generateNowOrchestrator.js').GenerateNowOrchestratorDeps['meetBotDispatch'];
 if (process.env.MEETBOT_TASKS_PROJECT_ID && process.env.MEETBOT_TASKS_LOCATION && process.env.MEETBOT_TASKS_QUEUE && process.env.ATTENDEE_API_KEY && process.env.INTERNAL_API_TOKEN) {
   deliveryProvider = new MeetBotProvider(process.env.PUBLIC_BASE_URL ?? `http://localhost:${port}`);
@@ -244,6 +263,25 @@ if (process.env.MEETBOT_TASKS_PROJECT_ID && process.env.MEETBOT_TASKS_LOCATION &
       projectId: process.env.MEETBOT_TASKS_PROJECT_ID,
       location: process.env.MEETBOT_TASKS_LOCATION,
       queue: process.env.MEETBOT_TASKS_QUEUE,
+    }),
+    dispatchUrl: `${(process.env.PUBLIC_BASE_URL ?? `http://localhost:${port}`).replace(/\/+$/, '')}/internal/dispatch-meetbot`,
+    internalApiToken: process.env.INTERNAL_API_TOKEN,
+  };
+} else if (meetBotImmediateDispatch && process.env.ATTENDEE_API_KEY && process.env.INTERNAL_API_TOKEN) {
+  // (The else-if is belt-and-braces: the assert above already refuses to
+  // boot when both configs are set.) MeetBotProvider is still what makes
+  // the calendar step request a real Meet link (conferenceData) — without
+  // it `inserted.meetUri` is never set and nothing would ever dispatch.
+  deliveryProvider = new MeetBotProvider(process.env.PUBLIC_BASE_URL ?? `http://localhost:${port}`);
+  meetBotDispatchDeps = {
+    taskScheduler: new ImmediateTaskScheduler({
+      logger: {
+        // pino-compatible signature; the app logger doesn't exist yet at
+        // construction time, so route through console the way a boot-time
+        // failure would be.
+        info: (obj, msg) => console.log(msg, obj),
+        error: (obj, msg) => console.error(msg, obj),
+      },
     }),
     dispatchUrl: `${(process.env.PUBLIC_BASE_URL ?? `http://localhost:${port}`).replace(/\/+$/, '')}/internal/dispatch-meetbot`,
     internalApiToken: process.env.INTERNAL_API_TOKEN,
@@ -402,11 +440,33 @@ const app = buildApp({
         }
       : undefined,
     // Wires POST /internal/dispatch-meetbot (H1c, #131) — only present
-    // when ATTENDEE_API_KEY is configured. The audio websocket base URL
-    // mirrors routes/meetBotAudio.ts's own gating; both need the same
-    // credential to mean anything.
-    meetBotDispatch:
-      process.env.ATTENDEE_API_KEY && process.env.MEETBOT_AUDIO_TOKEN
+    // when ATTENDEE_API_KEY is configured.
+    //
+    // Mode selection (Epic Q, #335/#336): with MEETBOT_IMMEDIATE_DISPATCH
+    // the route dispatches in voice-agent mode — bots load the Stage page
+    // (`/stage/:token`, token resolved read-only from the devotional's
+    // existing session) instead of connecting to the PCM websocket.
+    // Without the flag, the websocket wiring below is byte-identical to
+    // before #335/#336.
+    meetBotDispatch: meetBotImmediateDispatch
+      ? process.env.ATTENDEE_API_KEY
+        ? {
+            mode: 'voice-agent' as const,
+            attendeeClient: new HttpAttendeeClient(process.env.ATTENDEE_API_KEY),
+            sessions: repositories.sessions,
+            // Same origin sessionUrl is derived from in the orchestrator.
+            publicBaseUrl: process.env.PUBLIC_BASE_URL ?? `http://localhost:${port}`,
+            // Fire-time consent gate (#217) — identical wiring and
+            // rationale as the websocket branch below; the gate is
+            // mode-independent by design.
+            consentGate: {
+              devotionals: repositories.devotionals,
+              users: repositories.users,
+              connections: repositories.connections,
+            },
+          }
+        : undefined
+      : process.env.ATTENDEE_API_KEY && process.env.MEETBOT_AUDIO_TOKEN
         ? {
             attendeeClient: new HttpAttendeeClient(process.env.ATTENDEE_API_KEY),
             // No secret in this base URL any more (#221): the capability
@@ -457,6 +517,14 @@ app.log.info(
   deliveryProvider
     ? 'LiveKit delivery ACTIVE — /room/* and /livekit/webhook registered'
     : 'LiveKit delivery inactive — LIVEKIT_URL/API_KEY/API_SECRET not configured, HostedSessionProvider only',
+);
+
+// Q6 (#336): same boot-log convention — one Cloud Logging read answers
+// "which dispatch transport and bot mode is THIS deploy running?".
+app.log.info(
+  meetBotImmediateDispatch
+    ? 'MeetBot immediate dispatch ACTIVE (#336) — generate-now fire-and-forgets /internal/dispatch-meetbot; bots dispatch in voice-agent (Stage page) mode'
+    : 'MeetBot immediate dispatch inactive — MEETBOT_IMMEDIATE_DISPATCH not set; dispatch uses the Cloud Tasks path when configured (websocket mode)',
 );
 
 app
