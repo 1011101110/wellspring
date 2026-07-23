@@ -52,9 +52,14 @@ import { DateTime } from 'luxon';
  * would pass with the sign of the correction reversed.
  */
 
-/** Fallbacks match the `preferences` table defaults (migration `1720000000000_init-schema`). */
-const DEFAULT_WINDOW_START = { hour: 7, minute: 0 };
-const DEFAULT_WINDOW_END = { hour: 9, minute: 0 };
+/**
+ * Fallbacks match the `preferences` table defaults (migration
+ * `1720000000000_init-schema`). A realistic **workday** window (09:00–17:00),
+ * not a 2-hour pre-work slot (#303): the product finds the open moment in the
+ * user's workday, so the default search space has to span it.
+ */
+const DEFAULT_WINDOW_START = { hour: 9, minute: 0 };
+const DEFAULT_WINDOW_END = { hour: 17, minute: 0 };
 
 export interface ResolveSchedulingWindowParams {
   /** Calendar date the window sits on, `YYYY-MM-DD`, interpreted **in `timeZone`** — not in UTC. */

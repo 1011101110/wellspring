@@ -209,17 +209,35 @@ describe('resolveSchedulingWindow — degraded inputs never silently mislead', (
     expect(w.timeMin).toBe('2026-07-19T07:00:00.000Z');
   });
 
-  it('falls back to the schema defaults for a malformed time, not to hour 0', () => {
+  it('falls back to the schema defaults (09:00–17:00 workday, #303) for a malformed time, not to hour 0', () => {
     // `Number('') === 0`, so naive parsing turns junk into midnight — a silent
-    // 7-hour shift rather than a visible failure.
+    // shift rather than a visible failure. The fallback is the realistic
+    // workday window (#303), matching the `preferences` column defaults.
     const w = resolveSchedulingWindow({
       date: '2026-07-19',
       windowStartLocal: 'garbage',
       windowEndLocal: '',
       timeZone: 'UTC',
     });
-    expect(w.timeMin).toBe('2026-07-19T07:00:00.000Z');
-    expect(w.timeMax).toBe('2026-07-19T09:00:00.000Z');
+    expect(w.timeMin).toBe('2026-07-19T09:00:00.000Z');
+    expect(w.timeMax).toBe('2026-07-19T17:00:00.000Z');
+  });
+
+  it('the default workday window is 09:00–17:00, not the old 07:00–09:00 (#303)', () => {
+    // When both preference times are absent/unparseable, the resolved window
+    // must be a full workday (9 AM–5 PM), not the old 2-hour pre-work slot
+    // that under-served the "finds the open moment in your workday" promise.
+    const w = resolveSchedulingWindow({
+      date: '2026-07-19',
+      windowStartLocal: '',
+      windowEndLocal: '',
+      timeZone: 'UTC',
+    });
+    // 8-hour workday, in the user's zone (UTC here).
+    expect(w.timeMin).toBe('2026-07-19T09:00:00.000Z');
+    expect(w.timeMax).toBe('2026-07-19T17:00:00.000Z');
+    // The old narrow default must be gone.
+    expect(w.timeMax).not.toBe('2026-07-19T09:00:00.000Z');
   });
 
   it('accepts HH:MM as well as HH:MM:SS', () => {

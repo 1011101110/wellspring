@@ -154,8 +154,8 @@ export async function runRescheduleCheck(
     }
 
     const tz = user?.timezone ?? 'UTC';
-    const windowStart = prefs?.window_start_local ?? '07:00:00';
-    const windowEnd = prefs?.window_end_local ?? '09:00:00';
+    const windowStart = prefs?.window_start_local ?? '09:00:00';
+    const windowEnd = prefs?.window_end_local ?? '17:00:00';
 
     let refreshToken: string;
     try {

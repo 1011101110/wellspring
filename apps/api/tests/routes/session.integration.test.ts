@@ -568,7 +568,10 @@ describe('POST /session/:token/complete', () => {
       headers: { 'content-type': 'application/x-www-form-urlencoded' },
       payload: 'prayerIntention=' + encodeURIComponent('a hard week, carrying a lot'),
     });
-    expect(res.statusCode).toBe(200);
+    // #297: a real (zero-JS) form submission now 303-redirects to the friendly
+    // confirmation page instead of dumping raw JSON on the user.
+    expect(res.statusCode).toBe(303);
+    expect(res.headers.location).toBe(`/session/${session.token}/complete`);
 
     // Recording is fire-and-forget (mirrors sendGlooSummary()) — give it a tick.
     await new Promise((resolve) => setTimeout(resolve, 50));
@@ -596,7 +599,7 @@ describe('POST /session/:token/complete', () => {
       headers: { 'content-type': 'application/x-www-form-urlencoded' },
       payload: 'prayerIntention=',
     });
-    expect(res.statusCode).toBe(200);
+    expect(res.statusCode).toBe(303);
 
     await new Promise((resolve) => setTimeout(resolve, 50));
     const stored = await repos.prayerIntentions.getForDate(userId, devo.date);
@@ -623,7 +626,7 @@ describe('POST /session/:token/complete', () => {
       headers: { 'content-type': 'application/x-www-form-urlencoded' },
       payload: 'prayerIntention=' + encodeURIComponent('should not be stored'),
     });
-    expect(res.statusCode).toBe(200);
+    expect(res.statusCode).toBe(303);
 
     await new Promise((resolve) => setTimeout(resolve, 50));
     const stored = await pool.query('SELECT * FROM prayer_intentions WHERE user_id = $1', [userId]);
@@ -650,7 +653,7 @@ describe('POST /session/:token/complete', () => {
       headers: { 'content-type': 'application/x-www-form-urlencoded' },
       payload: 'prayerIntention=' + encodeURIComponent('first submission'),
     });
-    expect(firstRes.statusCode).toBe(200);
+    expect(firstRes.statusCode).toBe(303);
 
     const secondRes = await app.inject({
       method: 'POST',
@@ -658,7 +661,7 @@ describe('POST /session/:token/complete', () => {
       headers: { 'content-type': 'application/x-www-form-urlencoded' },
       payload: 'prayerIntention=' + encodeURIComponent('retried submission'),
     });
-    expect(secondRes.statusCode).toBe(200);
+    expect(secondRes.statusCode).toBe(303);
 
     await new Promise((resolve) => setTimeout(resolve, 50));
     const stored = await pool.query('SELECT * FROM prayer_intentions WHERE user_id = $1', [userId]);
@@ -687,9 +690,102 @@ describe('POST /session/:token/complete', () => {
       headers: { 'content-type': 'application/x-www-form-urlencoded' },
       payload: 'prayerIntention=' + encodeURIComponent(tooLong),
     });
-    expect(res.statusCode).toBe(200);
+    expect(res.statusCode).toBe(303);
 
     const stored = await repos.prayerIntentions.getForDate(userId, devo.date);
     expect(stored).toBeNull();
+  });
+
+  // ──────────────────────────────────────────────────────────────
+  // #297 — a browser must never land on raw JSON after "Amen"
+  // ──────────────────────────────────────────────────────────────
+
+  it('a browser form submission redirects (303) to a friendly HTML confirmation page, never raw JSON', async () => {
+    ({ app } = await buildTestApp(() => new Date(), { withPrayerIntentions: true }));
+
+    const user = await repos.users.createUser({
+      firebaseUid: 'fb-complete-297-1',
+      email: 'amen1@example.com',
+    });
+    const userId = asVerifiedUserId(user.id);
+    const devo = await repos.devotionals.create(userId, minimalDevotional());
+    const session = await repos.sessions.create(userId, {
+      devotionalId: devo.id,
+      expiresAt: new Date(Date.now() + 3600_000),
+    });
+
+    // Exactly what a real zero-JS <form> POST from a browser sends.
+    const postRes = await app.inject({
+      method: 'POST',
+      url: `/session/${session.token}/complete`,
+      headers: {
+        'content-type': 'application/x-www-form-urlencoded',
+        accept: 'text/html,application/xhtml+xml',
+      },
+      payload: 'prayerIntention=' + encodeURIComponent('carrying a lot today'),
+    });
+
+    // Not the old raw-JSON 200.
+    expect(postRes.statusCode).toBe(303);
+    expect(postRes.headers.location).toBe(`/session/${session.token}/complete`);
+    expect(postRes.body).not.toContain('"ok":true');
+
+    // Following the redirect lands on a calm, human confirmation page.
+    const confirmRes = await app.inject({
+      method: 'GET',
+      url: postRes.headers.location as string,
+    });
+    expect(confirmRes.statusCode).toBe(200);
+    expect(confirmRes.headers['content-type']).toContain('text/html');
+    expect(confirmRes.body).toContain('Completed');
+    expect(confirmRes.body).toContain('thank you for being here');
+    // Never a JSON blob.
+    expect(confirmRes.body).not.toContain('"ok":true');
+
+    // The completion side effect still happened.
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    const stored = await repos.prayerIntentions.getForDate(userId, devo.date);
+    expect(stored?.text).toBe('carrying a lot today');
+  });
+
+  it('a programmatic JSON client still gets the machine-readable { ok, completedAt } body', async () => {
+    ({ app } = await buildTestApp());
+
+    const user = await repos.users.createUser({
+      firebaseUid: 'fb-complete-297-2',
+      email: 'amen2@example.com',
+    });
+    const userId = asVerifiedUserId(user.id);
+    const devo = await repos.devotionals.create(userId, minimalDevotional());
+    const session = await repos.sessions.create(userId, {
+      devotionalId: devo.id,
+      expiresAt: new Date(Date.now() + 3600_000),
+    });
+
+    // A fetch-style JSON client (Content-Type + Accept application/json).
+    const res = await app.inject({
+      method: 'POST',
+      url: `/session/${session.token}/complete`,
+      headers: { accept: 'application/json' },
+      payload: { durationListenedSec: 120 },
+    });
+
+    expect(res.statusCode).toBe(200);
+    const json = res.json();
+    expect(json.ok).toBe(true);
+    expect(typeof json.completedAt).toBe('string');
+  });
+
+  it('GET /session/:token/complete returns the enumeration-safe 404 page for an unknown token', async () => {
+    ({ app } = await buildTestApp());
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/session/00000000-0000-4000-8000-000000000000/complete',
+    });
+
+    expect(res.statusCode).toBe(404);
+    expect(res.headers['content-type']).toContain('text/html');
+    expect(res.body).not.toContain('thank you for being here');
   });
 });

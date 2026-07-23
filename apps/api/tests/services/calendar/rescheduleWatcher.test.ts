@@ -447,47 +447,49 @@ describe('runRescheduleCheck — the re-derived window is zone-aware (#205)', ()
     return { call: perUserClient.getFreeBusyBlocks.mock.calls[0]?.[0], result, perUserClient };
   }
 
-  it('searches a New York user\'s real 07:00-09:00 Eastern, not 07:00-09:00 UTC', async () => {
-    // Default prefs (07:00-09:00). The user's gap sits at 07:30 Eastern on
-    // 2026-07-20 == 11:30Z. Pre-#205 this queried 07:00-09:00Z (03:00-05:00
-    // Eastern) — a window that does not even contain the event it was
-    // re-deriving, which is how a "no conflict" verdict could be meaningless.
+  it('searches a New York user\'s real 09:00-17:00 Eastern, not 09:00-17:00 UTC', async () => {
+    // Default prefs (09:00-17:00 workday, #303). The user's gap sits at 09:30
+    // Eastern on 2026-07-20 == 13:30Z. Pre-#205 this queried 09:00-17:00Z
+    // (05:00-13:00 Eastern) — a window that does not even contain the event it
+    // was re-deriving, which is how a "no conflict" verdict could be meaningless.
     const { call } = await captureWindow({
       localPart: 'tz-ny',
       timezone: 'America/New_York',
-      gapStartAt: new Date('2026-07-20T11:30:00.000Z'),
-      gapEndAt: new Date('2026-07-20T12:00:00.000Z'),
+      gapStartAt: new Date('2026-07-20T13:30:00.000Z'),
+      gapEndAt: new Date('2026-07-20T14:00:00.000Z'),
       now: new Date('2026-07-19T00:00:00.000Z'),
     });
 
-    expect(call.timeMin).toBe('2026-07-20T11:00:00.000Z');
-    expect(call.timeMax).toBe('2026-07-20T13:00:00.000Z');
+    // July => EDT (UTC-4): 09:00 local == 13:00Z, 17:00 local == 21:00Z.
+    expect(call.timeMin).toBe('2026-07-20T13:00:00.000Z');
+    expect(call.timeMax).toBe('2026-07-20T21:00:00.000Z');
     expect(call.timeZone).toBe('America/New_York');
   });
 
   it('derives the gap\'s LOCAL date, not its UTC date, for a southern-hemisphere user', async () => {
-    // The watcher's second #205 defect. 07:30 Sydney on 2026-01-15 is
-    // 20:30Z on 2026-01-14. Deriving the date with toISOString().slice(0, 10)
+    // The watcher's second #205 defect. 09:30 Sydney on 2026-01-15 is
+    // 22:30Z on 2026-01-14. Deriving the date with toISOString().slice(0, 10)
     // yields 2026-01-14 and rebuilds the window for the WRONG LOCAL DAY.
-    // Correct: the window for 2026-01-15 local == 2026-01-14T20:00Z-22:00Z.
+    // Correct: the 09:00-17:00 window for 2026-01-15 local (AEDT, +11) ==
+    // 2026-01-14T22:00Z - 2026-01-15T06:00Z.
     const { call } = await captureWindow({
       localPart: 'tz-syd',
       timezone: 'Australia/Sydney',
-      gapStartAt: new Date('2026-01-14T20:30:00.000Z'),
-      gapEndAt: new Date('2026-01-14T21:00:00.000Z'),
+      gapStartAt: new Date('2026-01-14T22:30:00.000Z'),
+      gapEndAt: new Date('2026-01-14T23:00:00.000Z'),
       now: new Date('2026-01-13T00:00:00.000Z'),
     });
 
-    expect(call.timeMin).toBe('2026-01-14T20:00:00.000Z');
-    expect(call.timeMax).toBe('2026-01-14T22:00:00.000Z');
+    expect(call.timeMin).toBe('2026-01-14T22:00:00.000Z');
+    expect(call.timeMax).toBe('2026-01-15T06:00:00.000Z');
 
     // The window must actually contain the event it is re-deriving. This is
     // the invariant the UTC-date bug broke, and it is worth stating directly.
     expect(new Date(call.timeMin).getTime()).toBeLessThanOrEqual(
-      new Date('2026-01-14T20:30:00.000Z').getTime(),
+      new Date('2026-01-14T22:30:00.000Z').getTime(),
     );
     expect(new Date(call.timeMax).getTime()).toBeGreaterThanOrEqual(
-      new Date('2026-01-14T21:00:00.000Z').getTime(),
+      new Date('2026-01-14T23:00:00.000Z').getTime(),
     );
   });
 
@@ -495,13 +497,14 @@ describe('runRescheduleCheck — the re-derived window is zone-aware (#205)', ()
     const { call } = await captureWindow({
       localPart: 'tz-utc',
       timezone: 'UTC',
-      gapStartAt: new Date('2026-07-20T07:30:00.000Z'),
-      gapEndAt: new Date('2026-07-20T08:00:00.000Z'),
+      gapStartAt: new Date('2026-07-20T09:30:00.000Z'),
+      gapEndAt: new Date('2026-07-20T10:00:00.000Z'),
       now: new Date('2026-07-19T00:00:00.000Z'),
     });
 
-    expect(call.timeMin).toBe('2026-07-20T07:00:00.000Z');
-    expect(call.timeMax).toBe('2026-07-20T09:00:00.000Z');
+    // Default 09:00-17:00 workday (#303); UTC user => bounds are identical Z.
+    expect(call.timeMin).toBe('2026-07-20T09:00:00.000Z');
+    expect(call.timeMax).toBe('2026-07-20T17:00:00.000Z');
   });
 
   it('skips freeBusy entirely when DST erases the window, leaving the event untouched', async () => {

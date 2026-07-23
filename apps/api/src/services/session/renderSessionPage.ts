@@ -126,6 +126,23 @@ export function renderGoneOrUnknownPage(): string {
   );
 }
 
+/**
+ * Post-completion confirmation (#297). The "Amen — mark complete" form is a
+ * zero-JS full-page POST (CSP policy, docs/04 §5.3), so before this the user
+ * landed on the raw `{"ok":true,...}` JSON of the POST handler. The handler
+ * now 303-redirects a browser submission here, ending the devotional on a
+ * calm, on-brand confirmation instead of a JSON blob. Content-type: the same
+ * `text/html; charset=utf-8` as every other page in this module.
+ */
+export function renderSessionCompletePage(): string {
+  return pageShell(
+    'Marked complete — Wellspring',
+    `<p class="completed-badge" role="status">Completed &#10003;</p>
+<p class="gentle-message">Amen. Your time is marked complete &mdash; thank you for being here.</p>
+<p class="theme">You can close this page and carry the quiet with you. We'll meet you again tomorrow.</p>`,
+  );
+}
+
 /** 05_UX_FLOWS §4 "Main" and "Audio failure" states. */
 export function renderSessionPage(data: SessionPageData): string {
   const { devotional, audioUrl, completed, token } = data;

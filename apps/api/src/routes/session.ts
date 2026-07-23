@@ -27,6 +27,7 @@ import { UuidParamSchema } from '@kairos/shared-contracts';
 import type { SessionService } from '../services/session/sessionService.js';
 import {
   renderGoneOrUnknownPage,
+  renderSessionCompletePage,
   renderSessionPage,
 } from '../services/session/renderSessionPage.js';
 
@@ -88,6 +89,46 @@ export function registerSessionRoutes(app: FastifyInstance, deps: SessionRoutesD
       return reply.status(404).type('text/html; charset=utf-8').send(renderGoneOrUnknownPage());
     }
 
+    // #297: the "Amen — mark complete" form is a zero-JS full-page POST, so a
+    // browser submission used to land on this handler's raw JSON. When the
+    // request is a browser navigation (a real HTML form POST — it accepts
+    // text/html and/or arrives as form-urlencoded), 303-redirect to a calm
+    // server-rendered confirmation instead. Genuine programmatic/JSON callers
+    // (e.g. a future fetch-based client sending durationListenedSec as JSON)
+    // still get the machine-readable `{ ok, completedAt }` body unchanged.
+    if (wantsHtml(request.headers)) {
+      return reply.redirect(`/session/${encodeURIComponent(token)}/complete`, 303);
+    }
+
     return reply.status(200).send({ ok: true, completedAt: result.completedAt.toISOString() });
   });
+
+  // #297: the friendly landing page a completed browser submission is
+  // redirected to. Enumeration-safe like the other session routes — an
+  // unknown/expired token returns the identical 404 "gone" page, never a
+  // confirmation that would leak whether the token exists.
+  app.get<{ Params: { token: string } }>('/session/:token/complete', async (request, reply) => {
+    const { token } = request.params;
+    if (!UuidParamSchema.safeParse(token).success) {
+      return reply.status(404).type('text/html; charset=utf-8').send(renderGoneOrUnknownPage());
+    }
+    const result = await sessionService.getSessionView(token);
+    if (result.kind === 'not_found') {
+      return reply.status(404).type('text/html; charset=utf-8').send(renderGoneOrUnknownPage());
+    }
+    return reply.status(200).type('text/html; charset=utf-8').send(renderSessionCompletePage());
+  });
+}
+
+/**
+ * True when the request should be answered with an HTML page rather than JSON:
+ * a real browser form POST both accepts `text/html` and (for this zero-JS
+ * form) arrives as `application/x-www-form-urlencoded`. Either signal is
+ * enough; a JSON API client (`content-type: application/json`, `accept:
+ * application/json`) matches neither and keeps the JSON response.
+ */
+function wantsHtml(headers: Record<string, string | string[] | undefined>): boolean {
+  const accept = String(headers['accept'] ?? '').toLowerCase();
+  const contentType = String(headers['content-type'] ?? '').toLowerCase();
+  return accept.includes('text/html') || contentType.includes('application/x-www-form-urlencoded');
 }
