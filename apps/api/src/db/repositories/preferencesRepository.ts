@@ -40,6 +40,14 @@ export interface PreferencesRow {
   adaptive_reason: string | null;
   /** When the adaptive state last CHANGED (steps/clamps only, never holds) — the one-step-per-week limiter's clock. */
   adaptive_decided_at: Date | null;
+  /**
+   * Feedback-steered time-of-day bias (P7 #326, migration 1722600000000):
+   * the wall-clock `time` the scheduler prefers inside the user's window,
+   * or NULL for "no bias yet" (today's longest-gap-first behavior).
+   * Server-owned like the `adaptive_*` columns — see
+   * `updatePreferredTimeLocal` below for the ownership rationale.
+   */
+  preferred_time_local: string | null;
   updated_at: Date;
 }
 
@@ -53,7 +61,12 @@ export interface PreferencesRow {
 export type PreferencesUpdate = Partial<
   Omit<
     PreferencesRow,
-    'user_id' | 'updated_at' | 'adaptive_days_per_week' | 'adaptive_reason' | 'adaptive_decided_at'
+    | 'user_id'
+    | 'updated_at'
+    | 'adaptive_days_per_week'
+    | 'adaptive_reason'
+    | 'adaptive_decided_at'
+    | 'preferred_time_local'
   >
 >;
 
@@ -193,6 +206,25 @@ export class PreferencesRepository {
          updated_at = now()
        WHERE user_id = $1`,
       [userId, state.daysPerWeek, state.reason, state.decidedAt],
+    );
+  }
+
+  /**
+   * The ONLY write path for `preferred_time_local` (P7 #326) — excluded
+   * from `PreferencesUpdate` at the type level for the same reason the
+   * `adaptive_*` columns are: it is the steering engine's state, and a
+   * client body must never be able to move it (the user's stated controls
+   * are the window bounds it is clamped inside). Callers pass a value the
+   * pure decision function (`decideSteering`) already clamped into
+   * `window_start_local..window_end_local`.
+   */
+  async updatePreferredTimeLocal(userId: VerifiedUserId, timeLocal: string): Promise<void> {
+    await this.db.query(
+      `UPDATE preferences SET
+         preferred_time_local = $2,
+         updated_at = now()
+       WHERE user_id = $1`,
+      [userId, timeLocal],
     );
   }
 

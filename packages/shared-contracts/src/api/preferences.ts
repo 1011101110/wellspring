@@ -127,6 +127,54 @@ export function activeDaysForCadence(cadence: Cadence): number[] | undefined {
 export const StillnessSchema = z.enum(['off', 'brief', 'full']);
 export type Stillness = z.infer<typeof StillnessSchema>;
 
+/**
+ * The cadence engine's reason codes (Epic P #312 — `CadenceReason` in the
+ * API's cadencePolicy.ts, CHECK-constrained by migration 1722500000000).
+ * On the wire so P8's settings card (#327) can map code → grace copy;
+ * codes only, never prose, and never any count of missed sessions
+ * (Foundation §9: grace may notice, it may never charge). The API keeps a
+ * compile-time both-ways assertion against its `CadenceReason` union
+ * (rhythmSummary.ts), so the two lists cannot drift silently.
+ */
+export const RhythmReasonSchema = z.enum([
+  'fixed_by_user',
+  'easing_back',
+  'welcoming_back',
+  'hold',
+  'at_floor',
+  'at_ceiling',
+  'no_data',
+]);
+export type RhythmReason = z.infer<typeof RhythmReasonSchema>;
+
+/**
+ * The server-composed "Your rhythm" summary on `GET`/`PUT /v1/preferences`
+ * (P8 #327): what the adaptive engine is currently doing, in aggregates a
+ * client may render.
+ *
+ * **`.strict()` is the §9 guarantee, not a style choice.** Every field is
+ * a schedule fact (days per week, a floor, a mode, a reason code) — the
+ * same class of number as `activeDays`. What must never ride here is
+ * *practice accounting*: attendance counts or ratios, dates, per-day
+ * history, anything "missed". The closed shape means adding such a field
+ * fails the contract test (and the web client's parse) rather than
+ * quietly widening — the structural version of #282's "single value,
+ * never a history array" rule. Re-arguing §9-safety is the price of
+ * adding a field here, on purpose.
+ */
+export const RhythmSchema = z
+  .object({
+    /** 'fixed' when the user opted out ("keep my schedule fixed", `adaptiveEnabled: false`). */
+    mode: z.enum(['adaptive', 'fixed']),
+    /** Current effective schedule — a schedule fact, like `activeDays`. */
+    daysPerWeek: z.number().int().min(1).max(7),
+    /** The user's floor: the engine never schedules fewer days/week than this. */
+    minPerWeek: z.number().int().min(1).max(7),
+    reason: RhythmReasonSchema,
+  })
+  .strict();
+export type Rhythm = z.infer<typeof RhythmSchema>;
+
 export const PreferencesUpdateRequestSchema = z.object({
   windowStartLocal: z.string().regex(TIME_REGEX, 'must be HH:MM or HH:MM:SS').optional(),
   windowEndLocal: z.string().regex(TIME_REGEX, 'must be HH:MM or HH:MM:SS').optional(),
@@ -334,6 +382,16 @@ export const PreferencesResponseDataSchema = z.object({
   // with CHECK constraints, so the DB is authoritative on ranges.
   minPerWeek: z.number().int().min(1).max(7),
   adaptiveEnabled: z.boolean(),
+  /**
+   * Server-composed rhythm summary (P8 #327) — see `RhythmSchema` above
+   * for the closed-shape §9 reasoning. `.optional()` rather than required
+   * so a client running ahead of (or behind) its server renders *nothing*
+   * for the card instead of failing the whole preferences parse — the
+   * #244 policy: an absent capability disappears, it never becomes a
+   * placeholder control. The deployed server always composes it
+   * (`toPreferencesResponseData`).
+   */
+  rhythm: RhythmSchema.optional(),
   /**
    * ISO-8601 instant when this user finished onboarding, or `null` if they
    * never have (`users.onboarded_at`, migration 1721800000000, issue #225).

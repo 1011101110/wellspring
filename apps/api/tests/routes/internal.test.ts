@@ -603,6 +603,7 @@ describe('POST /internal/trigger-daily-run', () => {
     expect(orchestrator.generateNow).toHaveBeenCalledWith({
       userId: 'user-sabbath-session',
       sabbathSession: true,
+      applyFeedbackSteering: true,
     });
     await app.close();
   });
@@ -631,7 +632,7 @@ describe('POST /internal/trigger-daily-run', () => {
     expect(response.statusCode).toBe(200);
     const body = response.json();
     expect(body.succeeded).toBe(1);
-    expect(orchestrator.generateNow).toHaveBeenCalledWith({ userId: 'user-not-today' });
+    expect(orchestrator.generateNow).toHaveBeenCalledWith({ userId: 'user-not-today', applyFeedbackSteering: true });
     await app.close();
   });
 
@@ -656,7 +657,7 @@ describe('POST /internal/trigger-daily-run', () => {
     expect(response.statusCode).toBe(200);
     const body = response.json();
     expect(body.succeeded).toBe(1);
-    expect(orchestrator.generateNow).toHaveBeenCalledWith({ userId: 'user-no-prefs-dep' });
+    expect(orchestrator.generateNow).toHaveBeenCalledWith({ userId: 'user-no-prefs-dep', applyFeedbackSteering: true });
     await app.close();
   });
 
@@ -756,7 +757,7 @@ describe('POST /internal/trigger-daily-run', () => {
     const body = response.json();
     expect(body.succeeded).toBe(1);
     expect(body.skipped).toBe(0);
-    expect(orchestrator.generateNow).toHaveBeenCalledWith({ userId: 'user-weekdays' });
+    expect(orchestrator.generateNow).toHaveBeenCalledWith({ userId: 'user-weekdays', applyFeedbackSteering: true });
     await app.close();
   });
 
@@ -817,7 +818,7 @@ describe('POST /internal/trigger-daily-run', () => {
 
     expect(response.statusCode).toBe(200);
     expect(response.json().succeeded).toBe(1);
-    expect(orchestrator.generateNow).toHaveBeenCalledWith({ userId: 'user-chicago' });
+    expect(orchestrator.generateNow).toHaveBeenCalledWith({ userId: 'user-chicago', applyFeedbackSteering: true });
     await app.close();
   });
 
@@ -860,7 +861,7 @@ describe('POST /internal/trigger-daily-run', () => {
     expect(body.skipped).toBe(1);
     expect(body.failed).toBe(0);
     expect(orchestrator.generateNow).toHaveBeenCalledTimes(1);
-    expect(orchestrator.generateNow).toHaveBeenCalledWith({ userId: 'user-weekend' });
+    expect(orchestrator.generateNow).toHaveBeenCalledWith({ userId: 'user-weekend', applyFeedbackSteering: true });
     await app.close();
   });
 
@@ -888,7 +889,7 @@ describe('POST /internal/trigger-daily-run', () => {
 
     expect(response.statusCode).toBe(200);
     expect(response.json().succeeded).toBe(1);
-    expect(orchestrator.generateNow).toHaveBeenCalledWith({ userId: 'user-no-row' });
+    expect(orchestrator.generateNow).toHaveBeenCalledWith({ userId: 'user-no-row', applyFeedbackSteering: true });
     await app.close();
   });
 
@@ -925,6 +926,7 @@ describe('POST /internal/trigger-daily-run', () => {
     expect(orchestrator.generateNow).toHaveBeenCalledWith({
       userId: 'user-sabbath',
       sabbathSession: true,
+      applyFeedbackSteering: true,
     });
     await app.close();
   });
@@ -1162,7 +1164,7 @@ describe('POST /internal/trigger-daily-run', () => {
     const body = response.json();
     expect(body.succeeded).toBe(1);
     expect(body.skippedByRhythm).toEqual([]);
-    expect(orchestrator.generateNow).toHaveBeenCalledWith({ userId: 'user-adaptive' });
+    expect(orchestrator.generateNow).toHaveBeenCalledWith({ userId: 'user-adaptive', applyFeedbackSteering: true });
     await app.close();
   });
 
@@ -1343,7 +1345,7 @@ describe('POST /internal/trigger-daily-run', () => {
 
     expect(response.json().succeeded).toBe(1);
     expect(response.json().skippedByRhythm).toEqual([]);
-    expect(orchestrator.generateNow).toHaveBeenCalledWith({ userId: 'user-fixed' });
+    expect(orchestrator.generateNow).toHaveBeenCalledWith({ userId: 'user-fixed', applyFeedbackSteering: true });
     expect(rhythm.sessions.listScheduledAttendance).not.toHaveBeenCalled();
     expect(preferences.updateAdaptiveState).not.toHaveBeenCalled();
     await app.close();
@@ -1392,6 +1394,7 @@ describe('POST /internal/trigger-daily-run', () => {
     expect(orchestrator.generateNow).toHaveBeenCalledWith({
       userId: 'user-adaptive',
       sabbathSession: true,
+      applyFeedbackSteering: true,
     });
     await app.close();
   });

@@ -24,6 +24,7 @@ import {
 } from './services/tasks/immediateTaskScheduler.js';
 import { HttpAttendeeClient } from './services/meetBot/attendeeClient.js';
 import { SessionFeedbackSignalSource } from './services/rhythm/sessionFeedbackSignalSource.js';
+import { FeedbackSteering } from './services/rhythm/feedbackSteering.js';
 
 /** Hard cap on graceful shutdown — docs/14 §2.6 / issue #73: "10s cap". */
 const SHUTDOWN_CAP_MS = 10_000;
@@ -299,6 +300,14 @@ const generateNowOrchestrator = new GenerateNowOrchestrator({
   audioStorage,
   publicBaseUrl: process.env.PUBLIC_BASE_URL ?? `http://localhost:${port}`,
   prayerIntentions: repositories.prayerIntentions,
+  // P7 (#326): feedback → generation params. Only the daily run opts in
+  // (`applyFeedbackSteering` in routes/internal.ts), so wiring it here
+  // changes nothing for generate-now/examen/invite/distress callers.
+  feedbackSteering: new FeedbackSteering({
+    feedback: repositories.sessionFeedback,
+    devotionals: repositories.devotionals,
+    preferences: repositories.preferences,
+  }),
   // Calendar integration deps (only present when env vars are configured).
   ...orchestratorCalendarDeps,
   connections: orchestratorCalendarDeps.calendarClient ? repositories.connections : undefined,

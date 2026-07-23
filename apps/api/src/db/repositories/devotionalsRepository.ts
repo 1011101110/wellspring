@@ -308,6 +308,26 @@ export class DevotionalsRepository {
     return result.rows[0] ?? null;
   }
 
+  /**
+   * The most recent standard-slot devotional themes, newest first (P7
+   * #326's anti-rut input): the steering engine checks how many
+   * *consecutive* recent devotionals already carry a candidate theme
+   * before steering to it again. Standard slot only — the examen is a
+   * different practice, and its theme should neither extend nor break a
+   * morning-devotional run. `created_at DESC` as the same-date tiebreak,
+   * matching `getForDate`'s "latest row wins" convention.
+   */
+  async listRecentThemes(userId: VerifiedUserId, limit: number): Promise<string[]> {
+    const result = await this.db.query<{ theme: string }>(
+      `SELECT theme FROM devotionals
+       WHERE user_id = $1 AND slot_type = 'standard'
+       ORDER BY date DESC, created_at DESC
+       LIMIT $2`,
+      [userId, limit],
+    );
+    return result.rows.map((r) => r.theme);
+  }
+
   /** History list — Architecture §API `GET /v1/devotionals`. */
   async listForUser(
     userId: VerifiedUserId,
