@@ -10,7 +10,8 @@ import Fastify, { type FastifyInstance } from 'fastify';
 import { registerInternalRoutes } from '../../src/routes/internal.js';
 import type { GenerateNowOrchestrator } from '../../src/services/orchestrator/generateNowOrchestrator.js';
 import { AlreadyExistsError } from '../../src/services/orchestrator/generateNowOrchestrator.js';
-import type { PreferencesRepository, UsersRepository } from '../../src/db/repositories/index.js';
+import type { PreferencesRepository, SessionsRepository, UsersRepository } from '../../src/db/repositories/index.js';
+import type { AttendanceSignalsDeps } from '../../src/services/rhythm/attendanceSignals.js';
 import type { PurgeJobsDeps } from '../../src/services/retention/purgeJobs.js';
 import type { RescheduleWatcherDeps } from '../../src/services/calendar/rescheduleWatcher.js';
 import type { AttendeeClient } from '../../src/services/meetBot/attendeeClient.js';
@@ -120,13 +121,66 @@ function fakePreferences(
   // expressed a day preference" answer — the active-days gate fails open
   // on a missing row, so every pre-existing test in this file behaves
   // exactly as it did before the gate was added.
-  activeDaysUsers: Array<{ user_id: string; active_days: number[] }> = [],
+  //
+  // P6 (#325): rows may also carry the adaptive columns. Optional here so
+  // every pre-#325 row literal in this file stands untouched — a row
+  // without `adaptive_enabled: true` never enters the engine, which is
+  // exactly the fixed-schedule regression posture the story demands.
+  activeDaysUsers: Array<{
+    user_id: string;
+    active_days: number[];
+    min_per_week?: number;
+    adaptive_enabled?: boolean;
+    adaptive_days_per_week?: number | null;
+    adaptive_reason?: string | null;
+    adaptive_decided_at?: Date | null;
+  }> = [],
 ): PreferencesRepository {
   return {
     listWithExamenEnabled: vi.fn().mockResolvedValue(users),
     listWithSabbathEnabled: vi.fn().mockResolvedValue(sabbathUsers),
     listActiveDays: vi.fn().mockResolvedValue(activeDaysUsers),
+    updateAdaptiveState: vi.fn().mockResolvedValue(undefined),
   } as unknown as PreferencesRepository;
+}
+
+/**
+ * P6 (#325): fakes for P4's `loadAttendanceSignals` reads. The default is
+ * "no history at all" (a `no_data` hold); `unjoinedRows` below manufactures
+ * back-off pressure. `signalsError` makes the very first read throw — the
+ * fail-open case.
+ */
+function fakeRhythm(
+  opts: {
+    scheduled?: Array<{
+      devotional_id: string;
+      scheduled_at: Date;
+      joined_at: Date | null;
+      completed_at: Date | null;
+    }>;
+    latestJoin?: Date | null;
+    signalsError?: Error;
+  } = {},
+): AttendanceSignalsDeps {
+  return {
+    sessions: {
+      listScheduledAttendance: opts.signalsError
+        ? vi.fn().mockRejectedValue(opts.signalsError)
+        : vi.fn().mockResolvedValue(opts.scheduled ?? []),
+      latestJoinedAt: vi.fn().mockResolvedValue(opts.latestJoin ?? null),
+    } as unknown as SessionsRepository,
+    feedback: { devotionalIdsWithFeedback: vi.fn().mockResolvedValue(new Set<string>()) },
+  };
+}
+
+/** `count` scheduled-but-never-engaged invitations, newest one day before `now` — enough for BACKOFF_UNJOINED_THRESHOLD. */
+function unjoinedRows(count: number, now: Date) {
+  return Array.from({ length: count }, (_, i) => ({
+    devotional_id: `devo-unjoined-${i}`,
+    scheduled_at: new Date(now.getTime() - (i + 1) * 86_400_000),
+    joined_at: null,
+    completed_at: null,
+  }));
 }
 
 function fakePurgeJobs(overrides: Partial<Omit<PurgeJobsDeps, 'now'>> = {}): Omit<PurgeJobsDeps, 'now'> {
@@ -164,6 +218,7 @@ function buildTestApp(opts: {
   orchestrator: GenerateNowOrchestrator;
   users?: UsersRepository;
   preferences?: PreferencesRepository;
+  rhythm?: AttendanceSignalsDeps;
   purgeJobs?: Omit<PurgeJobsDeps, 'now'>;
   rescheduleWatcher?: Omit<RescheduleWatcherDeps, 'now'>;
   meetBotDispatch?: {
@@ -194,6 +249,7 @@ function buildTestApp(opts: {
     generateNowOrchestrator: opts.orchestrator,
     users: opts.users,
     preferences: opts.preferences,
+    rhythm: opts.rhythm,
     purgeJobs: opts.purgeJobs,
     rescheduleWatcher: opts.rescheduleWatcher,
     meetBotDispatch: opts.meetBotDispatch
@@ -991,6 +1047,376 @@ describe('POST /internal/trigger-daily-run', () => {
     expect(response.json().timezonesRefreshed).toBe(0);
     await app.close();
   });
+
+  // ──────────────────────────────────────────────────────────────
+  // Adaptive rhythm — effective days (P6 #325, epic #312)
+  //
+  // Same #193 standard as the K2 block above: every test asserts on
+  // whether `generateNow` ran (and what the summary said), never merely
+  // on values passed around. The engine itself is exercised for real —
+  // only the repository reads under it are faked — so a test here cannot
+  // pass while cadencePolicy.ts is inverted.
+  // ──────────────────────────────────────────────────────────────
+
+  it('rests a stated day outside the engine\'s effective set — skipped WITH the reason recorded, never silently', async () => {
+    // 2026-07-22 is a Wednesday (day 3). The user stated Mon–Fri but the
+    // engine previously eased them back to 2 days/week — effective days
+    // are the first two in week order, [Mon, Tue] — so Wednesday rests.
+    // The back-off was 2 days ago, so today's decision is a `hold` (the
+    // 7-day limiter), which must NOT be persisted: recording holds
+    // advances `adaptive_decided_at` daily and freezes the ladder shut.
+    const fixedNow = new Date('2026-07-22T12:00:00.000Z');
+    const orchestrator = fakeOrchestrator();
+    const preferences = fakePreferences([], [], [
+      {
+        user_id: 'user-adaptive',
+        active_days: [1, 2, 3, 4, 5],
+        min_per_week: 1,
+        adaptive_enabled: true,
+        adaptive_days_per_week: 2,
+        adaptive_reason: 'easing_back',
+        adaptive_decided_at: new Date(fixedNow.getTime() - 2 * 86_400_000),
+      },
+    ]);
+    const app = buildTestApp({
+      orchestrator,
+      users: fakeUsers([{ id: 'user-adaptive', email: null, timezone: 'UTC' }]),
+      preferences,
+      rhythm: fakeRhythm({ scheduled: unjoinedRows(3, fixedNow) }),
+      internalApiToken: 'secret',
+      now: () => fixedNow,
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/internal/trigger-daily-run',
+      headers: { 'x-internal-token': 'secret' },
+      payload: {},
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json();
+    expect(body.succeeded).toBe(0);
+    expect(body.skipped).toBe(1);
+    // A rhythm rest is a skip, never a failure — same reasoning as the
+    // K2 gate: Cloud Scheduler must not alert on the engine working.
+    expect(body.failed).toBe(0);
+    expect(body.errors).toEqual([]);
+    // The #286 lesson made observable: the rest carries its reason code.
+    expect(body.skippedByRhythm).toEqual([{ userId: 'user-adaptive', reason: 'hold' }]);
+    expect(orchestrator.generateNow).not.toHaveBeenCalled();
+    expect(preferences.updateAdaptiveState).not.toHaveBeenCalled();
+    await app.close();
+  });
+
+  it('generates for the same backed-off user on a day inside the effective set', async () => {
+    // The pair that proves the skip above is caused by the day, not by
+    // the gate rejecting adaptive users wholesale. 2026-07-20 is Monday
+    // (day 1) — the first of the two effective days.
+    const fixedNow = new Date('2026-07-20T12:00:00.000Z');
+    const orchestrator = fakeOrchestrator();
+    const app = buildTestApp({
+      orchestrator,
+      users: fakeUsers([{ id: 'user-adaptive', email: null, timezone: 'UTC' }]),
+      preferences: fakePreferences([], [], [
+        {
+          user_id: 'user-adaptive',
+          active_days: [1, 2, 3, 4, 5],
+          min_per_week: 1,
+          adaptive_enabled: true,
+          adaptive_days_per_week: 2,
+          adaptive_reason: 'easing_back',
+          adaptive_decided_at: new Date(fixedNow.getTime() - 2 * 86_400_000),
+        },
+      ]),
+      rhythm: fakeRhythm({ scheduled: unjoinedRows(3, fixedNow) }),
+      internalApiToken: 'secret',
+      now: () => fixedNow,
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/internal/trigger-daily-run',
+      headers: { 'x-internal-token': 'secret' },
+      payload: {},
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json();
+    expect(body.succeeded).toBe(1);
+    expect(body.skippedByRhythm).toEqual([]);
+    expect(orchestrator.generateNow).toHaveBeenCalledWith({ userId: 'user-adaptive' });
+    await app.close();
+  });
+
+  it('persists a stepped-down decision exactly once, stamped with the run clock', async () => {
+    // Never-adapted user (stored state null → current = ceiling 5) with
+    // 3 unjoined invitations and no limiter clock: the engine steps down
+    // to 4 (`easing_back`) and THAT is a state change, so it persists —
+    // while today (Wednesday, day 3) is still inside [Mon..Thu], so the
+    // devotional generates in the same run. Gating and persistence are
+    // independent outcomes.
+    const fixedNow = new Date('2026-07-22T12:00:00.000Z');
+    const orchestrator = fakeOrchestrator();
+    const preferences = fakePreferences([], [], [
+      {
+        user_id: 'user-adaptive',
+        active_days: [1, 2, 3, 4, 5],
+        min_per_week: 1,
+        adaptive_enabled: true,
+        adaptive_days_per_week: null,
+        adaptive_reason: null,
+        adaptive_decided_at: null,
+      },
+    ]);
+    const app = buildTestApp({
+      orchestrator,
+      users: fakeUsers([{ id: 'user-adaptive', email: null, timezone: 'UTC' }]),
+      preferences,
+      rhythm: fakeRhythm({ scheduled: unjoinedRows(3, fixedNow) }),
+      internalApiToken: 'secret',
+      now: () => fixedNow,
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/internal/trigger-daily-run',
+      headers: { 'x-internal-token': 'secret' },
+      payload: {},
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().succeeded).toBe(1);
+    expect(preferences.updateAdaptiveState).toHaveBeenCalledTimes(1);
+    expect(preferences.updateAdaptiveState).toHaveBeenCalledWith('user-adaptive', {
+      daysPerWeek: 4,
+      reason: 'easing_back',
+      decidedAt: fixedNow,
+    });
+    await app.close();
+  });
+
+  it('a hold for a never-adapted user writes no engine state (the ladder-freeze guard)', async () => {
+    // No scheduled history → `no_data` at the ceiling. Numerically the
+    // stored state is null and the decision says 5, but the engine
+    // TREATS null as the ceiling, so nothing moved — and persisting this
+    // "change" would start the 7-day limiter clock for a user the engine
+    // has never actually touched. The naive `decision !== stored`
+    // comparison is exactly the mutation this test exists to kill.
+    const fixedNow = new Date('2026-07-22T12:00:00.000Z');
+    const orchestrator = fakeOrchestrator();
+    const preferences = fakePreferences([], [], [
+      {
+        user_id: 'user-adaptive',
+        active_days: [1, 2, 3, 4, 5],
+        min_per_week: 1,
+        adaptive_enabled: true,
+        adaptive_days_per_week: null,
+        adaptive_reason: null,
+        adaptive_decided_at: null,
+      },
+    ]);
+    const app = buildTestApp({
+      orchestrator,
+      users: fakeUsers([{ id: 'user-adaptive', email: null, timezone: 'UTC' }]),
+      preferences,
+      rhythm: fakeRhythm(),
+      internalApiToken: 'secret',
+      now: () => fixedNow,
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/internal/trigger-daily-run',
+      headers: { 'x-internal-token': 'secret' },
+      payload: {},
+    });
+
+    expect(response.json().succeeded).toBe(1);
+    expect(preferences.updateAdaptiveState).not.toHaveBeenCalled();
+    await app.close();
+  });
+
+  it('fails OPEN when the signal reads throw — full stated schedule, error collected, batch completes', async () => {
+    // THE failure mode this story must never ship: "the adaptive engine
+    // broke and silently stopped everyone's devotionals". The stored
+    // state (2/week) would rest this Wednesday, but the engine cannot be
+    // consulted — so the user gets their full Mon–Fri schedule, the
+    // error is loud in the summary, and the next user is unaffected.
+    // (Mutation check: fail-closed here turns succeeded 2 into 1.)
+    const fixedNow = new Date('2026-07-22T12:00:00.000Z');
+    const orchestrator = fakeOrchestrator();
+    const app = buildTestApp({
+      orchestrator,
+      users: fakeUsers([
+        { id: 'user-adaptive', email: null, timezone: 'UTC' },
+        { id: 'user-plain', email: null, timezone: 'UTC' },
+      ]),
+      preferences: fakePreferences([], [], [
+        {
+          user_id: 'user-adaptive',
+          active_days: [1, 2, 3, 4, 5],
+          min_per_week: 1,
+          adaptive_enabled: true,
+          adaptive_days_per_week: 2,
+          adaptive_reason: 'easing_back',
+          adaptive_decided_at: new Date(fixedNow.getTime() - 2 * 86_400_000),
+        },
+      ]),
+      rhythm: fakeRhythm({ signalsError: new Error('signals query exploded') }),
+      internalApiToken: 'secret',
+      now: () => fixedNow,
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/internal/trigger-daily-run',
+      headers: { 'x-internal-token': 'secret' },
+      payload: {},
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json();
+    expect(body.succeeded).toBe(2);
+    // Not a `failed`: that count means "a user did not get their
+    // devotional", and both users got theirs. The error is still visible.
+    expect(body.failed).toBe(0);
+    expect(body.errors).toHaveLength(1);
+    expect(body.errors[0].userId).toBe('user-adaptive');
+    expect(body.errors[0].reason).toContain('signals query exploded');
+    expect(body.skippedByRhythm).toEqual([]);
+    expect(orchestrator.generateNow).toHaveBeenCalledTimes(2);
+    await app.close();
+  });
+
+  it('adaptive_enabled=false bypasses the engine entirely — no signal reads, stale engine state ignored', async () => {
+    // "Keep my schedule fixed" means the stated days, always — even with
+    // a leftover adaptive_days_per_week=2 from before the user opted
+    // out. The engine's inputs are not even loaded for them, which is
+    // what keeps fixed-schedule scheduling byte-identical to K2.
+    const fixedNow = new Date('2026-07-22T12:00:00.000Z'); // Wednesday
+    const orchestrator = fakeOrchestrator();
+    const rhythm = fakeRhythm({ scheduled: unjoinedRows(3, fixedNow) });
+    const preferences = fakePreferences([], [], [
+      {
+        user_id: 'user-fixed',
+        active_days: [1, 2, 3, 4, 5],
+        min_per_week: 1,
+        adaptive_enabled: false,
+        adaptive_days_per_week: 2,
+        adaptive_reason: 'easing_back',
+        adaptive_decided_at: new Date(fixedNow.getTime() - 20 * 86_400_000),
+      },
+    ]);
+    const app = buildTestApp({
+      orchestrator,
+      users: fakeUsers([{ id: 'user-fixed', email: null, timezone: 'UTC' }]),
+      preferences,
+      rhythm,
+      internalApiToken: 'secret',
+      now: () => fixedNow,
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/internal/trigger-daily-run',
+      headers: { 'x-internal-token': 'secret' },
+      payload: {},
+    });
+
+    expect(response.json().succeeded).toBe(1);
+    expect(response.json().skippedByRhythm).toEqual([]);
+    expect(orchestrator.generateNow).toHaveBeenCalledWith({ userId: 'user-fixed' });
+    expect(rhythm.sessions.listScheduledAttendance).not.toHaveBeenCalled();
+    expect(preferences.updateAdaptiveState).not.toHaveBeenCalled();
+    await app.close();
+  });
+
+  it('the opted-in sabbath session still runs on a sabbath day the engine would otherwise rest', async () => {
+    // Ordering guard: the rhythm gate carries the same `!isSabbathToday`
+    // deference as the K2 gate, because a sabbath day resolves wholly
+    // through the sabbath rules — easing someone's week back must not
+    // quietly turn off the extended session they explicitly opted into.
+    // 2026-07-18 is Saturday (day 6): stated, but outside effective [1,2].
+    const fixedNow = new Date('2026-07-18T12:00:00.000Z');
+    const orchestrator = fakeOrchestrator();
+    const app = buildTestApp({
+      orchestrator,
+      users: fakeUsers([{ id: 'user-adaptive', email: null, timezone: 'UTC' }]),
+      preferences: fakePreferences(
+        [],
+        [{ user_id: 'user-adaptive', sabbath_day: 6, sabbath_session: true }],
+        [
+          {
+            user_id: 'user-adaptive',
+            active_days: [1, 2, 3, 4, 5, 6],
+            min_per_week: 1,
+            adaptive_enabled: true,
+            adaptive_days_per_week: 2,
+            adaptive_reason: 'easing_back',
+            adaptive_decided_at: new Date(fixedNow.getTime() - 2 * 86_400_000),
+          },
+        ],
+      ),
+      rhythm: fakeRhythm({ scheduled: unjoinedRows(3, fixedNow) }),
+      internalApiToken: 'secret',
+      now: () => fixedNow,
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/internal/trigger-daily-run',
+      headers: { 'x-internal-token': 'secret' },
+      payload: {},
+    });
+
+    expect(response.json().succeeded).toBe(1);
+    expect(response.json().skippedByRhythm).toEqual([]);
+    expect(orchestrator.generateNow).toHaveBeenCalledWith({
+      userId: 'user-adaptive',
+      sabbathSession: true,
+    });
+    await app.close();
+  });
+
+  it('a day the user never stated is a plain skip, not a rhythm rest', async () => {
+    // "You chose not to have Saturdays" and "we eased back your week"
+    // must stay distinguishable in the logs — a Saturday skip for a
+    // Mon–Fri adaptive user belongs to their own schedule, so it must
+    // not surface in skippedByRhythm.
+    const fixedNow = new Date('2026-07-18T12:00:00.000Z'); // Saturday
+    const orchestrator = fakeOrchestrator();
+    const app = buildTestApp({
+      orchestrator,
+      users: fakeUsers([{ id: 'user-adaptive', email: null, timezone: 'UTC' }]),
+      preferences: fakePreferences([], [], [
+        {
+          user_id: 'user-adaptive',
+          active_days: [1, 2, 3, 4, 5],
+          min_per_week: 1,
+          adaptive_enabled: true,
+          adaptive_days_per_week: 2,
+          adaptive_reason: 'easing_back',
+          adaptive_decided_at: new Date(fixedNow.getTime() - 2 * 86_400_000),
+        },
+      ]),
+      rhythm: fakeRhythm({ scheduled: unjoinedRows(3, fixedNow) }),
+      internalApiToken: 'secret',
+      now: () => fixedNow,
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/internal/trigger-daily-run',
+      headers: { 'x-internal-token': 'secret' },
+      payload: {},
+    });
+
+    expect(response.json().skipped).toBe(1);
+    expect(response.json().skippedByRhythm).toEqual([]);
+    expect(orchestrator.generateNow).not.toHaveBeenCalled();
+    await app.close();
+  });
 });
 
 // ──────────────────────────────────────────────────────────────
@@ -1304,6 +1730,55 @@ describe('POST /internal/trigger-examen-run', () => {
     expect(body.errors).toHaveLength(1);
     expect(body.errors[0].userId).toBe('user-fail');
     expect(body.errors[0].reason).toContain('something broke');
+    await app.close();
+  });
+
+  it('is never gated by the adaptive rhythm engine (P6 #325 — the rhythm governs the standard morning slot only)', async () => {
+    // The same epic exemption that keeps distress check-ins fully outside
+    // the engine (they never enter P4's denominator and their route never
+    // consults the gate): an adaptive user rested down to 2/week still
+    // gets their evening examen on a rested day, and the engine's signal
+    // reads are not even attempted here.
+    const fixedNow = new Date('2026-07-22T12:00:00.000Z'); // Wednesday — outside effective [Mon, Tue]
+    const orchestrator = fakeOrchestrator();
+    const rhythm = fakeRhythm({ scheduled: unjoinedRows(3, fixedNow) });
+    const app = buildTestApp({
+      orchestrator,
+      preferences: fakePreferences(
+        [{ user_id: 'user-adaptive' }],
+        [],
+        [
+          {
+            user_id: 'user-adaptive',
+            active_days: [1, 2, 3, 4, 5],
+            min_per_week: 1,
+            adaptive_enabled: true,
+            adaptive_days_per_week: 2,
+            adaptive_reason: 'easing_back',
+            adaptive_decided_at: new Date(fixedNow.getTime() - 2 * 86_400_000),
+          },
+        ],
+      ),
+      rhythm,
+      internalApiToken: 'secret',
+      now: () => fixedNow,
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/internal/trigger-examen-run',
+      headers: { 'x-internal-token': 'secret' },
+      payload: {},
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().succeeded).toBe(1);
+    expect(orchestrator.generateNow).toHaveBeenCalledWith({
+      userId: 'user-adaptive',
+      slotType: 'examen',
+      skipCalendar: true,
+    });
+    expect(rhythm.sessions.listScheduledAttendance).not.toHaveBeenCalled();
     await app.close();
   });
 });

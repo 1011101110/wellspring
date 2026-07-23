@@ -58,6 +58,22 @@ export type PreferencesUpdate = Partial<
 >;
 
 /**
+ * One daily-run row per user: the K2 day gate (`active_days`) plus every
+ * input the P5 cadence engine reads (P6, issue #325). Snake_case, exactly
+ * the column names — the route maps this onto `CadencePolicyPrefs`
+ * (cadencePolicy.ts) at the call site.
+ */
+export interface DailyRunCadenceRow {
+  user_id: string;
+  active_days: number[];
+  min_per_week: number;
+  adaptive_enabled: boolean;
+  adaptive_days_per_week: number | null;
+  adaptive_reason: string | null;
+  adaptive_decided_at: Date | null;
+}
+
+/**
  * 1:1 with users (primary key IS user_id). Every method still takes
  * `userId: VerifiedUserId` and scopes `WHERE user_id = $1` for
  * consistency with every other repository, even though the PK makes the
@@ -189,7 +205,8 @@ export class PreferencesRepository {
   }
 
   /**
-   * Every user's `active_days` (K2, issue #188) — the fan-out gate for
+   * Every user's `active_days` (K2, issue #188) plus the adaptive-rhythm
+   * slice (P6, issue #325) — the fan-out gate for
    * `/internal/trigger-daily-run`.
    *
    * Deliberately unfiltered, and deliberately not `WHERE $today = ANY(active_days)`:
@@ -204,11 +221,17 @@ export class PreferencesRepository {
    * rather than pre-filtering by day.
    *
    * One query for the whole batch rather than a `get()` per user in the
-   * loop, same as the sabbath lookup.
+   * loop, same as the sabbath lookup. #325 widens the SELECT with the
+   * cadence-engine columns (`CadencePolicyPrefs`' inputs plus the stored
+   * decision) rather than adding a second per-user read inside the daily
+   * loop — the engine consumes them in the same place the day gate
+   * already lives.
    */
-  async listActiveDays(): Promise<Array<{ user_id: string; active_days: number[] }>> {
-    const result = await this.db.query<{ user_id: string; active_days: number[] }>(
-      `SELECT user_id, active_days FROM preferences`,
+  async listActiveDays(): Promise<DailyRunCadenceRow[]> {
+    const result = await this.db.query<DailyRunCadenceRow>(
+      `SELECT user_id, active_days, min_per_week, adaptive_enabled,
+              adaptive_days_per_week, adaptive_reason, adaptive_decided_at
+         FROM preferences`,
     );
     return result.rows;
   }

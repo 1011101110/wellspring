@@ -19,6 +19,7 @@ import { LiveKitRoomProvider } from './services/delivery/liveKitRoomProvider.js'
 import { MeetBotProvider } from './services/delivery/meetBotProvider.js';
 import { GcpTaskScheduler } from './services/tasks/taskScheduler.js';
 import { HttpAttendeeClient } from './services/meetBot/attendeeClient.js';
+import { SessionFeedbackSignalSource } from './services/rhythm/sessionFeedbackSignalSource.js';
 
 /** Hard cap on graceful shutdown — docs/14 §2.6 / issue #73: "10s cap". */
 const SHUTDOWN_CAP_MS = 10_000;
@@ -342,6 +343,15 @@ const app = buildApp({
     // Wires POST /internal/trigger-examen-run (issue #77) — fan-out target
     // for the evening examen Cloud Scheduler job.
     preferences: repositories.preferences,
+    // Wires the adaptive-rhythm effective-days gate inside
+    // /internal/trigger-daily-run (P6 #325, epic #312): P4's attendance
+    // signal reads. Always present — both readers run against the same
+    // pool as everything else — and the route fails open per user anyway
+    // if either read breaks at runtime.
+    rhythm: {
+      sessions: repositories.sessions,
+      feedback: new SessionFeedbackSignalSource(pool),
+    },
     // Wires POST /internal/purge (issue #82) — the retention sweeps
     // (purgeJobs.ts) were implemented and tested but never invoked
     // anywhere; this plus the Cloud Scheduler job created alongside this
