@@ -155,12 +155,17 @@ public final class AppEnvironment: ObservableObject {
         #endif
     }()
 
-    /// Placeholder staging API host for the open-source repo — the `#if DEBUG`
-    /// fallback (resolution step 2 above) used when the `API_BASE_URL`
-    /// Info.plist key is empty, which is the default (`project.yml` ships
-    /// `API_BASE_URL` empty). Point it at your own deployed API host locally
-    /// (kept out of source so the public repo carries no real infra URL).
-    public static let stagingAPIBaseURL = URL(string: "https://your-api-host.example.com")!
+    /// The staging API host, and the committed default for local Debug builds
+    /// (resolution step 2 above, used because `project.yml` ships `API_BASE_URL`
+    /// empty). This is a **public, auth-gated Cloud Run endpoint — not a
+    /// secret**: every `/v1` route requires a Firebase ID token, all real
+    /// secrets (Gloo/YouVersion/DB keys) live in GCP Secret Manager, and the
+    /// project number is already public in the Google Sign-In URL scheme
+    /// (`project.yml`). So it is committed directly rather than injected — no
+    /// fragile local override to lose. To point a Debug build elsewhere, set
+    /// the `API_BASE_URL` build setting (`project.yml`), which wins via step 1.
+    /// System of record for this value: `kairos-devotional` docs/10_CREDENTIALS_ACCESS.
+    public static let stagingAPIBaseURL = URL(string: "https://kairos-api-staging-382100412938.us-central1.run.app")!
 
     public init(
         authService: AnyAuthService? = nil,
