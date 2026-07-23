@@ -23,7 +23,7 @@
  */
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { UuidParamSchema } from '@kairos/shared-contracts';
+import { SessionFeedbackBodySchema, UuidParamSchema } from '@kairos/shared-contracts';
 import type { SessionService } from '../services/session/sessionService.js';
 import {
   renderGoneOrUnknownPage,
@@ -104,20 +104,145 @@ export function registerSessionRoutes(app: FastifyInstance, deps: SessionRoutesD
   });
 
   // #297: the friendly landing page a completed browser submission is
-  // redirected to. Enumeration-safe like the other session routes — an
-  // unknown/expired token returns the identical 404 "gone" page, never a
-  // confirmation that would leak whether the token exists.
+  // redirected to — and, since #321, the host of the post-Amen feedback
+  // form (or its thanked state, once feedback exists). Enumeration-safe
+  // like the other session routes — an unknown/expired token returns the
+  // identical 404 "gone" page, never a confirmation that would leak
+  // whether the token exists.
   app.get<{ Params: { token: string } }>('/session/:token/complete', async (request, reply) => {
     const { token } = request.params;
     if (!UuidParamSchema.safeParse(token).success) {
       return reply.status(404).type('text/html; charset=utf-8').send(renderGoneOrUnknownPage());
     }
-    const result = await sessionService.getSessionView(token);
+    const result = await sessionService.getCompletionView(token);
     if (result.kind === 'not_found') {
       return reply.status(404).type('text/html; charset=utf-8').send(renderGoneOrUnknownPage());
     }
-    return reply.status(200).type('text/html; charset=utf-8').send(renderSessionCompletePage());
+    return reply
+      .status(200)
+      .type('text/html; charset=utf-8')
+      .send(
+        renderSessionCompletePage({
+          token: result.token,
+          feedbackSubmitted: result.feedbackSubmitted,
+        }),
+      );
   });
+
+  /**
+   * P1 (#320): the end-of-session feedback channel. Public and
+   * token-scoped like its siblings; accepts BOTH the zero-JS form's
+   * urlencoded body (booleans arrive as the strings "true"/"false",
+   * untouched radios/note simply absent or empty) and a JSON body —
+   * `normalizeFeedbackBody` folds the former into the latter before the
+   * one shared contract (`SessionFeedbackBodySchema`) validates.
+   *
+   * Status choices, documented per #320's acceptance criteria:
+   *  - unknown/expired/non-UUID token → the identical 404 "gone" page
+   *    (enumeration safety, docs/04 §5.4);
+   *  - never-joined session → 409. This does confirm the token exists,
+   *    but only to a caller who already HOLDS the token — the token is
+   *    itself the credential (Foundation §10), so there is no third party
+   *    to leak to; enumeration safety is about unknown-vs-expired, which
+   *    stays airtight above. A browser can't normally reach this state
+   *    (the form only renders after a GET that sets joined_at), so the
+   *    409 carries the standard JSON error envelope rather than a page;
+   *  - invalid body (unknown fields, bad enum value, >500-char note) →
+   *    400 envelope. The form's maxlength/fixed radios make this
+   *    unreachable without tampering, so no gentle-HTML variant either.
+   */
+  app.post<{ Params: { token: string } }>('/session/:token/feedback', async (request, reply) => {
+    const { token } = request.params;
+    if (!UuidParamSchema.safeParse(token).success) {
+      return reply.status(404).type('text/html; charset=utf-8').send(renderGoneOrUnknownPage());
+    }
+
+    const parsedBody = SessionFeedbackBodySchema.safeParse(normalizeFeedbackBody(request.body));
+    if (!parsedBody.success) {
+      return reply.status(400).send({
+        ok: false,
+        error: {
+          code: 'INVALID_FEEDBACK',
+          message: 'The feedback could not be read. Nothing was recorded.',
+          retryable: false,
+        },
+      });
+    }
+
+    const result = await sessionService.recordFeedback(token, parsedBody.data);
+
+    if (result.kind === 'not_found') {
+      return reply.status(404).type('text/html; charset=utf-8').send(renderGoneOrUnknownPage());
+    }
+    if (result.kind === 'not_joined') {
+      return reply.status(409).send({
+        ok: false,
+        error: {
+          code: 'SESSION_NOT_JOINED',
+          message: 'This session has not been opened yet.',
+          retryable: true,
+        },
+      });
+    }
+
+    // Same fork as POST /complete (#297): a real zero-JS form submission
+    // 303s back to the completion page — which now finds the feedback row
+    // and renders the thanked state — while JSON callers get an envelope.
+    if (wantsHtml(request.headers)) {
+      return reply.redirect(`/session/${encodeURIComponent(token)}/complete`, 303);
+    }
+
+    return reply.status(200).send({ ok: true });
+  });
+}
+
+/**
+ * Folds the zero-JS form's urlencoded shape into the canonical JSON shape
+ * before `SessionFeedbackBodySchema` validates (the "normalize before
+ * parsing" pattern #320 mandates, mirroring SessionCompleteBodySchema's
+ * handling above):
+ *  - `"true"`/`"false"` strings (radio values — urlencoded has no
+ *    booleans) become real booleans;
+ *  - empty strings (an untouched note field posts `note=`) are dropped
+ *    entirely — "unanswered", never a stored empty answer;
+ *  - everything else passes through untouched, so a JSON caller's
+ *    genuine type errors still reach the strict schema and fail loudly
+ *    rather than being laundered here.
+ *
+ * Only the five contract keys are ever written to the normalized object
+ * (never a request-controlled name — a `__proto__`/`constructor` key in
+ * the body must not become a property write, the classic remote-property-
+ * injection sink). A body carrying ANY unknown key skips normalization
+ * entirely and goes to the schema as-is, so `.strict()` still rejects it
+ * with a 400 instead of this function silently swallowing the field.
+ */
+const FEEDBACK_BODY_KEYS = ['contentHelpful', 'topicMore', 'lengthFeel', 'timeFeel', 'note'] as const;
+
+function normalizeFeedbackBody(body: unknown): unknown {
+  if (typeof body !== 'object' || body === null || Array.isArray(body)) {
+    return body ?? {};
+  }
+  const source = body as Record<string, unknown>;
+  const knownKeys: readonly string[] = FEEDBACK_BODY_KEYS;
+  if (Object.keys(source).some((key) => !knownKeys.includes(key))) {
+    return body;
+  }
+  const normalized: Record<string, unknown> = {};
+  for (const key of FEEDBACK_BODY_KEYS) {
+    if (!Object.prototype.hasOwnProperty.call(source, key)) {
+      continue;
+    }
+    const value = source[key];
+    if (value === '') {
+      continue;
+    }
+    if ((key === 'contentHelpful' || key === 'topicMore') && (value === 'true' || value === 'false')) {
+      normalized[key] = value === 'true';
+      continue;
+    }
+    normalized[key] = value;
+  }
+  return normalized;
 }
 
 /**

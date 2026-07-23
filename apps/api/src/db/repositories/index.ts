@@ -11,6 +11,7 @@ import { OAuthStatesRepository } from './oauthStatesRepository.js';
 import { GlooEngagementSummariesRepository } from './glooEngagementSummariesRepository.js';
 import { PrayerIntentionsRepository } from './prayerIntentionsRepository.js';
 import { JournalRepository } from './journalRepository.js';
+import { SessionFeedbackRepository } from './sessionFeedbackRepository.js';
 
 export * from './types.js';
 export * from './usersRepository.js';
@@ -25,6 +26,7 @@ export * from './oauthStatesRepository.js';
 export * from './glooEngagementSummariesRepository.js';
 export * from './prayerIntentionsRepository.js';
 export * from './journalRepository.js';
+export * from './sessionFeedbackRepository.js';
 
 /**
  * Repositories are the ONLY code allowed to query users/connections/
@@ -46,6 +48,7 @@ export interface Repositories {
   glooEngagementSummaries: GlooEngagementSummariesRepository;
   prayerIntentions: PrayerIntentionsRepository;
   journal: JournalRepository;
+  sessionFeedback: SessionFeedbackRepository;
 }
 
 /** Builds a repository bundle over a pool or an in-flight transaction client. */
@@ -63,5 +66,6 @@ export function createRepositories(db: Queryable): Repositories {
     glooEngagementSummaries: new GlooEngagementSummariesRepository(db),
     prayerIntentions: new PrayerIntentionsRepository(db),
     journal: new JournalRepository(db),
+    sessionFeedback: new SessionFeedbackRepository(db),
   };
 }
