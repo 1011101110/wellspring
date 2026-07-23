@@ -206,15 +206,33 @@ export function registerSessionRoutes(app: FastifyInstance, deps: SessionRoutesD
  *  - empty strings (an untouched note field posts `note=`) are dropped
  *    entirely — "unanswered", never a stored empty answer;
  *  - everything else passes through untouched, so a JSON caller's
- *    genuine type errors (and any unknown keys) still reach the strict
- *    schema and fail loudly rather than being laundered here.
+ *    genuine type errors still reach the strict schema and fail loudly
+ *    rather than being laundered here.
+ *
+ * Only the five contract keys are ever written to the normalized object
+ * (never a request-controlled name — a `__proto__`/`constructor` key in
+ * the body must not become a property write, the classic remote-property-
+ * injection sink). A body carrying ANY unknown key skips normalization
+ * entirely and goes to the schema as-is, so `.strict()` still rejects it
+ * with a 400 instead of this function silently swallowing the field.
  */
+const FEEDBACK_BODY_KEYS = ['contentHelpful', 'topicMore', 'lengthFeel', 'timeFeel', 'note'] as const;
+
 function normalizeFeedbackBody(body: unknown): unknown {
   if (typeof body !== 'object' || body === null || Array.isArray(body)) {
     return body ?? {};
   }
+  const source = body as Record<string, unknown>;
+  const knownKeys: readonly string[] = FEEDBACK_BODY_KEYS;
+  if (Object.keys(source).some((key) => !knownKeys.includes(key))) {
+    return body;
+  }
   const normalized: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(body)) {
+  for (const key of FEEDBACK_BODY_KEYS) {
+    if (!Object.prototype.hasOwnProperty.call(source, key)) {
+      continue;
+    }
+    const value = source[key];
     if (value === '') {
       continue;
     }

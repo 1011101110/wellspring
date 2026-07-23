@@ -429,6 +429,26 @@ describe('POST /session/:token/feedback (#320)', () => {
     expect(res.statusCode).toBe(400);
     expect(await feedbackRowsFor(userId)).toHaveLength(0);
   });
+
+  it('a __proto__ key in the body is rejected like any unknown field, never written as a property (remote-property-injection guard)', async () => {
+    app = buildTestApp();
+    const { userId, session } = await seedJoinedSession('route-11');
+
+    // JSON.parse creates an own "__proto__" property; the normalizer must
+    // treat it as an unknown key for the strict schema to 400, not loop
+    // over it as a write target (the CodeQL js/remote-property-injection
+    // sink this pins down).
+    const res = await app.inject({
+      method: 'POST',
+      url: `/session/${session.token}/feedback`,
+      headers: { accept: 'application/json', 'content-type': 'application/json' },
+      payload: '{"contentHelpful": true, "__proto__": {"polluted": true}}',
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(({} as Record<string, unknown>).polluted).toBeUndefined();
+    expect(await feedbackRowsFor(userId)).toHaveLength(0);
+  });
 });
 
 describe('the full zero-JS loop (#321): complete → form → feedback → thanked', () => {
