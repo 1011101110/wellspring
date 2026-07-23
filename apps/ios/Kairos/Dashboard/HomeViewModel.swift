@@ -42,6 +42,7 @@ public final class HomeViewModel: ObservableObject {
 
     // Transient action state.
     @Published public var generateNowBusy = false
+    @Published public var isConnectingCalendar = false
     @Published public var actionError: String?
     @Published public var journalDraft: String = ""
     @Published public var isSavingJournal = false
@@ -55,6 +56,7 @@ public final class HomeViewModel: ObservableObject {
     private let liturgyClient: any LiturgyProviding
     private let generateNowClient: any GenerateNowRequesting
     private let accountInfo: any AccountInfoProviding
+    private let calendarService: any CalendarConnectService
     private let now: () -> Date
 
     public init(
@@ -67,6 +69,7 @@ public final class HomeViewModel: ObservableObject {
         generateNowClient: any GenerateNowRequesting,
         accountInfo: any AccountInfoProviding,
         freeBusyClient: any FreeBusyProviding = FakeFreeBusyClient(),
+        calendarService: any CalendarConnectService = FakeCalendarConnectService(),
         now: @escaping () -> Date = { Date() }
     ) {
         self.devotionals = devotionals
@@ -78,6 +81,7 @@ public final class HomeViewModel: ObservableObject {
         self.liturgyClient = liturgyClient
         self.generateNowClient = generateNowClient
         self.accountInfo = accountInfo
+        self.calendarService = calendarService
         self.now = now
     }
 
@@ -170,6 +174,23 @@ public final class HomeViewModel: ObservableObject {
             connection = .loaded(state)
         } catch {
             connection = .failed(message(for: error))
+        }
+    }
+
+    /// In-card calendar connect/reconnect (#7): runs the same Google OAuth the
+    /// onboarding flow uses (`CalendarConnectService.connect`, which
+    /// self-presents an `ASWebAuthenticationSession`), then refreshes the
+    /// connection + free/busy cards.
+    public func connectCalendar() async {
+        guard !isConnectingCalendar else { return }
+        isConnectingCalendar = true
+        defer { isConnectingCalendar = false }
+        do {
+            _ = try await calendarService.connect(.google)
+            await loadConnection()
+            await loadFreeBusy()
+        } catch {
+            actionError = message(for: error)
         }
     }
 

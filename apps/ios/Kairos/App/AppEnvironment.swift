@@ -519,7 +519,8 @@ public final class AppEnvironment: ObservableObject {
             liturgyClient: liturgyClient,
             generateNowClient: generateNowClient,
             accountInfo: accountInfoClient,
-            freeBusyClient: freeBusyClient
+            freeBusyClient: freeBusyClient,
+            calendarService: calendarService
         )
     }
 
