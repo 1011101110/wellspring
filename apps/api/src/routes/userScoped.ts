@@ -110,6 +110,11 @@ function toPreferencesResponseData(
     sabbathEnabled: row.sabbath_enabled,
     sabbathSession: row.sabbath_session,
     liturgicalSeasonsEnabled: row.liturgical_seasons_enabled,
+    // Adaptive rhythm (P5 #324): the user-owned pair round-trips; the
+    // engine's `adaptive_*` state stays off the wire until P8 composes
+    // §9-safe copy over it (#327).
+    minPerWeek: row.min_per_week,
+    adaptiveEnabled: row.adaptive_enabled,
     onboardedAt: onboardedAt ? onboardedAt.toISOString() : null,
     timezone,
     // L3 (#239): the user's invite routing address, minted by the SAME
@@ -497,6 +502,14 @@ export function registerUserScopedRoutes(app: FastifyInstance, deps: UserScopedR
       sabbath_enabled: b.sabbathEnabled,
       sabbath_session: b.sabbathSession,
       liturgical_seasons_enabled: b.liturgicalSeasonsEnabled,
+      // Adaptive rhythm, user-owned half only (P5 #324). The engine's
+      // state columns (`adaptive_days_per_week`/`adaptive_reason`/
+      // `adaptive_decided_at`) are deliberately absent from this map, are
+      // stripped from the body by the schema, and are unnameable on
+      // `PreferencesUpdate` — a client cannot move the engine's ladder
+      // position or reset its rate limiter through this route.
+      min_per_week: b.minPerWeek,
+      adaptive_enabled: b.adaptiveEnabled,
     };
 
     // `timezone` is the one field in this body that isn't a `preferences`

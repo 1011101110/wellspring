@@ -193,6 +193,27 @@ export const PreferencesUpdateRequestSchema = z.object({
    */
   liturgicalSeasonsEnabled: z.boolean().optional(),
   /**
+   * Adaptive rhythm floor (Epic P #312 / P5 #324, migration
+   * 1722500000000): the cadence engine never schedules fewer days/week
+   * than this, however long invitations go unjoined. 1..7, default 2.
+   *
+   * Note what is deliberately NOT in this schema: the engine's own state
+   * (`adaptive_days_per_week`, `adaptive_reason`, `adaptive_decided_at`).
+   * Those are server-written only — a client field for them would let any
+   * caller overwrite the engine's ladder position and its one-step-per-week
+   * rate limiter. Because this object strips unknown keys (see the
+   * non-`.strict()` note above), a client that sends them anyway is
+   * harmlessly ignored rather than 400'd, and the route's `updates` map
+   * never names them, so they cannot reach the repository from here.
+   */
+  minPerWeek: z.number().int().min(1).max(7).optional(),
+  /**
+   * The "keep my schedule fixed" opt-out (Epic P #312): `false` bypasses
+   * the cadence engine entirely — `active_days` is used exactly as
+   * stated, and attendance signals are never consulted. Default true.
+   */
+  adaptiveEnabled: z.boolean().optional(),
+  /**
    * The device's own IANA zone (`TimeZone.current.identifier` on iOS),
    * issue #187. The one field in this schema that does NOT live on the
    * `preferences` table — it writes `users.timezone`, same table
@@ -271,6 +292,14 @@ export const PreferencesResponseDataSchema = z.object({
   // Real Postgres `boolean` column (migration 1721100000000), same
   // "DB is authoritative" reasoning as `lectio`/sabbath columns above.
   liturgicalSeasonsEnabled: z.boolean(),
+  // Adaptive rhythm (P5 #324, migration 1722500000000). Only the two
+  // user-owned fields are echoed back; the engine's state columns
+  // (`adaptive_days_per_week`/`adaptive_reason`) are deliberately absent
+  // from the wire in this story — surfacing them is P8's job (#327), as
+  // §9-safe composed copy, not raw state. `smallint`/`boolean` columns
+  // with CHECK constraints, so the DB is authoritative on ranges.
+  minPerWeek: z.number().int().min(1).max(7),
+  adaptiveEnabled: z.boolean(),
   /**
    * ISO-8601 instant when this user finished onboarding, or `null` if they
    * never have (`users.onboarded_at`, migration 1721800000000, issue #225).

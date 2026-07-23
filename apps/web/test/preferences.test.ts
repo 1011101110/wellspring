@@ -40,6 +40,13 @@ function serverRow(overrides: Partial<PreferencesResponseData> = {}): Preference
     sabbathEnabled: false,
     sabbathSession: false,
     liturgicalSeasonsEnabled: false,
+    // Adaptive rhythm (P5 #324). Present here per this fixture's whole
+    // purpose (a new server preference must not land silently) — the web
+    // settings surface for the pair is P8's story (#327); until then the
+    // dashboard round-trips them untouched via toUpdateRequest's
+    // omission.
+    minPerWeek: 2,
+    adaptiveEnabled: true,
     onboardedAt: null,
     timezone: 'America/Chicago',
     updatedAt: '2026-07-18T10:00:00.000Z',
