@@ -16,6 +16,15 @@ describe('redactCapabilityToken', () => {
     expect(redactCapabilityToken('/audio/abc123.def456')).toBe('/audio/<redacted>');
   });
 
+  it('redacts a stage token, including its ?mute=1 variant (Q2 #332 — same credential as /session)', () => {
+    expect(redactCapabilityToken('/stage/00000000-0000-4000-8000-000000000001')).toBe(
+      '/stage/<redacted>',
+    );
+    expect(redactCapabilityToken('/stage/00000000-0000-4000-8000-000000000001?mute=1')).toBe(
+      '/stage/<redacted>?mute=1',
+    );
+  });
+
   it('redacts a long base64url-with-dots signed token', () => {
     const token =
       'eyJvYmplY3RLZXkiOiJkZXZvdGlvbmFscy9kZXYtYS5tcDMifQ.q9diMHsva4COwRJXG4iyo38TINZPKC8HRwxiGvN6z9k';

@@ -18,6 +18,7 @@ import {
   type CalendarFreeBusyRoutesDeps,
 } from './routes/calendarFreeBusy.js';
 import { registerRoomRoutes, type RoomRoutesDeps } from './routes/room.js';
+import { registerStageRoutes, type StageRoutesDeps } from './routes/stage.js';
 import { registerLiveKitWebhookRoutes, type LiveKitWebhookRoutesDeps } from './routes/livekitWebhook.js';
 import { registerMeetBotAudioRoutes, type MeetBotAudioRoutesDeps } from './routes/meetBotAudio.js';
 import { registerInboundInviteRoutes, type InboundInviteRoutesDeps } from './routes/inboundInvite.js';
@@ -145,6 +146,16 @@ export interface BuildAppOptions {
    */
   roomRoutes?: RoomRoutesDeps;
   /**
+   * Wires GET /stage/:token + GET /stage/assets/stage.js (Q2 #332 / Q3
+   * #333, epic #330) — the Stage page Attendee's browser-voice-agent
+   * loads into a Google Meet, and the standalone demo floor. Gets its OWN
+   * encapsulated child scope with a JS-enabled CSP (`script-src 'self'`,
+   * modeled on the room scope) — the session scope's zero-JS CSP is
+   * untouched. Uses the READ-ONLY `getStageView` (never marks
+   * `joined_at`). Optional on the same terms as `roomRoutes`.
+   */
+  stageRoutes?: StageRoutesDeps;
+  /**
    * Wires POST /livekit/webhook (D4/#32) — LiveKit Cloud calls this on
    * `room_started` so the backend can join as a bot and publish the
    * devotional's TTS audio (routes/livekitWebhook.ts). Auth is LiveKit's
@@ -198,7 +209,11 @@ const DEFAULT_API_RATE_LIMIT = { max: 120, timeWindowMs: 60_000 };
  * expire in 48h, bounding the damage.
  */
 export function redactCapabilityToken(url: string): string {
-  return url.replace(/^(\/(?:session|audio|room)\/)[^/?]+/, '$1<redacted>');
+  // `stage` (Q2 #332) carries the same session capability token as
+  // /session — same redaction. `/stage/assets/*` never matches: `assets`
+  // would be swallowed as the "token" segment, but that path carries no
+  // credential, and a redacted static-asset log line is harmless anyway.
+  return url.replace(/^(\/(?:session|audio|room|stage)\/)[^/?]+/, '$1<redacted>');
 }
 
 export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
@@ -647,6 +662,61 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
       });
 
       registerRoomRoutes(roomScope, options.roomRoutes!);
+    });
+  }
+
+  if (options.stageRoutes) {
+    // Encapsulated child scope, own JS-enabled CSP (Q2 #332) — the Stage
+    // page necessarily runs JavaScript (caption sync off audio.currentTime),
+    // so like the room scope above it cannot live under the session
+    // scope's `scriptSrc: ["'none'"]`. Own scope rather than loosening the
+    // session CSP for everyone; the session page's CSP tests still pin the
+    // zero-JS policy there.
+    app.register(async (stageScope) => {
+      await stageScope.register(fastifyHelmet, {
+        contentSecurityPolicy: {
+          directives: {
+            defaultSrc: ["'none'"],
+            // 'self' serves /stage/assets/stage.js — no CDN, no inline
+            // (the timeline JSON rides in a non-executable
+            // <script type="application/json"> block).
+            scriptSrc: ["'self'"],
+            styleSrc: ["'self'", "'unsafe-inline'"],
+            imgSrc: ["'self'"],
+            // Same signed-URL rationale as the session scope above:
+            // 'self' covers local-file mode's /audio/:token, and
+            // storage.googleapis.com covers GCS-mode V4 signed URLs
+            // (docs/14 §2.10).
+            mediaSrc: ["'self'", 'https://storage.googleapis.com'],
+            connectSrc: ["'self'"],
+            formAction: ["'none'"],
+            baseUri: ["'none'"],
+            // No embedding for now — Q8 (Meet Add-on iframe) would revisit.
+            frameAncestors: ["'none'"],
+          },
+        },
+        hsts: { maxAge: 15552000, includeSubDomains: true },
+        crossOriginEmbedderPolicy: false, // would block the <audio> element's cross-origin signed-URL source
+      });
+
+      const rateLimit = options.sessionRateLimit ?? DEFAULT_SESSION_RATE_LIMIT;
+      await stageScope.register(fastifyRateLimit, {
+        max: rateLimit.max,
+        timeWindow: rateLimit.timeWindowMs,
+        // Same token+IP keying rationale as the session scope — the token
+        // is the capability credential here too (docs/04 §5.4).
+        keyGenerator: (request) => {
+          const token = (request.params as { token?: string } | undefined)?.token ?? 'no-token';
+          return `${token}:${request.ip}`;
+        },
+        errorResponseBuilder: (_request, context) => ({
+          statusCode: context.statusCode,
+          ok: false,
+          error: { code: 'RATE_LIMITED', message: 'Too many requests', retryable: true },
+        }),
+      });
+
+      registerStageRoutes(stageScope, options.stageRoutes!);
     });
   }
 

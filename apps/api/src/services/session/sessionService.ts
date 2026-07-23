@@ -17,7 +17,11 @@
  * expiry", i.e. there is a real window where an expired token is still
  * a row in the table and must still 404 identically).
  */
-import type { GlooEngagementSummary, SessionFeedbackBody } from '@kairos/shared-contracts';
+import type {
+  GlooEngagementSummary,
+  SessionFeedbackBody,
+  TimingManifest,
+} from '@kairos/shared-contracts';
 import type { AudioStorage, SignedUrlOptions } from '../audio/audioStorage.js';
 import {
   asVerifiedUserId,
@@ -32,6 +36,15 @@ import type { GlooSummaryService } from '../gloo/glooSummaryService.js';
 import type { SessionPageData } from './renderSessionPage.js';
 
 export type SessionLookupResult = { kind: 'not_found' } | { kind: 'ok'; page: SessionPageData };
+
+/**
+ * Stage-page lookup (Q2 #332): the same enumeration-collapsed page data
+ * as `SessionLookupResult`, plus the Q1 timing manifest (null when absent
+ * or unreadable — the page degrades to no-captions).
+ */
+export type StageLookupResult =
+  | { kind: 'not_found' }
+  | { kind: 'ok'; page: SessionPageData; manifest: TimingManifest | null };
 
 export type SessionCompleteResult = { kind: 'not_found' } | { kind: 'ok'; completedAt: Date };
 
@@ -136,6 +149,47 @@ export class SessionService {
    * view into an error response.
    */
   async getSessionView(token: string): Promise<SessionLookupResult> {
+    const result = await this.loadPageView(token, { markJoined: true });
+    return result.kind === 'ok' ? { kind: 'ok', page: result.page } : result;
+  }
+
+  /**
+   * Read-only lookup for the Stage page (Q2 #332): identical token
+   * validation, expiry collapse, and page data as `getSessionView`, but it
+   * NEVER writes `joined_at`. The Stage URL is loaded by Attendee's bot
+   * container (Q5), so counting its page load as a join would silently
+   * corrupt Epic P's attendance signals — every bot-delivered devotional
+   * would look "joined" whether or not the human showed up.
+   *
+   * Also loads the Q1 timing manifest (best-effort, null on any failure —
+   * the page degrades to no-captions, same posture as `audioUrl`).
+   */
+  async getStageView(token: string): Promise<StageLookupResult> {
+    const result = await this.loadPageView(token, { markJoined: false });
+    if (result.kind !== 'ok') {
+      return result;
+    }
+
+    let manifest: TimingManifest | null = null;
+    try {
+      manifest = await this.audioStorage.getManifest(result.devotionalId);
+    } catch {
+      manifest = null;
+    }
+
+    return { kind: 'ok', page: result.page, manifest };
+  }
+
+  /**
+   * Shared loader behind `getSessionView` (marks joined) and
+   * `getStageView` (read-only). The `markJoined` write is a metrics side
+   * effect, not part of the render contract: a failure there is logged
+   * but never turns a successful page view into an error response.
+   */
+  private async loadPageView(
+    token: string,
+    options: { markJoined: boolean },
+  ): Promise<{ kind: 'not_found' } | { kind: 'ok'; page: SessionPageData; devotionalId: string }> {
     const session = await this.sessions.findByToken(token);
     if (!session) {
       return { kind: 'not_found' };
@@ -146,13 +200,15 @@ export class SessionService {
 
     const ownerId = asVerifiedUserId(session.user_id);
 
-    try {
-      await this.sessions.markJoined(ownerId, token);
-    } catch (err) {
-      this.logger.error('markJoined failed — continuing with page render', {
-        token,
-        err: err instanceof Error ? err.message : String(err),
-      });
+    if (options.markJoined) {
+      try {
+        await this.sessions.markJoined(ownerId, token);
+      } catch (err) {
+        this.logger.error('markJoined failed — continuing with page render', {
+          token,
+          err: err instanceof Error ? err.message : String(err),
+        });
+      }
     }
 
     const devotional = await this.devotionals.getById(ownerId, session.devotional_id);
@@ -177,6 +233,7 @@ export class SessionService {
 
     return {
       kind: 'ok',
+      devotionalId: devotional.id,
       page: {
         token: session.token,
         completed: session.completed_at !== null,
