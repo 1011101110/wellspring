@@ -133,7 +133,7 @@ function authed(token: string) {
   return { authorization: `Bearer ${token}` };
 }
 
-describe('language writes snap the translation (#314 cross-field rule)', () => {
+describe('language CHANGES snap the translation (#314 cross-field rule)', () => {
   it('PUT {"language":"es"} stores es AND snaps translation_id to the es default — the acceptance round trip', async () => {
     const { app, token, userRow } = await buildTestApp();
 
@@ -155,6 +155,41 @@ describe('language writes snap the translation (#314 cross-field rule)', () => {
     const get = await app.inject({ method: 'GET', url: '/v1/preferences', headers: authed(token) });
     expect(get.json().data).toMatchObject({ language: 'es', translationId: 3365 });
 
+    await app.close();
+  });
+
+  it('re-asserting the stored language does NOT snap — a full-object PUT must not clobber an alternate translation', async () => {
+    // The normal web-form pattern (and what O5 ships) PUTs the whole
+    // preferences object on every save, `language` included and unchanged.
+    // Stored: en + WEBUS 206, an explicit alternate. If language
+    // *presence* snapped (rather than language *change*), this ordinary
+    // save would silently reset 206 → 3034 — so this test is the mutation
+    // check on the `languageChanged` guard: delete it and the assertion
+    // below catches the clobber.
+    const { app, token, userRow } = await buildTestApp({ language: 'en', translationId: 206 });
+
+    const put = await app.inject({
+      method: 'PUT',
+      url: '/v1/preferences',
+      headers: authed(token),
+      payload: { language: 'en', voice: 'warm' },
+    });
+
+    expect(put.statusCode).toBe(200);
+    expect(userRow.translation_id).toBe(206); // still WEBUS, not snapped to BSB
+    expect(put.json().data).toMatchObject({ language: 'en', translationId: 206 });
+
+    // ...and the same request shape with a genuinely NEW language still
+    // snaps, so the guard distinguishes change from re-assertion rather
+    // than disabling the snap outright.
+    const changed = await app.inject({
+      method: 'PUT',
+      url: '/v1/preferences',
+      headers: authed(token),
+      payload: { language: 'es', voice: 'warm' },
+    });
+    expect(changed.statusCode).toBe(200);
+    expect(userRow.translation_id).toBe(3365);
     await app.close();
   });
 

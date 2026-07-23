@@ -248,12 +248,15 @@ export const PreferencesUpdateRequestSchema = z.object({
    *
    * The two are one choice wearing two fields, and the route makes
    * contradictory state unrepresentable in the same spirit as
-   * `cadence`↔`activeDays`: a `language` write with no `translationId`
-   * snaps `translation_id` to that language's default
+   * `cadence`↔`activeDays`: a language *change* with no `translationId`
+   * snaps `translation_id` to the new language's default
    * (`defaultVersionIdFor`, language.ts), and a `translationId` outside
    * the chosen — or, when absent, the stored — language's catalog fails
    * the whole request with 400 rather than storing a Bible the language
-   * cannot read.
+   * cannot read. Re-asserting the stored language unchanged snaps
+   * nothing: full-object PUT clients faithfully re-send this field on
+   * every save, and a round-trip must never clobber an explicit
+   * alternate translation (same lesson as the cadence reconciliation).
    */
   language: LanguageTagSchema.optional(),
   /**

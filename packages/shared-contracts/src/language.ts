@@ -44,7 +44,7 @@ export interface LanguageCatalogEntry {
   /** Native-script display label — a person picking their own language should not need English to find it. */
   readonly label: string;
   /**
-   * The translation a language choice snaps `users.translation_id` to
+   * The translation a language *change* snaps `users.translation_id` to
    * when no explicit `translationId` rides along (epic #311 decision 2).
    */
   readonly defaultVersionId: number;
@@ -128,7 +128,7 @@ export const LANGUAGE_CATALOG: Readonly<Record<LanguageTag, LanguageCatalogEntry
   }),
 });
 
-/** The translation a bare `language` write snaps `users.translation_id` to. */
+/** The translation a language *change* snaps `users.translation_id` to (re-asserting the stored language snaps nothing). */
 export function defaultVersionIdFor(tag: LanguageTag): number {
   return LANGUAGE_CATALOG[tag].defaultVersionId;
 }

@@ -525,10 +525,12 @@ export function registerUserScopedRoutes(app: FastifyInstance, deps: UserScopedR
     // The cross-field rule, same spirit as `cadence`↔`activeDays` above —
     // make the contradictory pair unrepresentable rather than storable:
     //
-    //  1. `language` alone — the translation *snaps* to that language's
-    //     default (`defaultVersionIdFor`). Picking Español and keeping an
-    //     English Bible is not a state any user means; a client that wants
-    //     a specific translation sends it explicitly.
+    //  1. A language *change* with no `translationId` — the translation
+    //     *snaps* to the new language's default (`defaultVersionIdFor`).
+    //     Picking Español and keeping an English Bible is not a state any
+    //     user means; a client that wants a specific translation sends it
+    //     explicitly. A `language` merely *re-asserted* unchanged snaps
+    //     nothing — see the comment at the write below.
     //  2. Both — accepted only if the translation IS one of that
     //     language's verified versions; otherwise 400. Unlike the cadence
     //     case, silently correcting here would discard an explicit choice
@@ -549,9 +551,20 @@ export function registerUserScopedRoutes(app: FastifyInstance, deps: UserScopedR
       if (b.translationId !== undefined && !isVersionInLanguage(effectiveLanguage, b.translationId)) {
         return badRequest(reply, `translationId is not a ${effectiveLanguage} translation`);
       }
+      // The snap keys off a language CHANGE, not language *presence*. A
+      // full-object PUT client (the normal web-form pattern, and what O5
+      // will ship) re-sends `language` unchanged on every unrelated save;
+      // if presence alone snapped, each such save would silently reset an
+      // explicit alternate translation (say, WEBUS 206) back to the
+      // default — the same clobber-by-faithful-round-trip failure the
+      // cadence block above bends over backwards to avoid. Re-asserting
+      // the stored language is a statement of no change, so it changes
+      // nothing; an explicit `translationId` riding along still wins.
+      const languageChanged = b.language !== undefined && b.language !== stored?.language;
       const profile = await repositories.users.updateProfile(request.auth!.userId, {
         language: b.language,
-        translation_id: b.translationId ?? (b.language !== undefined ? defaultVersionIdFor(b.language) : undefined),
+        translation_id:
+          b.translationId ?? (languageChanged ? defaultVersionIdFor(b.language!) : undefined),
       });
       // requireAuth provisioned this user, so a null here (no row matched)
       // is the same cannot-legitimately-happen case as the preferences
