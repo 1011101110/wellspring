@@ -855,8 +855,8 @@ export class GenerateNowOrchestrator {
       baseDate.setUTCDate(baseDate.getUTCDate() + 1);
       const tomorrowStr = baseDate.toISOString().slice(0, 10);
 
-      const windowStart = prefs?.window_start_local ?? '07:00:00';
-      const windowEnd = prefs?.window_end_local ?? '09:00:00';
+      const windowStart = prefs?.window_start_local ?? '09:00:00';
+      const windowEnd = prefs?.window_end_local ?? '17:00:00';
 
       // Resolve the wall-clock preference window into absolute instants **in
       // the user's zone** (#205). This used to be `setUTCHours(...)`, which

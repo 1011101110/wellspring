@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { escapeHtml } from '../../../src/services/session/html.js';
 import {
   renderGoneOrUnknownPage,
+  renderSessionCompletePage,
   renderSessionPage,
   type SessionPageData,
 } from '../../../src/services/session/renderSessionPage.js';
@@ -141,5 +142,17 @@ describe('renderGoneOrUnknownPage', () => {
     const html = renderGoneOrUnknownPage();
     expect(html).toContain("This link isn't active");
     expect(html).not.toMatch(/expired|invalid|not found|unknown/i);
+  });
+});
+
+describe('renderSessionCompletePage (#297)', () => {
+  it('is a full HTML page with a calm confirmation, not a raw JSON blob', () => {
+    const html = renderSessionCompletePage();
+    expect(html).toContain('<!doctype html>');
+    expect(html).toContain('Completed');
+    expect(html).toContain('thank you for being here');
+    // The bug was the user landing on the POST handler's JSON; the friendly
+    // page must never look like that response.
+    expect(html).not.toContain('"ok":true');
   });
 });

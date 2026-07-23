@@ -90,8 +90,11 @@ export async function up(pgm: MigrationBuilder): Promise<void> {
       references: 'users',
       onDelete: 'CASCADE',
     },
-    window_start_local: { type: 'time', notNull: true, default: '07:00:00' },
-    window_end_local: { type: 'time', notNull: true, default: '09:00:00' },
+    // Realistic workday window (09:00–17:00, #303) — the default search space
+    // must span the workday, not a 2-hour pre-work slot. Kept in sync with
+    // schedulingWindow.ts's DEFAULT_WINDOW_START/END fallbacks.
+    window_start_local: { type: 'time', notNull: true, default: '09:00:00' },
+    window_end_local: { type: 'time', notNull: true, default: '17:00:00' },
     active_days: {
       // 0=Sunday..6=Saturday
       type: 'smallint[]',

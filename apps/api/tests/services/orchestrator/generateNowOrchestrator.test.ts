@@ -945,14 +945,15 @@ describe('GenerateNowOrchestrator', () => {
       scopes: [],
     });
 
-    // A single 10-minute busy-free gap — under the 15-minute extended-format floor.
-    const gapStart = '2026-07-03T08:00:00.000Z';
-    const gapEnd = '2026-07-03T08:10:00.000Z';
+    // A single 10-minute busy-free gap — under the 15-minute extended-format
+    // floor — inside the default 09:00-17:00 workday window (#303).
+    const gapStart = '2026-07-03T12:00:00.000Z';
+    const gapEnd = '2026-07-03T12:10:00.000Z';
     const userCalendarClient = {
       getFreeBusyBlocks: vi.fn().mockResolvedValue([
         // Busy for the rest of the window except the 10-minute gap above.
-        { start: '2026-07-03T07:00:00.000Z', end: gapStart },
-        { start: gapEnd, end: '2026-07-03T09:00:00.000Z' },
+        { start: '2026-07-03T09:00:00.000Z', end: gapStart },
+        { start: gapEnd, end: '2026-07-03T17:00:00.000Z' },
       ]),
       insertEvent: vi.fn(),
       withRefreshToken: vi.fn(),
