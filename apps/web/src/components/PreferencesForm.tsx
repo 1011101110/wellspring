@@ -2,9 +2,11 @@ import {
   CADENCE_PRESETS,
   DURATION_CHOICES,
   STILLNESS_CHOICES,
+  TRADITION_CHOICES,
   TRADITION_TRANSLATION_NOTE,
   VOICE_CHOICES,
   cadenceLabel,
+  voiceDisplayLabel,
   type DurationChoice,
   type WebPreferences,
 } from '../lib/preferences';
@@ -152,11 +154,14 @@ export function PreferencesForm({
               {option.label}
             </option>
           ))}
-          {/* A voice chosen out of band (a real Chirp 3 HD id) is offered
-              back rather than silently replaced by a default — opening
-              this page must not overwrite a choice it has no label for. */}
+          {/* A voice chosen out of band (a real Chirp 3 HD id the catalog
+              cannot name) is offered back rather than silently replaced by a
+              default — opening this page must not overwrite a choice it has no
+              label for. It is shown under a human label, never the raw id
+              (#302); known ids are already normalized to a picker option by
+              `fromServer`, so this branch is only the truly-unknown case. */}
           {!VOICE_CHOICES.some((option) => option.value === value.voice) && (
-            <option value={value.voice}>{value.voice}</option>
+            <option value={value.voice}>{voiceDisplayLabel(value.voice)}</option>
           )}
         </select>
       </div>
@@ -206,8 +211,16 @@ export function PreferencesForm({
         <div className="row">
           <div className="control">
             <label htmlFor={id('tradition')}>Tradition</label>
+            {/* Every tradition the shared model carries is listed (#192, #302),
+                so whatever value the profile holds — anglican, orthodox — renders
+                as its own label rather than an empty selection. Still disabled:
+                nothing on web writes it. */}
             <select id={id('tradition')} disabled value="general" aria-describedby={id('tt-hint')}>
-              <option value="general">General</option>
+              {TRADITION_CHOICES.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
             </select>
           </div>
           <div className="control">

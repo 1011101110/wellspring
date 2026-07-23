@@ -67,11 +67,15 @@
  */
 import {
   cadenceForActiveDays,
+  TraditionSchema,
+  VOICE_CATALOG,
   type Cadence,
   type DevotionalFormat,
   type PreferencesResponseData,
   type PreferencesUpdateRequest,
   type Stillness,
+  type Tradition,
+  type VoiceLabel,
 } from '@kairos/shared-contracts';
 
 /** `'auto'` is the UI's name for a stored `durationPreference` of `null`. */
@@ -91,6 +95,44 @@ export const VOICE_CHOICES: readonly { value: string; label: string }[] = [
   { value: 'calm', label: 'Calm' },
   { value: 'bright', label: 'Bright' },
 ] as const;
+
+/**
+ * Real Chirp 3 HD voice id -> the picker label that resolves to it: the
+ * inverse of shared-contracts' `VOICE_CATALOG`, derived from it so the two
+ * cannot drift. `en-US-Chirp3-HD-Achernar` -> `warm`, and so on.
+ */
+const VOICE_ID_TO_LABEL: Readonly<Record<string, VoiceLabel>> = Object.freeze(
+  Object.fromEntries(
+    (Object.entries(VOICE_CATALOG) as [VoiceLabel, string][]).map(([label, voiceId]) => [
+      voiceId,
+      label,
+    ]),
+  ),
+) as Readonly<Record<string, VoiceLabel>>;
+
+/**
+ * The picker label a stored voice belongs to, if any. Accepts both stored
+ * representations of a voice — a label (`warm`/`calm`/`bright`, what iOS
+ * writes, returned as-is) or a real Chirp 3 HD id (the column default and
+ * any pre-picker row, mapped back through the catalog). Returns `undefined`
+ * only for a value from neither set.
+ */
+export function voiceLabelFor(stored: string): VoiceLabel | undefined {
+  if (VOICE_CHOICES.some((choice) => choice.value === stored)) return stored as VoiceLabel;
+  return VOICE_ID_TO_LABEL[stored];
+}
+
+/**
+ * A human label for whatever is stored in `voice`, never the raw id (#302).
+ * A recognized label or catalog id resolves to its friendly picker label;
+ * an out-of-band id this UI cannot name is shown as a neutral placeholder
+ * rather than leaking `en-US-Chirp3-HD-...` into the dropdown.
+ */
+export function voiceDisplayLabel(stored: string): string {
+  const label = voiceLabelFor(stored);
+  if (label) return VOICE_CHOICES.find((choice) => choice.value === label)!.label;
+  return 'Custom voice';
+}
 
 export const STILLNESS_CHOICES: readonly { value: Stillness; label: string }[] = [
   { value: 'off', label: 'Off' },
@@ -113,6 +155,29 @@ export const CADENCE_PRESETS: readonly { value: Cadence; label: string }[] = [
  */
 export const TRADITION_TRANSLATION_NOTE =
   'Tradition and translation are stored on your profile, not with these preferences, and no API can change them yet — so they are shown here but not editable on web.';
+
+/** Friendly label per `Tradition`. The exhaustive `Record` keying is the
+ *  lockstep guard: a value added to `TraditionSchema` (#192 capped it at
+ *  six) will not type-check here until it is given a label, so the web
+ *  picker can never fall a tradition short and render an empty selection. */
+const TRADITION_LABELS: Readonly<Record<Tradition, string>> = Object.freeze({
+  evangelical: 'Evangelical',
+  catholic: 'Catholic',
+  mainline: 'Mainline',
+  anglican: 'Anglican',
+  orthodox: 'Orthodox',
+  general: 'General',
+});
+
+/**
+ * Every tradition the shared model carries, in the schema's own order, each
+ * with a friendly label. Built from `TraditionSchema.options` rather than
+ * hand-listed so the web dropdown stays complete as the enum grows (#192
+ * added Anglican and Orthodox); a value the list omitted would render as a
+ * broken, empty selection for that user (#302).
+ */
+export const TRADITION_CHOICES: readonly { value: Tradition; label: string }[] =
+  TraditionSchema.options.map((value) => ({ value, label: TRADITION_LABELS[value] }));
 
 /** The total record the form binds to. Every field round-trips through `/v1/preferences`. */
 export interface WebPreferences {
@@ -214,8 +279,15 @@ export function fromServer(data: PreferencesResponseData): WebPreferences {
       data.durationPreference !== null && DURATION_VALUES.has(data.durationPreference)
         ? data.durationPreference
         : 'auto',
-    // Preserved verbatim, including a real voice id this UI has no label for.
-    voice: data.voice.length > 0 ? data.voice : DEFAULT_PREFERENCES.voice,
+    // A stored voice is normalized to its picker label when it maps to one
+    // — a real catalog id like `en-US-Chirp3-HD-Achernar` becomes `warm`, so
+    // the dropdown selects a friendly option instead of leaking the id
+    // (#302), and the round-trip is byte-identical because the server
+    // resolves label and id to the same voice. An id the catalog does not
+    // name is still preserved verbatim rather than snapped to a default, so
+    // opening this page cannot silently overwrite a voice chosen out of band.
+    voice:
+      voiceLabelFor(data.voice) ?? (data.voice.length > 0 ? data.voice : DEFAULT_PREFERENCES.voice),
     stillness: STILLNESS_VALUES.has(data.stillness)
       ? (data.stillness as Stillness)
       : DEFAULT_PREFERENCES.stillness,
