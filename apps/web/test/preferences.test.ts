@@ -1,12 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import type { PreferencesResponseData } from '@kairos/shared-contracts';
+import { TraditionSchema, VOICE_CATALOG } from '@kairos/shared-contracts';
 import {
   DEFAULT_PREFERENCES,
+  TRADITION_CHOICES,
   fromServer,
   hourFromLocalTime,
   localTimeFromHour,
   toUpdateRequest,
   validate,
+  voiceDisplayLabel,
+  voiceLabelFor,
   type WebPreferences,
 } from '../src/lib/preferences';
 
@@ -138,9 +142,19 @@ describe('fromServer', () => {
     expect(prefs.activeDays).toEqual([1, 2, 3, 4, 5]);
   });
 
-  it('preserves a voice id it has no label for instead of overwriting it', () => {
-    expect(fromServer(serverRow({ voice: 'en-US-Chirp3-HD-Kore' })).voice).toBe(
-      'en-US-Chirp3-HD-Kore',
+  it('normalizes a known raw voice id to its picker label rather than leaking the id (#302)', () => {
+    // Achernar is the column default and what most rows carry; it must show
+    // as "Warm", not as `en-US-Chirp3-HD-Achernar`.
+    expect(fromServer(serverRow({ voice: 'en-US-Chirp3-HD-Achernar' })).voice).toBe('warm');
+    expect(fromServer(serverRow({ voice: 'en-US-Chirp3-HD-Kore' })).voice).toBe('calm');
+    expect(fromServer(serverRow({ voice: 'en-US-Chirp3-HD-Zubenelgenubi' })).voice).toBe('bright');
+  });
+
+  it('preserves a voice id the catalog cannot name instead of overwriting it', () => {
+    // An out-of-band id no picker label maps to is still kept verbatim, so
+    // opening the page never snaps it to a default.
+    expect(fromServer(serverRow({ voice: 'en-US-Chirp3-HD-Sadaltager' })).voice).toBe(
+      'en-US-Chirp3-HD-Sadaltager',
     );
   });
 
@@ -207,6 +221,47 @@ describe('toUpdateRequest', () => {
     });
     expect(body.windowStartLocal).toBe('17:00');
     expect(body.windowEndLocal).toBe('18:00');
+  });
+});
+
+describe('voice labels (#302)', () => {
+  it('maps every picker label and every catalog id back to a label', () => {
+    expect(voiceLabelFor('warm')).toBe('warm');
+    expect(voiceLabelFor('calm')).toBe('calm');
+    expect(voiceLabelFor('bright')).toBe('bright');
+    // The whole catalog resolves — derived from VOICE_CATALOG so it cannot drift.
+    for (const [label, voiceId] of Object.entries(VOICE_CATALOG)) {
+      expect(voiceLabelFor(voiceId)).toBe(label);
+    }
+  });
+
+  it('returns undefined for a value from neither the labels nor the catalog', () => {
+    expect(voiceLabelFor('en-US-Chirp3-HD-Sadaltager')).toBeUndefined();
+    expect(voiceLabelFor('')).toBeUndefined();
+  });
+
+  it('never displays a raw voice id — a known id shows its label, an unknown one a placeholder', () => {
+    expect(voiceDisplayLabel('en-US-Chirp3-HD-Achernar')).toBe('Warm');
+    expect(voiceDisplayLabel('warm')).toBe('Warm');
+    const unknown = voiceDisplayLabel('en-US-Chirp3-HD-Sadaltager');
+    expect(unknown).toBe('Custom voice');
+    expect(unknown).not.toMatch(/Chirp3/);
+  });
+});
+
+describe('tradition choices (#192, #302)', () => {
+  it('offers every tradition the shared model carries, not just General', () => {
+    const values = TRADITION_CHOICES.map((choice) => choice.value);
+    expect(values).toEqual([...TraditionSchema.options]);
+    expect(values).toContain('anglican');
+    expect(values).toContain('orthodox');
+  });
+
+  it('gives each tradition a non-empty friendly label so no value renders empty', () => {
+    for (const choice of TRADITION_CHOICES) {
+      expect(choice.label.length).toBeGreaterThan(0);
+      expect(choice.label).not.toBe(choice.value);
+    }
   });
 });
 
