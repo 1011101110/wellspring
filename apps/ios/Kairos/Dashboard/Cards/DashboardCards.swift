@@ -142,7 +142,9 @@ struct UpcomingCard: View {
     }
 }
 
-// MARK: - Calendar (free/busy — day summary)
+// MARK: - Calendar connection status
+//
+// (The free/busy day view lives in Cards/CalendarDayCard.swift — issue #6.)
 
 struct ConnectionCard: View {
     @ObservedObject var viewModel: HomeViewModel
@@ -164,9 +166,19 @@ struct ConnectionCard: View {
                         CardHint("Connected since \(date.formatted(date: .abbreviated, time: .omitted)).")
                     }
                     if let label = state.actionLabel {
-                        // Connect/reconnect runs through onboarding's OAuth flow;
-                        // this surfaces the state and points there.
-                        CardHint("\(label) from onboarding or Settings.")
+                        // In-card connect/reconnect (#7) — runs the same Google
+                        // OAuth as onboarding via the view model.
+                        Button {
+                            Task { await viewModel.connectCalendar() }
+                        } label: {
+                            HStack {
+                                if viewModel.isConnectingCalendar { ProgressView() }
+                                Text(viewModel.isConnectingCalendar ? "Connecting…" : label)
+                            }
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(viewModel.isConnectingCalendar)
+                        .accessibilityIdentifier("home.connection.connectButton")
                     }
                 }
             }

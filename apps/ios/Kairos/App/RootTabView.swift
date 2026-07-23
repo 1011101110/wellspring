@@ -13,7 +13,7 @@ struct RootTabView: View {
                 .tabItem { Label("Home", systemImage: "house") }
                 .accessibilityIdentifier("tab.home")
 
-            HistoryView()
+            HistoryView(makeViewModel: appEnvironment.makeHistoryViewModel())
                 .tabItem { Label("History", systemImage: "clock") }
                 .accessibilityIdentifier("tab.history")
 

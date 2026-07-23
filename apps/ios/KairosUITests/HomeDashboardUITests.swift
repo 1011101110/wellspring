@@ -70,4 +70,23 @@ final class HomeDashboardUITests: XCTestCase {
         XCTAssertTrue(app.buttons["devotionalDetail.completeButton"].exists)
         snapshot("05-native-reader")
     }
+
+    /// The free/busy "Your day" card (#6) renders on Home, and the History
+    /// tab (#4) is now a full archive, not an empty placeholder.
+    func test_freeBusyCard_andHistoryArchive() {
+        app.launch()
+        XCTAssertTrue(app.staticTexts["home.today.theme"].waitForExistence(timeout: 15))
+
+        // Free/busy day card is present after scrolling.
+        app.swipeUp(); app.swipeUp()
+        XCTAssertTrue(app.staticTexts["Your day"].waitForExistence(timeout: 5), "The free/busy day card should render (#6)")
+        snapshot("06-freebusy-card")
+
+        // History tab is a real archive now.
+        app.tabBars.buttons["History"].tap()
+        XCTAssertTrue(app.navigationBars["Your devotionals"].waitForExistence(timeout: 10),
+                      "History tab should be the full archive (#4), not the empty placeholder")
+        XCTAssertFalse(app.staticTexts["history.emptyState"].exists, "should not show the old placeholder")
+        snapshot("07-history-archive")
+    }
 }

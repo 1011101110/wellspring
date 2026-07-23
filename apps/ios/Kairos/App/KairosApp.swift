@@ -1,4 +1,7 @@
 import SwiftUI
+#if canImport(GoogleSignIn)
+import GoogleSignIn
+#endif
 
 @main
 struct KairosApp: App {
@@ -17,6 +20,16 @@ struct KairosApp: App {
         WindowGroup {
             RootView(appEnvironment: appEnvironment)
                 .environmentObject(appEnvironment)
+                #if canImport(GoogleSignIn)
+                // GoogleSignIn callback safety net: forwards the OAuth
+                // redirect (the reversed-client-id scheme registered in
+                // Info.plist) back into the in-flight sign-in. No-op for any
+                // other URL, so it never interferes with the calendar OAuth
+                // (`kairos://`) flow.
+                .onOpenURL { url in
+                    _ = GIDSignIn.sharedInstance.handle(url)
+                }
+                #endif
         }
         .onChange(of: scenePhase) { _, newPhase in
             // Re-submit the next background refresh request every time the

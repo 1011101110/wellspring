@@ -48,6 +48,26 @@ public final class FakeAuthService: ObservableObject, AuthService, AuthServiceOb
     }
 
     @discardableResult
+    public func signInWithGoogle() async throws -> KairosUser {
+        if let error = nextSignInError {
+            nextSignInError = nil
+            throw error
+        }
+        // Google accounts always expose a real address (no Apple-style
+        // private relay), so this path never triggers the invite-email
+        // relay explainer.
+        let email = "demo.user@gmail.com"
+        let user = KairosUser(
+            id: "google-\(UUID().uuidString.prefix(8))",
+            displayName: "Demo User",
+            email: email,
+            isPrivateRelayEmail: false
+        )
+        currentUser = user
+        return user
+    }
+
+    @discardableResult
     public func signInWithEmail(email: String, password: String) async throws -> KairosUser {
         if let error = nextSignInError {
             nextSignInError = nil

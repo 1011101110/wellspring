@@ -135,6 +135,47 @@ public final class FakeUpcomingEventsClient: UpcomingEventsProviding, @unchecked
     }
 }
 
+// MARK: - Free/busy (day view)
+
+public protocol FreeBusyProviding: AnyObject, Sendable {
+    /// `from`/`to` are ISO-8601 instants bounding the queried range (this
+    /// surface asks for today's local start..next-day start).
+    func freeBusy(from: String, to: String) async throws -> FreeBusy
+}
+
+/// `{ ok: true, data: FreeBusy }`. Parsed into the discriminated union so a
+/// caller physically cannot read `busy` on a degraded variant.
+private struct FreeBusyResponseBody: Decodable { let data: FreeBusy }
+
+public final class HTTPFreeBusyClient: FreeBusyProviding, @unchecked Sendable {
+    private let transport: DashboardTransport
+    public init(baseURL: URL, session: URLSession = .shared, idTokenProvider: @escaping @Sendable () async throws -> String) {
+        transport = DashboardTransport(baseURL: baseURL, session: session, idTokenProvider: idTokenProvider)
+    }
+    public func freeBusy(from: String, to: String) async throws -> FreeBusy {
+        let query = [
+            URLQueryItem(name: "from", value: from),
+            URLQueryItem(name: "to", value: to),
+        ]
+        return try await transport.send(path: "v1/calendar/freebusy", query: query, as: FreeBusyResponseBody.self).data
+    }
+}
+
+public final class FakeFreeBusyClient: FreeBusyProviding, @unchecked Sendable {
+    public var result: FreeBusy
+    public var nextError: DashboardError?
+    public init(
+        result: FreeBusy = .ok(range: FreeBusyRange(from: "", to: "", timeZone: TimeZone.current.identifier), busy: []),
+        nextError: DashboardError? = nil
+    ) {
+        self.result = result; self.nextError = nextError
+    }
+    public func freeBusy(from: String, to: String) async throws -> FreeBusy {
+        if let nextError { throw nextError }
+        return result
+    }
+}
+
 // MARK: - Connections
 
 public protocol ConnectionsProviding: AnyObject, Sendable {

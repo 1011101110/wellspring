@@ -95,6 +95,7 @@ public final class AppEnvironment: ObservableObject {
     // Dashboard (issue #252) — the signed-in Home's card data sources.
     public let devotionalsClient: any DevotionalsProviding
     public let upcomingEventsClient: any UpcomingEventsProviding
+    public let freeBusyClient: any FreeBusyProviding
     public let connectionsClient: any ConnectionsProviding
     public let recapClient: any RecapProviding
     public let journalClient: any JournalProviding
@@ -428,6 +429,7 @@ public final class AppEnvironment: ObservableObject {
         if resolvedIsDemoMode {
             self.devotionalsClient = DashboardDemoData.devotionals()
             self.upcomingEventsClient = DashboardDemoData.upcoming()
+            self.freeBusyClient = DashboardDemoData.freeBusy()
             self.connectionsClient = DashboardDemoData.connections()
             self.recapClient = DashboardDemoData.recap()
             self.journalClient = DashboardDemoData.journal()
@@ -439,6 +441,7 @@ public final class AppEnvironment: ObservableObject {
             let token: @Sendable () async throws -> String = { try await captured.idToken() }
             self.devotionalsClient = HTTPDevotionalsClient(baseURL: Self.apiBaseURL, idTokenProvider: token)
             self.upcomingEventsClient = HTTPUpcomingEventsClient(baseURL: Self.apiBaseURL, idTokenProvider: token)
+            self.freeBusyClient = HTTPFreeBusyClient(baseURL: Self.apiBaseURL, idTokenProvider: token)
             self.connectionsClient = HTTPConnectionsClient(baseURL: Self.apiBaseURL, idTokenProvider: token)
             self.recapClient = HTTPRecapClient(baseURL: Self.apiBaseURL, idTokenProvider: token)
             self.journalClient = HTTPJournalClient(baseURL: Self.apiBaseURL, idTokenProvider: token)
@@ -515,8 +518,19 @@ public final class AppEnvironment: ObservableObject {
             journalClient: journalClient,
             liturgyClient: liturgyClient,
             generateNowClient: generateNowClient,
-            accountInfo: accountInfoClient
+            accountInfo: accountInfoClient,
+            freeBusyClient: freeBusyClient,
+            calendarService: calendarService
         )
+    }
+
+    /// Composition helper for the History tab (backlog #4): assembles a
+    /// `HistoryViewModel` from this environment's devotionals client, so the
+    /// full-screen archive shares the same data source as the Home dashboard's
+    /// "Your devotionals" card.
+    @MainActor
+    public func makeHistoryViewModel() -> HistoryViewModel {
+        HistoryViewModel(devotionals: devotionalsClient)
     }
 
     /// UI-test-only escape hatch (see `launchImpliesDemoMode` doc for why

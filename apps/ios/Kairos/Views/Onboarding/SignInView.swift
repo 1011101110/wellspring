@@ -14,13 +14,25 @@ struct SignInView: View {
                 .font(.title)
                 .bold()
 
+            // Sign in with Google is the web app's MVP provider
+            // (docs/01_PRD.md F1), so it leads here.
+            Button {
+                Task { await viewModel.signInWithGoogle() }
+            } label: {
+                Label("Sign in with Google", systemImage: "g.circle.fill")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.large)
+            .accessibilityIdentifier("signIn.withGoogle")
+
             Button {
                 Task { await viewModel.signInWithApple() }
             } label: {
                 Label("Sign in with Apple", systemImage: "apple.logo")
                     .frame(maxWidth: .infinity)
             }
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(.bordered)
             .controlSize(.large)
             .accessibilityIdentifier("signIn.withApple")
 
