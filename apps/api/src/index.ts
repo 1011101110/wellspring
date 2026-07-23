@@ -129,7 +129,13 @@ try {
     // than inside the handler so it is injectable in tests. Validated in
     // registerConnectRoutes — must be an https:// URL or the flow falls back
     // to the iOS custom scheme, so leaving this unset is safe.
-    webAppBaseUrl: process.env.WEB_APP_BASE_URL,
+    //
+    // WEB_APP_BASE_URL is a comma-separated ALLOWLIST (it doubles as the CORS
+    // origin list in app.ts, which splits it). The redirect base must be a
+    // SINGLE origin — using the raw comma-joined value builds a malformed URL
+    // (`https://a,https://b/connect/callback`) that a browser resolves to
+    // about:blank after a web calendar connect. Take the first origin.
+    webAppBaseUrl: process.env.WEB_APP_BASE_URL?.split(',')[0]?.trim() || undefined,
     // Adopt the connected calendar's IANA zone as the user's timezone so
     // "their morning" means their actual morning (see ConnectRoutesDeps).
     getCalendarTimeZone: (refreshToken: string) =>
