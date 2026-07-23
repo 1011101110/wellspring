@@ -79,6 +79,11 @@ public final class HTTPDistressCheckinClient: DistressCheckinRequesting, @unchec
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         request.httpBody = Data("{}".utf8)
+        // generate-now runs the full Gloo tool-loop (+ a possible repair round-trip)
+        // and TTS synthesis server-side — ~60-90s. URLSession's default 60s request
+        // timeout aborts client-side before it finishes, surfacing "The request timed
+        // out" and losing the devotional (kairos-devotional #296). Give it headroom.
+        request.timeoutInterval = 120
 
         let data: Data
         let response: URLResponse
