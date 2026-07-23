@@ -19,6 +19,16 @@ enum DashboardDemoData {
         return f.string(from: date)
     }
 
+    /// ISO instant at a wall-clock hour/minute on today's local day.
+    private static func isoTodayAt(_ hour: Int, _ minute: Int = 0) -> String {
+        let cal = Calendar.current
+        let start = cal.startOfDay(for: Date())
+        let date = cal.date(bySettingHour: hour, minute: minute, second: 0, of: start) ?? start
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime]
+        return f.string(from: date)
+    }
+
     static let restVerse = Verse(
         usfm: "MAT.11.28-MAT.11.30",
         reference: "Matthew 11:28–30",
@@ -87,6 +97,20 @@ enum DashboardDemoData {
                 meetUri: nil, rescheduleCount: 1, devotional: nil
             ),
         ])
+    }
+
+    static func freeBusy() -> FakeFreeBusyClient {
+        let cal = Calendar.current
+        let start = cal.startOfDay(for: Date())
+        let end = cal.date(byAdding: .day, value: 1, to: start) ?? start
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime]
+        let range = FreeBusyRange(from: f.string(from: start), to: f.string(from: end), timeZone: TimeZone.current.identifier)
+        return FakeFreeBusyClient(result: .ok(range: range, busy: [
+            FreeBusyBlock(start: isoTodayAt(9), end: isoTodayAt(10)),
+            FreeBusyBlock(start: isoTodayAt(13, 30), end: isoTodayAt(14, 15)),
+            FreeBusyBlock(start: isoTodayAt(16), end: isoTodayAt(16, 30)),
+        ]))
     }
 
     static func connections() -> FakeConnectionsClient {

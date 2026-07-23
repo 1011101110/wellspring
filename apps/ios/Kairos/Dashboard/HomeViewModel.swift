@@ -29,6 +29,7 @@ public final class HomeViewModel: ObservableObject {
     @Published public private(set) var today: CardState<TodayContent> = .loading
     @Published public private(set) var season: LiturgicalSeason?
     @Published public private(set) var upcoming: CardState<[UpcomingCalendarEvent]> = .loading
+    @Published public private(set) var freeBusy: CardState<FreeBusy> = .loading
     @Published public private(set) var connection: CardState<ConnectionState> = .loading
     @Published public private(set) var history: CardState<[DevotionalCard]> = .loading
     @Published public private(set) var historyNextCursor: String?
@@ -47,6 +48,7 @@ public final class HomeViewModel: ObservableObject {
 
     private let devotionals: any DevotionalsProviding
     private let upcomingClient: any UpcomingEventsProviding
+    private let freeBusyClient: any FreeBusyProviding
     private let connectionsClient: any ConnectionsProviding
     private let recapClient: any RecapProviding
     private let journalClient: any JournalProviding
@@ -64,10 +66,12 @@ public final class HomeViewModel: ObservableObject {
         liturgyClient: any LiturgyProviding,
         generateNowClient: any GenerateNowRequesting,
         accountInfo: any AccountInfoProviding,
+        freeBusyClient: any FreeBusyProviding = FakeFreeBusyClient(),
         now: @escaping () -> Date = { Date() }
     ) {
         self.devotionals = devotionals
         self.upcomingClient = upcomingClient
+        self.freeBusyClient = freeBusyClient
         self.connectionsClient = connectionsClient
         self.recapClient = recapClient
         self.journalClient = journalClient
@@ -90,7 +94,8 @@ public final class HomeViewModel: ObservableObject {
         async let g: Void = loadSeason()
         async let h: Void = loadInviteAddress()
         async let i: Void = probeSearch()
-        _ = await (a, b, c, d, e, f, g, h, i)
+        async let j: Void = loadFreeBusy()
+        _ = await (a, b, c, d, e, f, g, h, i, j)
     }
 
     private func message(for error: Error) -> String {
@@ -117,6 +122,44 @@ public final class HomeViewModel: ObservableObject {
             upcoming = events.isEmpty ? .empty : .loaded(events)
         } catch {
             upcoming = .failed(message(for: error))
+        }
+    }
+
+    /// Today's free/busy day view (issue #6). Asks for the device-local day —
+    /// midnight today to midnight tomorrow — as ISO-8601 instants, matching the
+    /// web card's `from`/`to` range. Always resolves to `.loaded`: a calendar
+    /// with nothing on it is a real answer ("Nothing on your calendar today."),
+    /// and the degraded variants (`consentDisabled`/`notConnected`) are honest
+    /// states the card renders in place, never an error or an empty free day.
+    public func loadFreeBusy() async {
+        freeBusy = .loading
+        let cal = Calendar.current
+        let startOfDay = cal.startOfDay(for: now())
+        guard let endOfDay = cal.date(byAdding: .day, value: 1, to: startOfDay) else {
+            freeBusy = .failed("Could not work out today's date.")
+            return
+        }
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime]
+        do {
+            let result = try await freeBusyClient.freeBusy(from: f.string(from: startOfDay), to: f.string(from: endOfDay))
+            freeBusy = .loaded(result)
+        } catch {
+            freeBusy = .failed(message(for: error))
+        }
+    }
+
+    /// Wellspring's own devotional slots that fall on today. They are not part
+    /// of the free/busy payload (that is only Google's busy windows); they come
+    /// from the already-loaded "Coming up" list, filtered to today's local day.
+    /// The day card highlights these on top of the busy blocks.
+    public var todaysWellspringSlots: [UpcomingCalendarEvent] {
+        guard case .loaded(let events) = upcoming else { return [] }
+        let cal = Calendar.current
+        let today = now()
+        return events.filter { event in
+            guard let start = DashboardDate.parse(event.gapStartAt) else { return false }
+            return cal.isDate(start, inSameDayAs: today)
         }
     }
 

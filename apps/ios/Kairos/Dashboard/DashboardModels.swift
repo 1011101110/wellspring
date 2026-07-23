@@ -49,6 +49,89 @@ public struct UpcomingCalendarEvent: Decodable, Equatable, Sendable, Identifiabl
     }
 }
 
+// MARK: - Free/busy (GET /v1/calendar/freebusy)
+
+/// A single opaque busy window — start and end, deliberately nothing else.
+/// This is the whole payload Google's `freebusy.query` returns; the granted
+/// scopes are `calendar.freebusy` + `calendar.events`, never
+/// `calendar.readonly`, so no title/attendee/location field exists
+/// (shared-contract FreeBusyBlockSchema — "there was never anything to strip").
+public struct FreeBusyBlock: Decodable, Equatable, Sendable, Identifiable {
+    /// ISO-8601 instant. Rendered in the device's zone on this surface.
+    public let start: String
+    public let end: String
+
+    public init(start: String, end: String) {
+        self.start = start
+        self.end = end
+    }
+
+    public var id: String { "\(start)/\(end)" }
+}
+
+/// The requested range, echoed back on every variant. `timeZone` is the zone
+/// the query was resolved in server-side (the user's profile zone), returned so
+/// a client can label its axis with the same zone the server used.
+public struct FreeBusyRange: Decodable, Equatable, Sendable {
+    public let from: String
+    public let to: String
+    public let timeZone: String
+
+    public init(from: String, to: String, timeZone: String) {
+        self.from = from
+        self.to = to
+        self.timeZone = timeZone
+    }
+}
+
+/// The `data` of `GET /v1/calendar/freebusy`, a discriminated union on
+/// `status` mirroring `FreeBusyDataSchema`. `busy` exists ONLY on the `ok`
+/// variant — in every degraded state the key is absent, not empty, so a
+/// client that ignores `status` cannot render an unread calendar as a free
+/// one (the whole point of the contract: absence beats `[]`).
+public enum FreeBusy: Equatable, Sendable {
+    case ok(range: FreeBusyRange, busy: [FreeBusyBlock])
+    /// `preferences.calendar_enabled = false` — remedy is a settings toggle,
+    /// not a reconnect (the Google grant is untouched).
+    case consentDisabled(range: FreeBusyRange)
+    /// No active `google_calendar` connection — remedy is the OAuth flow.
+    case notConnected(range: FreeBusyRange)
+
+    public var range: FreeBusyRange {
+        switch self {
+        case .ok(let range, _), .consentDisabled(let range), .notConnected(let range):
+            return range
+        }
+    }
+}
+
+extension FreeBusy: Decodable {
+    private enum Status: String, Decodable {
+        case ok
+        case consentDisabled = "consent_disabled"
+        case notConnected = "not_connected"
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case status, range, busy
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let status = try container.decode(Status.self, forKey: .status)
+        let range = try container.decode(FreeBusyRange.self, forKey: .range)
+        switch status {
+        case .ok:
+            let busy = try container.decode([FreeBusyBlock].self, forKey: .busy)
+            self = .ok(range: range, busy: busy)
+        case .consentDisabled:
+            self = .consentDisabled(range: range)
+        case .notConnected:
+            self = .notConnected(range: range)
+        }
+    }
+}
+
 // MARK: - Connections (GET /v1/connections)
 
 public struct Connection: Decodable, Equatable, Sendable {

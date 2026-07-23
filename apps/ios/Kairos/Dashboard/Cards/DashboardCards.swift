@@ -142,7 +142,9 @@ struct UpcomingCard: View {
     }
 }
 
-// MARK: - Calendar (free/busy — day summary)
+// MARK: - Calendar connection status
+//
+// (The free/busy day view lives in Cards/CalendarDayCard.swift — issue #6.)
 
 struct ConnectionCard: View {
     @ObservedObject var viewModel: HomeViewModel
