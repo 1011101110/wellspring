@@ -81,14 +81,39 @@ export interface ResolvedZone {
 }
 
 /**
- * Picks the zone to render in: the profile zone when we have one (it is
- * the zone the backend schedules in, so it is the zone the times *mean*),
- * otherwise the browser's.
+ * Picks the zone to render in: the profile zone when we have a *real* one
+ * (it is the zone the backend schedules in, so it is the zone the times
+ * *mean*), otherwise the browser's.
+ *
+ * ## Why a bare `UTC` profile zone is treated as "not known" (#301)
+ *
+ * `users.timezone` defaults to `'UTC'` and is only populated when a real
+ * one is learned — the web client pushes the browser's `Intl` zone on every
+ * save, and connect adopts the calendar's zone (`connect.ts`). A user who
+ * has not triggered either path (connected but never saved, or whose
+ * connect never completed — see #298) still reads back `'UTC'`, and that is
+ * a *default*, not a fact about where they are. Rendering a New York user's
+ * calendar in UTC because the server never learned their zone is the whole
+ * of #301: the banner even said "UTC is where Wellspring schedules you"
+ * while the browser sat in America/New_York.
+ *
+ * So a profile zone of exactly `'UTC'` falls through to the browser's zone,
+ * which is the better available answer and still carries a checkable label
+ * (`9:00 AM EDT`) on every rendered time. A user who is *genuinely* in UTC
+ * has a browser zone of UTC too, so the result is unchanged for them; only
+ * the "server never learned it" case is repaired. A real, non-UTC profile
+ * zone still wins and still surfaces the travel mismatch, exactly as before.
  */
 export function resolveZone(profileTimezone: string | undefined, browserZone: string): ResolvedZone {
   const browser = safeZone(browserZone);
-  if (!profileTimezone) return { zone: browser, travelling: false, browserZone: browser };
-  const profile = safeZone(profileTimezone);
+  const profile = profileTimezone ? safeZone(profileTimezone) : undefined;
+  // `undefined` (field absent) and `'UTC'` (the unpopulated default) are the
+  // same signal here: we do not actually know the user's zone, so render in
+  // the browser's and claim no travel — there is nothing trustworthy to
+  // disagree with.
+  if (!profile || profile === 'UTC') {
+    return { zone: browser, travelling: false, browserZone: browser };
+  }
   return { zone: profile, travelling: profile !== browser, browserZone: browser };
 }
 

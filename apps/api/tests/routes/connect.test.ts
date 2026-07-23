@@ -241,6 +241,54 @@ describe('GET /v1/connect/google/callback', () => {
     await app.close();
   });
 
+  it('turns calendar reading on (calendar_enabled=true) after a successful connect (#299)', async () => {
+    const preferences = { update: vi.fn().mockResolvedValue({}) };
+    const oauthStates = fakeOAuthStates();
+    oauthStates.seed('valid-token', FAKE_USER_ID);
+    const app = buildTestApp({
+      preferences: preferences as unknown as ConnectRoutesDeps['preferences'],
+      oauthStates: oauthStates as unknown as OAuthStatesRepository,
+    });
+
+    const res = await app.inject({
+      method: 'GET',
+      url: `/v1/connect/google/callback?code=auth-code-xyz&state=valid-token`,
+    });
+
+    expect([301, 302]).toContain(res.statusCode);
+    // The OAuth grant is the consent to read; the gate the freebusy route
+    // checks is a separate column that connect must set explicitly (#299).
+    expect(preferences.update).toHaveBeenCalledWith(FAKE_USER_ID, {
+      calendar_enabled: true,
+    });
+
+    await app.close();
+  });
+
+  it('still completes the connect when enabling calendar reading fails (best-effort)', async () => {
+    const preferences = {
+      update: vi.fn().mockRejectedValue(new Error('db down')),
+    };
+    const oauthStates = fakeOAuthStates();
+    oauthStates.seed('valid-token', FAKE_USER_ID);
+    const app = buildTestApp({
+      preferences: preferences as unknown as ConnectRoutesDeps['preferences'],
+      oauthStates: oauthStates as unknown as OAuthStatesRepository,
+    });
+
+    const res = await app.inject({
+      method: 'GET',
+      url: `/v1/connect/google/callback?code=auth-code-xyz&state=valid-token`,
+    });
+
+    // The connect the user already approved must not fail on a preferences
+    // write it does not depend on.
+    expect([301, 302]).toContain(res.statusCode);
+    expect(res.headers.location).toBe('kairos://connect-callback?status=success');
+
+    await app.close();
+  });
+
   it('adopts the connected calendar time zone onto the user (fixes UTC-anchored gap selection)', async () => {
     const users = fakeUsers({
       findById: vi.fn().mockResolvedValue({

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { PreferencesForm } from '../components/PreferencesForm';
 import { ErrorNote } from './Onboarding';
 import type { WebPreferences } from '../lib/preferences';
+import { calendarSettingsState, type ConnectionState } from '../lib/connectionState';
 
 /**
  * Preferences after onboarding (docs/05 §3.1 F7), so parity is not an
@@ -23,7 +24,9 @@ export function SettingsView({
   busy,
   error,
   saved,
-  calendarConnected,
+  connection,
+  calendarReadingEnabled,
+  onToggleCalendarReading,
   onConnectCalendar,
   onSignOut,
   email,
@@ -35,12 +38,22 @@ export function SettingsView({
   busy: boolean;
   error: string | null;
   saved: boolean;
-  calendarConnected: boolean;
+  /** The OAuth grant, from `/v1/connections` — the same source the dashboard card reads. */
+  connection: ConnectionState | null;
+  /** `calendar_enabled` — whether Wellspring may read free/busy once connected. */
+  calendarReadingEnabled: boolean;
+  /** Persists a new `calendar_enabled` value (PUT /v1/preferences). */
+  onToggleCalendarReading: (next: boolean) => void;
   onConnectCalendar: () => void;
   onSignOut: () => void;
   email: string | null;
 }) {
   const [confirmingSignOut, setConfirmingSignOut] = useState(false);
+
+  // Connection (OAuth) and reading consent (`calendar_enabled`) are separate
+  // facts; this reconciles them into the one honest readout the section can
+  // be in (#299). See `calendarSettingsState`.
+  const calendar = calendarSettingsState(connection, calendarReadingEnabled);
 
   return (
     <section aria-labelledby="settings-heading" className="card">
@@ -51,13 +64,39 @@ export function SettingsView({
         <legend>Calendar</legend>
         {/* Connection state is stated in words, not carried by a colored
             dot — the same 1.4.1 rule the day circles follow. */}
-        <p className="readout">{calendarConnected ? 'Connected' : 'Not connected'}</p>
-        {!calendarConnected && (
+        {calendar.kind === 'not_connected' ? (
           <>
+            <p className="readout">Not connected</p>
             <p className="hint">Wellspring has nothing to read until a calendar is connected.</p>
             <button type="button" className="secondary" onClick={onConnectCalendar}>
-              Connect Google Calendar
+              {calendar.action}
             </button>
+          </>
+        ) : (
+          <>
+            <p className="readout">Connected</p>
+            {/*
+              The switch #299 was missing. A user who connected but whose
+              `calendar_enabled` is false was told, on the calendar view,
+              that "turning it back on is one switch in settings" — and there
+              was no switch. This is it. A real checkbox, labelled in words,
+              persisted immediately through `PUT /v1/preferences`.
+            */}
+            <label className="row" htmlFor="settings-calendar-reading">
+              <input
+                id="settings-calendar-reading"
+                type="checkbox"
+                checked={calendar.kind === 'reading_on'}
+                disabled={busy}
+                onChange={(e) => onToggleCalendarReading(e.target.checked)}
+              />
+              <span>Read my free/busy times</span>
+            </label>
+            <p className="hint">
+              {calendar.kind === 'reading_on'
+                ? 'Wellspring is reading when you are free — never what your meetings are called — and booking devotionals in the gaps.'
+                : 'Reading is turned off, so Wellspring cannot see your commitments. Your Google connection is untouched; turn this on to let it read your free/busy times again.'}
+            </p>
           </>
         )}
       </fieldset>

@@ -3,6 +3,8 @@ import { onAuthStateChanged, type User } from 'firebase/auth';
 import { auth, signOutOfKairos } from './firebase';
 import { getPreferences, putPreferences } from './api/preferences';
 import { getGoogleConnectUrl } from './api/connect';
+import { getConnections } from './api/dashboard';
+import { deriveConnectionState, type ConnectionState } from './lib/connectionState';
 import {
   DEFAULT_PREFERENCES,
   detectTimezone,
@@ -90,7 +92,22 @@ export function App() {
   const [prefs, setPrefs] = useState<WebPreferences>(DEFAULT_PREFERENCES);
   /** The last full `/v1/preferences` payload — see `load()` for why. */
   const [serverPrefs, setServerPrefs] = useState<PreferencesResponseData | null>(null);
-  const [calendarConnected, setCalendarConnected] = useState(false);
+  /**
+   * Whether Wellspring may read free/busy — the `calendar_enabled` consent
+   * flag from preferences. This is NOT the OAuth connection (that is
+   * `calendarConnection`): a user can be connected with reading off, which
+   * is exactly the state #299 left unrepresentable. Mirrors the server's
+   * value so it never drifts.
+   */
+  const [calendarReadingEnabled, setCalendarReadingEnabled] = useState(false);
+  /**
+   * The OAuth grant itself, from `GET /v1/connections` — the same source
+   * the dashboard's connection card reads, so Settings cannot disagree with
+   * it (#299). `null` until the fetch lands, or if it fails; the derivation
+   * that reads it treats an unknown connection as "not connected" rather
+   * than guessing it is healthy.
+   */
+  const [calendarConnection, setCalendarConnection] = useState<ConnectionState | null>(null);
   /**
    * Set only when the user makes a real consent statement in this session
    * — connecting a calendar or explicitly skipping it. `undefined` means
@@ -123,7 +140,16 @@ export function App() {
       // editable record — see lib/preferences.ts — so it is not the right
       // thing to widen.
       setServerPrefs(data);
-      setCalendarConnected(data.calendarEnabled);
+      setCalendarReadingEnabled(data.calendarEnabled);
+      // The OAuth connection is a separate read (#299). Best-effort: a
+      // failure here must not take down a load that already has the
+      // preferences it needs — Settings falls back to "not connected", the
+      // same refusal-to-guess the rest of this shell uses. On the way back
+      // from an OAuth round-trip the whole page reloads, so this re-runs and
+      // the state is never stale across a connect.
+      void getConnections()
+        .then((payload) => setCalendarConnection(deriveConnectionState(payload)))
+        .catch(() => setCalendarConnection(null));
       setPhase(data.onboardedAt === null ? { kind: 'onboarding' } : { kind: 'dashboard' });
       // A signed-in user has already done welcome and sign-in by
       // definition, so onboarding resumes at the calendar step — which is
@@ -146,15 +172,21 @@ export function App() {
     void load();
   }, [authResolved, user, load]);
 
-  async function save(options: { onboardingCompleted?: boolean } = {}) {
+  async function save(options: { onboardingCompleted?: boolean; calendarEnabled?: boolean } = {}) {
     setBusy(true);
     setError(null);
     setSaved(false);
     try {
+      // An explicit override (the reading toggle) wins over the session's
+      // standing `calendarConsent`; absent, the standing value is used, and
+      // `undefined` still means "no opinion" so an ordinary save cannot
+      // restate a consent decision made on the other surface.
+      const calendarEnabled =
+        options.calendarEnabled !== undefined ? options.calendarEnabled : calendarConsent;
       const data = await putPreferences(
         toUpdateRequest(prefs, {
           timezone,
-          calendarEnabled: calendarConsent,
+          calendarEnabled,
           onboardingCompleted: options.onboardingCompleted,
         }),
       );
@@ -164,7 +196,7 @@ export function App() {
       // actually stored is how two clients start to disagree.
       setPrefs(fromServer(data));
       setServerPrefs(data);
-      setCalendarConnected(data.calendarEnabled);
+      setCalendarReadingEnabled(data.calendarEnabled);
       setSaved(true);
       return data;
     } catch (err) {
@@ -173,6 +205,19 @@ export function App() {
     } finally {
       setBusy(false);
     }
+  }
+
+  /**
+   * The Settings calendar-reading toggle (#299). Persists the new
+   * `calendar_enabled` immediately rather than waiting for the "Save
+   * changes" button, because it is a consent decision, not a preference
+   * edit — a user turning reading back on expects it to take effect, not to
+   * be staged. `calendarConsent` is also set so a later ordinary save keeps
+   * the same value rather than reverting it.
+   */
+  async function setCalendarReading(next: boolean) {
+    setCalendarConsent(next);
+    await save({ calendarEnabled: next });
   }
 
   async function startCalendarConnect() {
@@ -270,7 +315,9 @@ export function App() {
           busy={busy}
           error={error}
           saved={saved}
-          calendarConnected={calendarConnected}
+          connection={calendarConnection}
+          calendarReadingEnabled={calendarReadingEnabled}
+          onToggleCalendarReading={(next) => void setCalendarReading(next)}
           onConnectCalendar={() => void startCalendarConnect()}
           onSignOut={() => void signOutOfKairos()}
           email={user?.email ?? null}
@@ -284,7 +331,7 @@ export function App() {
       {step === 'calendarConnect' && (
         <CalendarConnectStep
           onConnected={() => {
-            setCalendarConnected(true);
+            setCalendarReadingEnabled(true);
             setCalendarConsent(true);
             setStep('preferences');
           }}
@@ -311,7 +358,7 @@ export function App() {
         <DoneStep
           busy={busy}
           error={error}
-          calendarConnected={calendarConnected}
+          calendarConnected={calendarReadingEnabled}
           onFinish={() =>
             void save({ onboardingCompleted: true }).then((ok) => {
               // Only on a confirmed write. `onboardingCompleted` is the one

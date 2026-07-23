@@ -125,6 +125,9 @@ try {
     connections: repositories.connections,
     users: repositories.users,
     oauthStates: repositories.oauthStates,
+    // Turn calendar reading on when the OAuth grant completes (#299), so a
+    // connected user is never stranded on a "reading is turned off" grid.
+    preferences: repositories.preferences,
     // Where a browser-originated connect returns to (#195). Read here rather
     // than inside the handler so it is injectable in tests. Validated in
     // registerConnectRoutes — must be an https:// URL or the flow falls back

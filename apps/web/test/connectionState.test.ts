@@ -6,6 +6,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Connection, ConnectionsResponse } from '@kairos/shared-contracts';
 import {
+  calendarSettingsState,
   CONNECTION_COPY,
   connectionActionLabel,
   deriveConnectionState,
@@ -163,5 +164,43 @@ describe('schedulingCapability', () => {
     for (const state of notConnected) {
       expect(schedulingCapability(state)).not.toBe('connected');
     }
+  });
+});
+
+describe('calendarSettingsState (#299)', () => {
+  const active = deriveConnectionState(payload([connection()]));
+  const never = deriveConnectionState(payload([]));
+  const revoked = deriveConnectionState(payload([connection({ status: 'revoked' })]));
+
+  it('is reading_on when connected and calendar_enabled is true', () => {
+    expect(calendarSettingsState(active, true)).toEqual({ kind: 'reading_on' });
+  });
+
+  it('is reading_off — the state #299 could not represent — when connected but reading is off', () => {
+    // The whole bug: an active OAuth grant with the consent flag false. This
+    // must NOT read as "not connected", or the user is sent to reconnect —
+    // the wrong remedy — instead of to the toggle.
+    expect(calendarSettingsState(active, false)).toEqual({ kind: 'reading_off' });
+  });
+
+  it('is not_connected when there is no grant, and offers "Connect"', () => {
+    expect(calendarSettingsState(never, false)).toEqual({
+      kind: 'not_connected',
+      action: 'Connect Google Calendar',
+    });
+    // Reading consent being true is irrelevant with nothing to read.
+    expect(calendarSettingsState(never, true).kind).toBe('not_connected');
+  });
+
+  it('offers "Reconnect" for a revoked grant, matching the dashboard card', () => {
+    const state = calendarSettingsState(revoked, true);
+    expect(state.kind).toBe('not_connected');
+    expect(state).toEqual({ kind: 'not_connected', action: 'Reconnect Google Calendar' });
+  });
+
+  it('treats an unknown (unfetched/failed) connection as not connected rather than guessing', () => {
+    // `null` is "we could not read it", which is not evidence of a grant —
+    // the same refusal-to-guess the scheduling capability makes.
+    expect(calendarSettingsState(null, true).kind).toBe('not_connected');
   });
 });
