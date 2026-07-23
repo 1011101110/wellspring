@@ -26,6 +26,10 @@ import { z } from 'zod';
 import type { GenerateNowOrchestrator } from '../services/orchestrator/generateNowOrchestrator.js';
 import { AlreadyExistsError } from '../services/orchestrator/generateNowOrchestrator.js';
 import type { PreferencesRepository, UsersRepository } from '../db/repositories/index.js';
+import { asVerifiedUserId } from '../db/repositories/index.js';
+import type { DailyRunCadenceRow } from '../db/repositories/preferencesRepository.js';
+import { loadAttendanceSignals, type AttendanceSignalsDeps } from '../services/rhythm/attendanceSignals.js';
+import { decideCadence, type CadenceReason } from '../services/rhythm/cadencePolicy.js';
 import { runAllPurgeJobs, type PurgeJobsDeps } from '../services/retention/purgeJobs.js';
 import { runRescheduleCheck, type RescheduleWatcherDeps } from '../services/calendar/rescheduleWatcher.js';
 import { refreshCalendarTimezone } from '../services/calendar/refreshCalendarTimezone.js';
@@ -51,6 +55,17 @@ export interface InternalRoutesDeps {
    * something: a misconfigured deploy should not silently stop generating.
    */
   preferences?: PreferencesRepository;
+  /**
+   * P6 (#325): the attendance-signal readers behind
+   * /internal/trigger-daily-run's adaptive-rhythm gate — P4's
+   * `loadAttendanceSignals` needs a sessions repository and a
+   * `FeedbackSignalSource` (sessionFeedbackSignalSource.ts). Optional with
+   * the same fail-open posture as `preferences` above, and for the same
+   * reason: when omitted, the engine is simply disabled and every user is
+   * gated on their raw `active_days` exactly as before this story — a
+   * misconfigured deploy must degrade to MORE presence, never less.
+   */
+  rhythm?: AttendanceSignalsDeps;
   /**
    * Required for /internal/purge. When omitted, that route returns 501.
    * `now` is intentionally NOT part of this — production always uses the
@@ -249,12 +264,24 @@ export function registerInternalRoutes(app: FastifyInstance, deps: InternalRoute
     // dead config (docs/03 §10) — a user who selected Mon–Fri still got a
     // Saturday devotional. A setting that changes nothing is a broken
     // promise, and a quiet one, because the user believes they were heard.
-    const activeDaysByUserId = new Map<string, number[]>();
+    //
+    // P6 (#325): the same rows now also carry the cadence engine's inputs
+    // (min_per_week + the adaptive_* state), so the adaptive evaluation in
+    // the loop below costs no extra query for non-adaptive users.
+    const cadencePrefsByUserId = new Map<string, DailyRunCadenceRow>();
     if (deps.preferences) {
       for (const row of await deps.preferences.listActiveDays()) {
-        activeDaysByUserId.set(row.user_id, row.active_days);
+        cadencePrefsByUserId.set(row.user_id, row);
       }
     }
+
+    // P6 (#325): users whose stated day it was, but whose devotional the
+    // adaptive rhythm engine rested today. Reported in the run summary
+    // (and therefore in Cloud Logging per execution — the #286 lesson:
+    // cron work fails invisibly) so "why didn't I get one today?" is
+    // answerable from a single log line. Reason codes only, never counts
+    // of missed sessions (§9).
+    const skippedByRhythm: Array<{ userId: string; reason: CadenceReason }> = [];
 
     // K1 (#187): how many users' zones this run actually moved. Reported
     // in the response so a Cloud Scheduler run's logs show whether the
@@ -302,6 +329,93 @@ export function registerInternalRoutes(app: FastifyInstance, deps: InternalRoute
       const sabbath = sabbathByUserId.get(user.id);
       const isSabbathToday = sabbath !== undefined && today === sabbath.sabbath_day;
 
+      // ── Adaptive rhythm evaluation (P6 #325, epic #312) ──────────────
+      //
+      // Runs BEFORE every gate below (sabbath included), so the engine's
+      // state advances on schedule even on days this user generates
+      // nothing — a back-off decided on their sabbath is still a back-off,
+      // and deferring it would smear the one-step-per-week ladder across
+      // whichever days happen to generate.
+      //
+      // Only entered for `adaptive_enabled = true` users: the policy's own
+      // rule 1 would return `fixed_by_user` with the full stated day set
+      // anyway, so skipping the signal reads for everyone else is pure
+      // savings (three queries per adaptive user, zero for the rest) and
+      // keeps non-adaptive scheduling byte-identical to K2 (#188).
+      //
+      // FAIL-OPEN, per the epic's ground rule: any error in the signal
+      // reads or the policy for one user falls back to that user's full
+      // stated `active_days` — logged and surfaced in `errors`, but the
+      // devotional still generates. The failure mode this must never have
+      // is "the adaptive engine broke and silently stopped everyone's
+      // devotionals"; erring toward MORE presence is the whole posture.
+      const prefs = cadencePrefsByUserId.get(user.id);
+      let effectiveDays = prefs?.active_days;
+      let rhythmReason: CadenceReason | null = null;
+      if (deps.rhythm && deps.preferences && prefs?.adaptive_enabled) {
+        try {
+          const rhythmNow = now();
+          // P4's "since back-off" anchor: only an `easing_back` decision
+          // counts as a back-off; `adaptive_decided_at` under any other
+          // reason is just the rate limiter's clock.
+          const lastBackoffAt =
+            prefs.adaptive_reason === 'easing_back' ? prefs.adaptive_decided_at : null;
+          const signals = await loadAttendanceSignals(deps.rhythm, asVerifiedUserId(user.id), {
+            now: rhythmNow,
+            lastBackoffAt,
+          });
+          const decision = decideCadence(
+            signals,
+            {
+              activeDays: prefs.active_days,
+              minPerWeek: prefs.min_per_week,
+              adaptiveEnabled: prefs.adaptive_enabled,
+              adaptiveDaysPerWeek: prefs.adaptive_days_per_week,
+              adaptiveDecidedAt: prefs.adaptive_decided_at,
+            },
+            { now: rhythmNow },
+          );
+
+          // Persist ONLY when the decision actually moved the ladder —
+          // never on a hold. `adaptive_decided_at` is doing double duty as
+          // the 7-day rate limiter's clock and P4's "since back-off"
+          // anchor (see `updateAdaptiveState`'s contract), so recording a
+          // no-op would push that clock forward every day and freeze a
+          // backed-off user below their ceiling forever. "Moved" is
+          // measured against what the engine treats as the current level —
+          // stored state, or the ceiling when never adapted (the policy's
+          // own `?? ceiling` default) — so a fresh user holding at their
+          // full schedule (`no_data`/`hold`) writes nothing and keeps a
+          // null limiter clock.
+          const ceiling = new Set(prefs.active_days).size;
+          if (decision.daysPerWeek !== (prefs.adaptive_days_per_week ?? ceiling)) {
+            await deps.preferences.updateAdaptiveState(asVerifiedUserId(user.id), {
+              daysPerWeek: decision.daysPerWeek,
+              reason: decision.reason,
+              decidedAt: rhythmNow,
+            });
+          }
+
+          effectiveDays = decision.effectiveDays;
+          rhythmReason = decision.reason;
+        } catch (err) {
+          // Fall back to the full stated schedule. Surfaced in `errors` so
+          // a broken engine is loud in the run summary, but NOT counted in
+          // `failed` — `failed` means "a user did not get their
+          // devotional", and this user is about to get theirs.
+          request.log.error(
+            { userId: user.id, err: String(err) },
+            'daily run: adaptive rhythm evaluation failed — failing open to full active_days',
+          );
+          errors.push({
+            userId: user.id,
+            reason: `adaptive rhythm evaluation failed (failed open, generation still attempted): ${String(err)}`,
+          });
+          effectiveDays = prefs.active_days;
+          rhythmReason = null;
+        }
+      }
+
       if (isSabbathToday && !sabbath!.sabbath_session) {
         // Genuine rest — no devotional generated today at all.
         skipped++;
@@ -329,7 +443,7 @@ export function registerInternalRoutes(app: FastifyInstance, deps: InternalRoute
       // first write, so a missing row means "this user has never expressed
       // a day preference", and reading that as "no days selected" would
       // withhold devotionals from a user who never asked for silence.
-      const activeDays = activeDaysByUserId.get(user.id);
+      const activeDays = prefs?.active_days;
       if (!isSabbathToday && activeDays !== undefined && !activeDays.includes(today)) {
         // A skip, not an error — the same treatment AlreadyExistsError
         // gets below. Today simply isn't one of their days; nothing went
@@ -339,6 +453,34 @@ export function registerInternalRoutes(app: FastifyInstance, deps: InternalRoute
         request.log.info(
           { userId: user.id, timezone, localDayOfWeek: today, activeDays },
           'daily run: skipped — not an active day for this user',
+        );
+        continue;
+      }
+
+      // P6 (#325): the adaptive-rhythm gate. Only reachable when today IS
+      // one of the user's stated days (the K2 gate above already handled
+      // "never their day") but the engine's current effective set rests it
+      // — that distinction is why this is a separate check with its own
+      // `skippedByRhythm` entry rather than a merged day-set: "you chose
+      // not to have Saturdays" and "we eased back your week" must never be
+      // indistinguishable in the logs. Ordered after the sabbath check and
+      // guarded by `!isSabbathToday` for exactly K2's reason: a sabbath
+      // day resolves wholly through the sabbath rules, and gating the
+      // opted-in sabbath session on effective days would make it dead
+      // config. `rhythmReason !== null` scopes this to users the engine
+      // actually decided for — fixed-schedule users, engine-less deploys,
+      // and the fail-open path all pass straight through on `active_days`.
+      if (
+        !isSabbathToday &&
+        rhythmReason !== null &&
+        effectiveDays !== undefined &&
+        !effectiveDays.includes(today)
+      ) {
+        skipped++;
+        skippedByRhythm.push({ userId: user.id, reason: rhythmReason });
+        request.log.info(
+          { userId: user.id, timezone, localDayOfWeek: today, effectiveDays, reason: rhythmReason },
+          'daily run: skipped by adaptive rhythm — today is outside the effective day set',
         );
         continue;
       }
@@ -368,6 +510,7 @@ export function registerInternalRoutes(app: FastifyInstance, deps: InternalRoute
       failed,
       errors,
       timezonesRefreshed,
+      skippedByRhythm,
     };
   });
 
