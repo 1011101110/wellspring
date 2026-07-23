@@ -23,9 +23,11 @@ final class AppEnvironmentTests: XCTestCase {
     }
 
     func test_stagingAPIBaseURL_isTheDocumentedStagingHost() {
-        // Pins the exact host docs/14_IMPROVEMENT_REVIEW.md §1.9 and this
-        // task's brief specify as the fix target.
-        XCTAssertEqual(AppEnvironment.stagingAPIBaseURL.absoluteString, "https://your-api-host.example.com")
+        // Pins the committed staging host (the #if DEBUG default for
+        // AppEnvironment.apiBaseURL). This is a public, auth-gated Cloud Run
+        // endpoint — not a secret — committed directly rather than injected;
+        // system of record is kairos-devotional docs/10_CREDENTIALS_ACCESS.
+        XCTAssertEqual(AppEnvironment.stagingAPIBaseURL.absoluteString, "https://kairos-api-staging-382100412938.us-central1.run.app")
     }
 
     #if DEBUG

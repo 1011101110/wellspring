@@ -123,14 +123,17 @@ public final class AppEnvironment: ObservableObject {
     /// retains it.
     ///
     /// Resolution order:
-    /// 1. `API_BASE_URL` in the main bundle's `Info.plist` (wired via
-    ///    `project.yml`'s `INFOPLIST_KEY_API_BASE_URL` build setting) —
-    ///    the real, shippable configuration point for any build
-    ///    (Debug or Release).
-    /// 2. In `DEBUG` builds only, when that key is absent/unset (e.g. a
-    ///    fresh checkout that hasn't regenerated the Xcode project yet),
-    ///    falls back to the real staging URL directly, so local
-    ///    development/testing keeps working without extra setup.
+    /// 1. `API_BASE_URL` in the main bundle's `Info.plist` — the real,
+    ///    shippable configuration point for any build (Debug or Release).
+    ///    It is wired by Info.plist variable substitution: the source plist
+    ///    holds `API_BASE_URL = $(API_BASE_URL)` and Xcode expands the
+    ///    `API_BASE_URL` build setting (see `project.yml`) into it at build
+    ///    time. (A custom `INFOPLIST_KEY_API_BASE_URL` build setting does NOT
+    ///    work — Xcode only synthesizes a fixed allowlist of Apple-known
+    ///    INFOPLIST_KEY_* keys and drops arbitrary ones.)
+    /// 2. In `DEBUG` builds only, when that key is empty/absent (the default —
+    ///    `project.yml` ships `API_BASE_URL` empty), falls back to the staging
+    ///    URL directly, so local development/testing works without extra setup.
     /// 3. Otherwise (a Release/TestFlight-shaped build missing the
     ///    Info.plist key entirely), falls back to a non-routable `.invalid`
     ///    host — real network calls fail closed with a network error
@@ -152,11 +155,17 @@ public final class AppEnvironment: ObservableObject {
         #endif
     }()
 
-    /// Placeholder staging API host for the open-source repo. Used as
-    /// `project.yml`'s Debug-config `API_BASE_URL` value and as this file's
-    /// own `DEBUG`-only fallback above. Point it at your own deployed API
-    /// host (kept out of source so the public repo carries no real infra URL).
-    public static let stagingAPIBaseURL = URL(string: "https://your-api-host.example.com")!
+    /// The staging API host, and the committed default for local Debug builds
+    /// (resolution step 2 above, used because `project.yml` ships `API_BASE_URL`
+    /// empty). This is a **public, auth-gated Cloud Run endpoint — not a
+    /// secret**: every `/v1` route requires a Firebase ID token, all real
+    /// secrets (Gloo/YouVersion/DB keys) live in GCP Secret Manager, and the
+    /// project number is already public in the Google Sign-In URL scheme
+    /// (`project.yml`). So it is committed directly rather than injected — no
+    /// fragile local override to lose. To point a Debug build elsewhere, set
+    /// the `API_BASE_URL` build setting (`project.yml`), which wins via step 1.
+    /// System of record for this value: `kairos-devotional` docs/10_CREDENTIALS_ACCESS.
+    public static let stagingAPIBaseURL = URL(string: "https://kairos-api-staging-382100412938.us-central1.run.app")!
 
     public init(
         authService: AnyAuthService? = nil,

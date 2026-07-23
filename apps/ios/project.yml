@@ -61,6 +61,16 @@ targets:
       path: Kairos/Info.plist
       properties:
         UILaunchScreen: {}
+        # The API base URL, read at runtime by `AppEnvironment.apiBaseURL`.
+        # Uses Info.plist variable substitution: Xcode expands `$(API_BASE_URL)`
+        # from the build setting of the same name (see `settings.base` below)
+        # when it processes the Info.plist. NOTE: a custom
+        # `INFOPLIST_KEY_API_BASE_URL` build setting does NOT work here —
+        # Xcode's GENERATE_INFOPLIST_FILE machinery only synthesizes a fixed
+        # allowlist of Apple-known INFOPLIST_KEY_* keys and silently drops
+        # arbitrary custom ones. The `$(VAR)` reference is the mechanism that
+        # actually lands the value in the built Info.plist.
+        API_BASE_URL: "$(API_BASE_URL)"
         # Product/brand name shown under the app icon and in system UI.
         # The target, bundle id, and module stay "kairos" (internal codename);
         # only the user-facing name is Wellspring, matching the web app.
@@ -97,20 +107,20 @@ targets:
         MARKETING_VERSION: "1.0"
         CURRENT_PROJECT_VERSION: "1"
         SWIFT_EMIT_LOC_STRINGS: YES
-      # Issue #71 (docs/14_IMPROVEMENT_REVIEW.md §1.9): the single
-      # configuration point for the API base URL — `AppEnvironment.apiBaseURL`
-      # reads this via `INFOPLIST_KEY_API_BASE_URL` (which xcodegen/Xcode's
-      # GENERATE_INFOPLIST_FILE mechanism bakes into the built Info.plist's
-      # `API_BASE_URL` key automatically). Debug points at the real,
-      # currently-deployed staging host so local/simulator/CI builds work
-      # out of the box; Release is deliberately left unset here so an
-      # unconfigured Release-shaped build fails closed to
-      # `AppEnvironment.apiBaseURL`'s non-routable `.invalid` fallback
-      # rather than silently reaching any host — a real Release/TestFlight
-      # build must set this explicitly once a real production API exists.
+        # Issue #71 (docs/14_IMPROVEMENT_REVIEW.md §1.9): the single
+        # configuration point for the API base URL. The generated Info.plist
+        # holds `API_BASE_URL = $(API_BASE_URL)` (see `info.properties` above),
+        # and Xcode expands this build setting into it at build time —
+        # `AppEnvironment.apiBaseURL` then reads the `API_BASE_URL` Info.plist
+        # key. Left EMPTY here on purpose: an empty value makes
+        # `AppEnvironment.apiBaseURL` fall through to its `#if DEBUG` staging
+        # fallback (so local/simulator dev works with no setup) and, in a
+        # Release build, to a non-routable `.invalid` host (fail-closed —
+        # never silently reaches an unintended host). Set a real value in a
+        # per-config override below (or locally) once a production API exists.
+        API_BASE_URL: ""
       configs:
         debug:
-          INFOPLIST_KEY_API_BASE_URL: https://your-api-host.example.com
           # Local Debug: adhoc-sign the simulator build (identity "-") with
           # MANUAL style so the entitlements file (keychain-access-groups
           # above) is embedded verbatim — NO Apple provisioning profile
