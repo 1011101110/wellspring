@@ -21,6 +21,7 @@ import { test, expect } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 import {
   renderSessionPage,
+  renderSessionCompletePage,
   renderGoneOrUnknownPage,
   type SessionPageData,
 } from '../src/services/session/renderSessionPage.js';
@@ -89,6 +90,51 @@ test.describe('session page — WCAG AA (axe-core)', () => {
     await page.setContent(renderGoneOrUnknownPage());
     const results = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa']).analyze();
     expect(results.violations).toEqual([]);
+  });
+
+  // #321: the post-Amen page in both of its states — the feedback form
+  // (radio fieldsets, note input, Send) and the thanked state. Contrast
+  // and labeling per #264's bar, same axe pass as every other state.
+  test('post-Amen page with the feedback form has zero WCAG AA violations', async ({ page }) => {
+    await page.setContent(
+      renderSessionCompletePage({
+        token: '00000000-0000-0000-0000-000000000001',
+        feedbackSubmitted: false,
+      }),
+    );
+    const results = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa']).analyze();
+    expect(results.violations).toEqual([]);
+  });
+
+  test('post-Amen page in the thanked state has zero WCAG AA violations', async ({ page }) => {
+    await page.setContent(
+      renderSessionCompletePage({
+        token: '00000000-0000-0000-0000-000000000001',
+        feedbackSubmitted: true,
+      }),
+    );
+    const results = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa']).analyze();
+    expect(results.violations).toEqual([]);
+  });
+
+  // #321's tap-target criterion, checked against the LAID-OUT page (the
+  // #264 lesson: geometry only exists after layout). Every radio pill and
+  // the Send button must meet the 44px minimum.
+  test('every feedback tap target is at least 44px tall once laid out', async ({ page }) => {
+    await page.setContent(
+      renderSessionCompletePage({
+        token: '00000000-0000-0000-0000-000000000001',
+        feedbackSubmitted: false,
+      }),
+    );
+    const targets = page.locator('.feedback-option, .feedback-form button');
+    const count = await targets.count();
+    expect(count).toBe(11); // 2 + 2 + 3 + 3 radio pills, plus Send
+    for (let i = 0; i < count; i += 1) {
+      const box = await targets.nth(i).boundingBox();
+      expect(box, `target ${i} should render`).not.toBeNull();
+      expect(box!.height, `target ${i} height`).toBeGreaterThanOrEqual(44);
+    }
   });
 });
 
