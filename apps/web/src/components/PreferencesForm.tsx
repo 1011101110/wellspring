@@ -1,17 +1,20 @@
 import {
   CADENCE_PRESETS,
   DURATION_CHOICES,
+  LANGUAGE_CHOICES,
   STILLNESS_CHOICES,
   TRADITION_CHOICES,
-  TRADITION_TRANSLATION_NOTE,
+  TRADITION_NOTE,
   VOICE_CHOICES,
+  applyLanguageChange,
   cadenceLabel,
+  translationChoicesFor,
   voiceDisplayLabel,
   type DurationChoice,
   type WebPreferences,
 } from '../lib/preferences';
 import { WeekdayRow } from './WeekdayRow';
-import type { Stillness } from '@kairos/shared-contracts';
+import type { LanguageTag, Stillness } from '@kairos/shared-contracts';
 
 const HOURS = Array.from({ length: 24 }, (_, hour) => hour);
 
@@ -202,20 +205,48 @@ export function PreferencesForm({
       </p>
 
       <fieldset className="field">
-        <legend>Tradition and translation</legend>
-        {/* Rendered, disabled, and explained rather than omitted or faked.
-            These live on `users`, not `preferences`, and nothing writes
-            them (#89) — an enabled picker here would be a setting that
-            appears to work and doesn't, which #193 is explicit is worse
-            than an obviously missing one. */}
+        <legend>Language, tradition, and translation</legend>
+        <div className="control">
+          <label htmlFor={id('language')}>Language</label>
+          {/* Native-script labels from LANGUAGE_CATALOG — a person picking
+              their own language should not need English to find it. The
+              *chrome* stays English (#311 decision 5): this chooses what
+              the devotionals are made of, not what the app is written in,
+              and the hint says so in as many words. */}
+          <select
+            id={id('language')}
+            value={value.language}
+            aria-describedby={id('language-hint')}
+            onChange={(e) => onChange(applyLanguageChange(value, e.target.value as LanguageTag))}
+          >
+            {LANGUAGE_CHOICES.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+          <p className="hint" id={id('language-hint')}>
+            Your devotionals — Scripture, reflection, and voice — will be in this language. The app
+            itself stays in English.
+          </p>
+        </div>
         <div className="row">
           <div className="control">
             <label htmlFor={id('tradition')}>Tradition</label>
-            {/* Every tradition the shared model carries is listed (#192, #302),
-                so whatever value the profile holds — anglican, orthodox — renders
-                as its own label rather than an empty selection. Still disabled:
-                nothing on web writes it. */}
-            <select id={id('tradition')} disabled value="general" aria-describedby={id('tt-hint')}>
+            {/* Rendered, disabled, and explained rather than omitted or
+                faked. Tradition lives on `users` and nothing writes it
+                (#89) — an enabled picker here would be a setting that
+                appears to work and doesn't, which #193 is explicit is
+                worse than an obviously missing one. Every tradition the
+                shared model carries is listed (#192, #302), so whatever
+                value the profile holds — anglican, orthodox — renders as
+                its own label rather than an empty selection. */}
+            <select
+              id={id('tradition')}
+              disabled
+              value="general"
+              aria-describedby={id('tradition-hint')}
+            >
               {TRADITION_CHOICES.map((option) => (
                 <option key={option.value} value={option.value}>
                   {option.label}
@@ -225,13 +256,28 @@ export function PreferencesForm({
           </div>
           <div className="control">
             <label htmlFor={id('translation')}>Translation</label>
-            <select id={id('translation')} disabled value="bsb" aria-describedby={id('tt-hint')}>
-              <option value="bsb">Berean Standard Bible (BSB)</option>
+            {/* Enabled since O5 (#317): O2 gave `translationId` a real
+                write path, so the disabled hard-coded BSB option — and the
+                apology note that covered it — retired with #89's premise.
+                Options are only ever the chosen language's catalog, and a
+                language change snaps the value to that language's default
+                (`applyLanguageChange`), mirroring the server rule so a
+                stale cross-language selection cannot exist here. */}
+            <select
+              id={id('translation')}
+              value={value.translationId}
+              onChange={(e) => set('translationId', Number(e.target.value))}
+            >
+              {translationChoicesFor(value.language).map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
             </select>
           </div>
         </div>
-        <p className="hint" id={id('tt-hint')}>
-          {TRADITION_TRANSLATION_NOTE}
+        <p className="hint" id={id('tradition-hint')}>
+          {TRADITION_NOTE}
         </p>
       </fieldset>
 

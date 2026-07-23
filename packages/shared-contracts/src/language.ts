@@ -128,6 +128,79 @@ export const LANGUAGE_CATALOG: Readonly<Record<LanguageTag, LanguageCatalogEntry
   }),
 });
 
+/**
+ * Human-readable name for every versionId in `LANGUAGE_CATALOG` (O5,
+ * kairos-devotional #317): a picker option must never render as a bare
+ * number — the same rule the voice picker holds for raw Chirp ids (#302).
+ *
+ * A single flat map rather than a field per catalog entry, because
+ * versionIds are globally unique across languages (asserted in
+ * tests/language.test.ts: "no versionId belongs to two languages"), and a
+ * per-entry map would invite an id present in `versionIds` but missing a
+ * label. Completeness is asserted in the same test file instead.
+ *
+ * Abbreviations and titles verified 2026-07-23 against bible.com's
+ * canonical version pages (`bible.com/versions/{id}-{abbr}-{title}` —
+ * same numeric id space as the Platform API), cross-checked with
+ * Foundation §4.3's per-language table. Do not add or edit from memory —
+ * same discipline as the catalog itself.
+ */
+export interface VersionLabel {
+  /** Short display abbreviation, e.g. `BSB`. */
+  readonly abbreviation: string;
+  /** Full title, native-script where the translation's own name is (zh). */
+  readonly title: string;
+}
+
+export const VERSION_LABELS: Readonly<Record<number, VersionLabel>> = Object.freeze({
+  // en — Foundation §4.3's standing 11-version catalog
+  3034: Object.freeze({ abbreviation: 'BSB', title: 'Berean Standard Bible' }),
+  12: Object.freeze({ abbreviation: 'ASV', title: 'American Standard Version' }),
+  42: Object.freeze({ abbreviation: 'CPDV', title: 'Catholic Public Domain Version' }),
+  130: Object.freeze({ abbreviation: 'TOJB2011', title: 'The Orthodox Jewish Bible' }),
+  206: Object.freeze({ abbreviation: 'WEBUS', title: 'World English Bible, American English' }),
+  1207: Object.freeze({ abbreviation: 'WMBBE', title: 'World Messianic Bible British Edition' }),
+  1209: Object.freeze({ abbreviation: 'WMB', title: 'World Messianic Bible' }),
+  1932: Object.freeze({ abbreviation: 'FBV', title: 'Free Bible Version' }),
+  2163: Object.freeze({ abbreviation: 'GNV', title: 'Geneva Bible' }),
+  2660: Object.freeze({ abbreviation: 'LSV', title: 'Literal Standard Version' }),
+  3427: Object.freeze({ abbreviation: 'TCENT', title: 'The Text-Critical English New Testament' }),
+  // es
+  3365: Object.freeze({ abbreviation: 'PDDPT', title: 'Palabra de Dios para ti' }),
+  147: Object.freeze({ abbreviation: 'RVES', title: 'Reina-Valera Antigua' }),
+  // fr
+  93: Object.freeze({ abbreviation: 'LSG', title: 'Louis Segond 1910' }),
+  62: Object.freeze({ abbreviation: 'FMAR', title: 'Martin 1744' }),
+  131: Object.freeze({ abbreviation: 'OST', title: 'Ostervald' }),
+  64: Object.freeze({ abbreviation: 'JND', title: 'Bible J.N. Darby' }),
+  // de
+  51: Object.freeze({ abbreviation: 'DELUT', title: 'Lutherbibel 1912' }),
+  57: Object.freeze({ abbreviation: 'ELB', title: 'Darby Unrevidierte Elberfelder' }),
+  58: Object.freeze({ abbreviation: 'ELB71', title: 'Elberfelder 1871' }),
+  2351: Object.freeze({
+    abbreviation: 'ELBBK',
+    title: 'Elberfelder Übersetzung (bibelkommentare.de)',
+  }),
+  // pt
+  3254: Object.freeze({ abbreviation: 'BLT', title: 'Bíblia Livre Para Todos' }),
+  // zh — native-script titles, same choice as the `中文（简体）` language label
+  43: Object.freeze({ abbreviation: 'CSBS', title: '中文标准译本' }),
+  3354: Object.freeze({ abbreviation: 'FEB', title: '免费的易读圣经' }),
+});
+
+/**
+ * `3034` → `"Berean Standard Bible (BSB)"` — the shape the web UI already
+ * used for its one hard-coded option, and iOS's `TranslationChoice`
+ * `displayName`. Total on purpose: an id outside the catalog (a legacy or
+ * out-of-band row) degrades to `"Version {id}"` rather than throwing, but
+ * client pickers should repair such a value before rendering it (the web
+ * client snaps to the language default in `validate`).
+ */
+export function versionDisplayLabel(versionId: number): string {
+  const label = VERSION_LABELS[versionId];
+  return label ? `${label.title} (${label.abbreviation})` : `Version ${versionId}`;
+}
+
 /** The translation a language *change* snaps `users.translation_id` to (re-asserting the stored language snaps nothing). */
 export function defaultVersionIdFor(tag: LanguageTag): number {
   return LANGUAGE_CATALOG[tag].defaultVersionId;
