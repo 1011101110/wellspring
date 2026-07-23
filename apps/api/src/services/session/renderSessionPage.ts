@@ -105,6 +105,28 @@ function pageShell(title: string, bodyHtml: string): string {
      e2e/sessionPage.a11y.spec.ts, issue #67). */
   button.complete:disabled { background: #6b6459; cursor: default; }
   .completed-badge { color: #2f5d3a; font-weight: 600; }
+  /* Post-Amen feedback form (P2 #321) — zero-JS radio groups styled as
+     tap targets. min-height 44px per the mobile tap-target floor (#264's
+     accessibility bar); label wraps the input so the whole row is the
+     target. Same palette as the rest of the page — this is part of the
+     Amen moment, not a survey. */
+  .feedback-form { margin-top: 2.5rem; }
+  .feedback-form fieldset { border: none; margin: 0 0 1.25rem; padding: 0; }
+  .feedback-form legend { font-size: 0.95rem; color: #4a4a4a; margin-bottom: 0.4rem; padding: 0; }
+  .feedback-option {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    min-height: 44px;
+    padding: 0 1rem;
+    margin: 0 0.5rem 0.5rem 0;
+    background: #f1ede6;
+    border: 1px solid #cfc8bb;
+    border-radius: 999px;
+    cursor: pointer;
+    font-size: 0.95rem;
+  }
+  .feedback-note-label { display: block; font-size: 0.95rem; color: #4a4a4a; margin: 0.5rem 0; }
   .audio-unavailable { color: #5a5a5a; font-size: 0.95rem; margin: 1rem 0 1.5rem; }
   .gentle-message { font-size: 1.1rem; margin: 3rem 0; }
   a { color: #3a3226; }
@@ -126,20 +148,89 @@ export function renderGoneOrUnknownPage(): string {
   );
 }
 
+export interface SessionCompletePageData {
+  token: string;
+  /** True once a session_feedback row exists — renders the thanked state and NO form (grace: never nag twice, #321). */
+  feedbackSubmitted: boolean;
+}
+
 /**
- * Post-completion confirmation (#297). The "Amen — mark complete" form is a
- * zero-JS full-page POST (CSP policy, docs/04 §5.3), so before this the user
- * landed on the raw `{"ok":true,...}` JSON of the POST handler. The handler
- * now 303-redirects a browser submission here, ending the devotional on a
- * calm, on-brand confirmation instead of a JSON blob. Content-type: the same
- * `text/html; charset=utf-8` as every other page in this module.
+ * One zero-JS radio group of the feedback form (#321). `<label>` WRAPS the
+ * `<input type="radio">` so the whole pill is the tap target (44px min via
+ * .feedback-option) with no `for`/`id` bookkeeping. All values are static
+ * strings from the P1 contract enums (sessionFeedback.ts) — nothing
+ * user- or LLM-authored flows through here, so there is nothing to escape.
  */
-export function renderSessionCompletePage(): string {
+function feedbackGroup(name: string, legend: string, options: Array<[value: string, label: string]>): string {
+  const optionsHtml = options
+    .map(
+      ([value, label]) =>
+        `<label class="feedback-option"><input type="radio" name="${name}" value="${value}" /> ${label}</label>`,
+    )
+    .join('\n');
+  return `<fieldset>
+<legend>${legend}</legend>
+${optionsHtml}
+</fieldset>`;
+}
+
+/**
+ * Post-completion confirmation (#297) + the post-Amen feedback moment
+ * (P2 #321). The "Amen — mark complete" form is a zero-JS full-page POST
+ * (CSP policy, docs/04 §5.3), so before this the user landed on the raw
+ * `{"ok":true,...}` JSON of the POST handler. The handler now 303-redirects
+ * a browser submission here. Content-type: the same `text/html;
+ * charset=utf-8` as every other page in this module.
+ *
+ * Two states (#321):
+ *  - no feedback yet → confirmation + the 4-question all-optional form,
+ *    POSTing (zero-JS, form-urlencoded) to /session/:token/feedback; the
+ *    route 303s straight back here, which then renders —
+ *  - feedback exists → confirmation + a one-line thank-you and NO form.
+ *    Once submitted, never re-asked.
+ *
+ * Formation guardrails (Foundation §9, epic #312): the questions are about
+ * THIS devotional only — no attendance, frequency, streak, or history
+ * wording anywhere on this page, and nothing is required. Radio values are
+ * the exact enum strings of SessionFeedbackBodySchema (shared-contracts) —
+ * the render test pins each one so the form and contract cannot drift.
+ */
+export function renderSessionCompletePage(data: SessionCompletePageData): string {
+  const { token, feedbackSubmitted } = data;
+
+  const feedbackSection = feedbackSubmitted
+    ? `<p class="gentle-message">Thank you &mdash; this shapes what comes next.</p>`
+    : `<form class="feedback-form" method="post" action="/session/${encodeURIComponent(token)}/feedback">
+<p class="theme">Before you go &mdash; only if you&#39;d like. Every question is optional.</p>
+${feedbackGroup('contentHelpful', 'Did this meet you today?', [
+  ['true', 'Yes'],
+  ['false', 'Not really'],
+])}
+${feedbackGroup('topicMore', 'More on this topic?', [
+  ['true', 'Yes, please'],
+  ['false', 'Mix it up'],
+])}
+${feedbackGroup('lengthFeel', 'The length felt&hellip;', [
+  ['shorter', 'Shorter, please'],
+  ['right', 'Just right'],
+  ['longer', 'Longer is fine'],
+])}
+${feedbackGroup('timeFeel', 'The time of day was&hellip;', [
+  ['earlier', 'Earlier suits me'],
+  ['right', 'Just right'],
+  ['later', 'Later suits me'],
+])}
+<label for="feedbackNote" class="feedback-note-label">Anything else on your heart?</label>
+<input type="text" id="feedbackNote" name="note" class="prayer-intention-input" maxlength="500" autocomplete="off" />
+<button type="submit" class="complete">Send</button>
+</form>`;
+
   return pageShell(
     'Marked complete — Wellspring',
     `<p class="completed-badge" role="status">Completed &#10003;</p>
 <p class="gentle-message">Amen. Your time is marked complete &mdash; thank you for being here.</p>
-<p class="theme">You can close this page and carry the quiet with you. We'll meet you again tomorrow.</p>`,
+<p class="theme">You can close this page and carry the quiet with you. We'll meet you again tomorrow.</p>
+${feedbackSection}`,
   );
 }
 
