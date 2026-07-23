@@ -60,17 +60,38 @@
  *    `Intl` zone on every save exactly as iOS sends the device zone, and
  *    the UI presents it as detected-and-sent rather than as a picker it
  *    cannot pre-fill from the server.
- *  - **`tradition`/`translation` are not here.** They live on `users`,
- *    not `preferences`, and no endpoint writes them (see the header
- *    comment in shared-contracts' `preferences.ts`, and #89). See
- *    `TRADITION_TRANSLATION_NOTE` below.
+ *  - **`language`/`translationId`** (Epic O #311, O2 #314, O5 #317) ride
+ *    this route but write `users.language`/`users.translation_id` — the
+ *    same users-table exception as `timezone`. They are ALWAYS sent
+ *    together: the server treats a *changed* `language` arriving alone as
+ *    "snap `translation_id` to that language's default", so a body that
+ *    carried a language change without the translation the user is
+ *    looking at would discard an explicit alternate choice. Sending both
+ *    makes the pair the client renders the pair the server stores. The
+ *    UI keeps `translationId` inside the chosen language's catalog
+ *    (`applyLanguageChange` + `validate`), so O2's 400 guard — a
+ *    translationId outside the language's catalog — is unreachable from
+ *    this client.
+ *  - **`tradition` is not here.** It lives on `users`, not `preferences`,
+ *    and no endpoint writes it (see the header comment in
+ *    shared-contracts' `preferences.ts`, and #89). See `TRADITION_NOTE`
+ *    below.
  */
 import {
   cadenceForActiveDays,
+  DEFAULT_LANGUAGE,
+  defaultVersionIdFor,
+  isVersionInLanguage,
+  LANGUAGE_CATALOG,
+  LANGUAGE_TAGS,
+  LanguageTagSchema,
   TraditionSchema,
+  versionDisplayLabel,
+  versionIdsForLanguage,
   VOICE_CATALOG,
   type Cadence,
   type DevotionalFormat,
+  type LanguageTag,
   type PreferencesResponseData,
   type PreferencesUpdateRequest,
   type Stillness,
@@ -147,14 +168,53 @@ export const CADENCE_PRESETS: readonly { value: Cadence; label: string }[] = [
 ] as const;
 
 /**
- * Shown verbatim in the UI next to the (disabled) tradition/translation
- * rows. Stated rather than hidden on purpose: #193's lesson is that a
- * setting which appears to work and doesn't is more corrosive than an
- * obviously missing one, and a tradition picker that evaporates on reload
- * would be exactly the former.
+ * Shown verbatim in the UI next to the (still disabled) tradition row.
+ * Stated rather than hidden on purpose: #193's lesson is that a setting
+ * which appears to work and doesn't is more corrosive than an obviously
+ * missing one, and a tradition picker that evaporates on reload would be
+ * exactly the former. (This note used to cover translation too; O2 #314
+ * gave translation a real write path and O5 #317 enabled its picker, so
+ * the apology now names only the field it is still true of.)
  */
-export const TRADITION_TRANSLATION_NOTE =
-  'Tradition and translation are stored on your profile, not with these preferences, and no API can change them yet — so they are shown here but not editable on web.';
+export const TRADITION_NOTE =
+  'Tradition is stored on your profile, not with these preferences, and no API can change it yet — so it is shown here but not editable on web.';
+
+/**
+ * The six content languages, native-script labels, in the catalog's own
+ * order — derived from `LANGUAGE_CATALOG` (like `TRADITION_CHOICES` from
+ * `TraditionSchema.options`) so the picker can never fall a language
+ * short of the contract.
+ */
+export const LANGUAGE_CHOICES: readonly { value: LanguageTag; label: string }[] = LANGUAGE_TAGS.map(
+  (value) => ({ value, label: LANGUAGE_CATALOG[value].label }),
+);
+
+/**
+ * The translation options for one language, in catalog order (default
+ * first), each under a human-readable label ("Berean Standard Bible
+ * (BSB)") — never a bare id, the same rule the voice picker holds (#302).
+ */
+export function translationChoicesFor(
+  language: LanguageTag,
+): readonly { value: number; label: string }[] {
+  return versionIdsForLanguage(language).map((value) => ({
+    value,
+    label: versionDisplayLabel(value),
+  }));
+}
+
+/**
+ * A language edit, as one pure transition (O5 #317): picking a *different*
+ * language snaps `translationId` to that language's default — the mirror
+ * of O2's server rule, so the options list and the selected value can
+ * never disagree and the cross-language 400 is unreachable from this UI.
+ * Re-selecting the language already chosen keeps an explicit alternate
+ * translation rather than clobbering it, also mirroring the server.
+ */
+export function applyLanguageChange(prefs: WebPreferences, language: LanguageTag): WebPreferences {
+  if (language === prefs.language) return prefs;
+  return { ...prefs, language, translationId: defaultVersionIdFor(language) };
+}
 
 /** Friendly label per `Tradition`. The exhaustive `Record` keying is the
  *  lockstep guard: a value added to `TraditionSchema` (#192 capped it at
@@ -189,6 +249,10 @@ export interface WebPreferences {
   voice: string;
   stillness: Stillness;
   examenEnabled: boolean;
+  /** Devotional content language (`users.language`, O2 #314). The app chrome stays English (#311 decision 5). */
+  language: LanguageTag;
+  /** YouVersion version id (`users.translation_id`), always within `language`'s catalog. */
+  translationId: number;
 }
 
 /**
@@ -213,6 +277,10 @@ export const DEFAULT_PREFERENCES: WebPreferences = {
   voice: 'warm',
   stillness: 'off',
   examenEnabled: false,
+  // The column defaults from migration 1722300000000 / the original
+  // schema: English, BSB — what every pre-Epic-O row already reads as.
+  language: DEFAULT_LANGUAGE,
+  translationId: defaultVersionIdFor(DEFAULT_LANGUAGE),
 };
 
 const DURATION_VALUES = new Set<string>(['micro', 'short', 'standard', 'extended']);
@@ -242,6 +310,15 @@ export function localTimeFromHour(hour: number): string {
  *     safety net for a legacy or corrupt row — the day control itself
  *     refuses the last deselection at the click, so the empty state is
  *     never *created* by the UI.
+ *   - a `translationId` outside the language's catalog snaps to that
+ *     language's default. The UI never creates this pair
+ *     (`applyLanguageChange` snaps at the click), and the server refuses
+ *     to store it (O2's 400 guard), so like the empty day set this only
+ *     ever sees a corrupt or out-of-band row — and repairing it here is
+ *     what keeps the guard unreachable from this client. Unlike the
+ *     voice's preserve-verbatim rule, preserving is not an option: the
+ *     server would reject the whole save, taking the user's *other* edits
+ *     down with it.
  */
 export function validate(prefs: WebPreferences): WebPreferences {
   const clamp = (h: number) => Math.min(Math.max(Math.trunc(h), 0), 23);
@@ -259,6 +336,9 @@ export function validate(prefs: WebPreferences): WebPreferences {
     windowStartHour: start,
     windowEndHour: end,
     activeDays: days.length > 0 ? days : [...DEFAULT_PREFERENCES.activeDays],
+    translationId: isVersionInLanguage(prefs.language, prefs.translationId)
+      ? prefs.translationId
+      : defaultVersionIdFor(prefs.language),
   };
 }
 
@@ -292,6 +372,15 @@ export function fromServer(data: PreferencesResponseData): WebPreferences {
       ? (data.stillness as Stillness)
       : DEFAULT_PREFERENCES.stillness,
     examenEnabled: data.examenEnabled,
+    // The response schema keeps `language` a plain string (a widened
+    // stored value must not take the whole GET down — see the contract's
+    // field doc), so the narrowing to the six-tag enum happens here, with
+    // the same fall-back-rather-than-throw posture as stillness. The
+    // translationId pairing is `validate`'s job, above.
+    language: LanguageTagSchema.safeParse(data.language).success
+      ? (data.language as LanguageTag)
+      : DEFAULT_LANGUAGE,
+    translationId: data.translationId,
   });
 }
 
@@ -332,6 +421,13 @@ export function toUpdateRequest(
     voice: v.voice,
     stillness: v.stillness,
     examenEnabled: v.examenEnabled,
+    // Always the pair, never `language` alone: the server reads a changed
+    // language without a translationId as "snap to that language's
+    // default", which would silently discard an explicitly chosen
+    // alternate. `validate` has already guaranteed membership, so the
+    // pair is always storable. (Module header, "language/translationId".)
+    language: v.language,
+    translationId: v.translationId,
   };
   if (options.timezone) body.timezone = options.timezone;
   if (options.calendarEnabled !== undefined) body.calendarEnabled = options.calendarEnabled;

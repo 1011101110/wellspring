@@ -1,13 +1,22 @@
 import { describe, expect, it } from 'vitest';
 import type { PreferencesResponseData } from '@kairos/shared-contracts';
-import { TraditionSchema, VOICE_CATALOG } from '@kairos/shared-contracts';
+import {
+  LANGUAGE_CATALOG,
+  LANGUAGE_TAGS,
+  TraditionSchema,
+  versionIdsForLanguage,
+  VOICE_CATALOG,
+} from '@kairos/shared-contracts';
 import {
   DEFAULT_PREFERENCES,
+  LANGUAGE_CHOICES,
   TRADITION_CHOICES,
+  applyLanguageChange,
   fromServer,
   hourFromLocalTime,
   localTimeFromHour,
   toUpdateRequest,
+  translationChoicesFor,
   validate,
   voiceDisplayLabel,
   voiceLabelFor,
@@ -49,9 +58,8 @@ function serverRow(overrides: Partial<PreferencesResponseData> = {}): Preference
     adaptiveEnabled: true,
     onboardedAt: null,
     timezone: 'America/Chicago',
-    // #314 added these to the payload; the web *surface* for them is O5
-    // (kairos-devotional #317) — until it lands, web reads them nowhere
-    // and the disabled translation select keeps its hard-coded display.
+    // #314 added these to the payload; O5 (kairos-devotional #317) reads
+    // them into the form model like every other field.
     language: 'en',
     translationId: 3034,
     updatedAt: '2026-07-18T10:00:00.000Z',
@@ -131,6 +139,11 @@ describe('fromServer', () => {
         voice: 'calm',
         stillness: 'full',
         examenEnabled: true,
+        // A non-default pair, and a non-default translation *within* the
+        // language, so a fromServer that snapped to the language default
+        // (147 -> 3365) would fail here rather than pass by coincidence.
+        language: 'es',
+        translationId: 147,
       }),
     );
     expect(prefs).toEqual({
@@ -141,6 +154,8 @@ describe('fromServer', () => {
       voice: 'calm',
       stillness: 'full',
       examenEnabled: true,
+      language: 'es',
+      translationId: 147,
     });
   });
 
@@ -172,6 +187,23 @@ describe('fromServer', () => {
 
   it('falls back for an unrecognized stillness rather than throwing', () => {
     expect(fromServer(serverRow({ stillness: 'banana' })).stillness).toBe('off');
+  });
+
+  it('falls back to English for a language tag outside the six rather than throwing', () => {
+    // The response schema keeps `language` a plain string on purpose (a
+    // widened stored value must not take the GET down), so the narrowing
+    // happens client-side with the same posture as stillness.
+    const prefs = fromServer(serverRow({ language: 'ja', translationId: 3034 }));
+    expect(prefs.language).toBe('en');
+    expect(prefs.translationId).toBe(3034);
+  });
+
+  it('repairs a translationId outside the language catalog to that language default', () => {
+    // Unreachable from this UI and refused by the server on write — this
+    // is the legacy/corrupt-row safety net, and unlike the voice it must
+    // NOT preserve verbatim: sending the pair back would 400 the whole
+    // save (see `validate`'s doc).
+    expect(fromServer(serverRow({ language: 'fr', translationId: 3034 })).translationId).toBe(93);
   });
 });
 
@@ -277,6 +309,100 @@ describe('tradition choices (#192, #302)', () => {
   });
 });
 
+describe('language choices (O5 #317)', () => {
+  it('offers all six languages, in catalog order, under their native-script labels', () => {
+    expect(LANGUAGE_CHOICES.map((choice) => choice.value)).toEqual([...LANGUAGE_TAGS]);
+    expect(LANGUAGE_CHOICES.map((choice) => choice.label)).toEqual([
+      'English',
+      'Español',
+      'Français',
+      'Deutsch',
+      'Português',
+      '中文（简体）',
+    ]);
+  });
+
+  it('derives labels from the catalog so the picker cannot drift from the contract', () => {
+    for (const choice of LANGUAGE_CHOICES) {
+      expect(choice.label).toBe(LANGUAGE_CATALOG[choice.value].label);
+    }
+  });
+});
+
+describe('translation choices (O5 #317)', () => {
+  it("offers exactly the selected language's catalog, default first", () => {
+    for (const tag of LANGUAGE_TAGS) {
+      expect(translationChoicesFor(tag).map((choice) => choice.value)).toEqual([
+        ...versionIdsForLanguage(tag),
+      ]);
+      expect(translationChoicesFor(tag)[0]!.value).toBe(LANGUAGE_CATALOG[tag].defaultVersionId);
+    }
+  });
+
+  it('labels every option human-readably — never a bare id (#302 rule, applied to versions)', () => {
+    for (const tag of LANGUAGE_TAGS) {
+      for (const choice of translationChoicesFor(tag)) {
+        expect(choice.label).not.toBe(String(choice.value));
+        expect(choice.label).not.toMatch(/^Version \d+$/); // the unknown-id fallback never shows
+        expect(choice.label.length).toBeGreaterThan(0);
+      }
+    }
+    expect(translationChoicesFor('en')[0]!.label).toBe('Berean Standard Bible (BSB)');
+    expect(translationChoicesFor('es')[0]!.label).toBe('Palabra de Dios para ti (PDDPT)');
+  });
+});
+
+describe('applyLanguageChange (O5 #317 — the snap rule, mirrored client-side)', () => {
+  it('snaps the translation to the new language default on a real change', () => {
+    const next = applyLanguageChange({ ...DEFAULT_PREFERENCES }, 'es');
+    expect(next.language).toBe('es');
+    expect(next.translationId).toBe(3365);
+    // …which is exactly what makes the cross-language 400 unreachable:
+    expect(versionIdsForLanguage('es')).toContain(next.translationId);
+  });
+
+  it('keeps an explicit alternate when the same language is re-selected — no clobber', () => {
+    // The client half of O2's "re-asserting the stored language does not
+    // clobber an explicit translation": en + ASV re-asserting en stays ASV.
+    const withAlternate: WebPreferences = { ...DEFAULT_PREFERENCES, translationId: 12 };
+    expect(applyLanguageChange(withAlternate, 'en').translationId).toBe(12);
+  });
+
+  it('touches nothing but the language pair', () => {
+    const before: WebPreferences = { ...DEFAULT_PREFERENCES, voice: 'bright', stillness: 'full' };
+    const next = applyLanguageChange(before, 'zh');
+    expect(next).toEqual({ ...before, language: 'zh', translationId: 43 });
+  });
+});
+
+describe('toUpdateRequest — language and translationId ride together (O5 #317)', () => {
+  it('always sends BOTH fields, so the server never snaps over an explicit choice', () => {
+    // The load-bearing case, mutation-checked by construction: es + RVES
+    // 147 is an explicit alternate that differs from the es default. If
+    // `translationId` were dropped from the body, the server would snap
+    // the stored value to 3365 — and if `language` were dropped, 147
+    // would be validated against the stored language instead of the
+    // chosen one. Only a body carrying exactly this pair stores it.
+    const body = toUpdateRequest({ ...DEFAULT_PREFERENCES, language: 'es', translationId: 147 });
+    expect('language' in body).toBe(true);
+    expect('translationId' in body).toBe(true);
+    expect(body.language).toBe('es');
+    expect(body.translationId).toBe(147);
+  });
+
+  it('sends the pair even when untouched — re-asserting the stored pair is a no-op server-side', () => {
+    const body = toUpdateRequest(DEFAULT_PREFERENCES);
+    expect(body.language).toBe('en');
+    expect(body.translationId).toBe(3034);
+  });
+
+  it('never sends a translationId outside the language catalog — validate repairs first', () => {
+    const body = toUpdateRequest({ ...DEFAULT_PREFERENCES, language: 'de', translationId: 3034 });
+    expect(body.language).toBe('de');
+    expect(body.translationId).toBe(51); // DELUT, the de default — not BSB, not a 400
+  });
+});
+
 describe('round trip', () => {
   /**
    * The actual #195 acceptance claim, in miniature: what iOS wrote is what
@@ -291,6 +417,10 @@ describe('round trip', () => {
       voice: 'bright',
       stillness: 'brief',
       examenEnabled: true,
+      // A non-default translation within its language, so the round trip
+      // proves preservation, not a snap that happens to coincide.
+      language: 'fr',
+      translationId: 131,
     });
     const body = toUpdateRequest(fromServer(row));
     expect(body.windowStartLocal).toBe('06:00');
@@ -301,5 +431,7 @@ describe('round trip', () => {
     expect(body.voice).toBe('bright');
     expect(body.stillness).toBe('brief');
     expect(body.examenEnabled).toBe(true);
+    expect(body.language).toBe('fr');
+    expect(body.translationId).toBe(131);
   });
 });

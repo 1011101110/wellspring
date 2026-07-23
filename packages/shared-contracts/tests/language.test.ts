@@ -4,8 +4,10 @@ import {
   LANGUAGE_CATALOG,
   LANGUAGE_TAGS,
   LanguageTagSchema,
+  VERSION_LABELS,
   defaultVersionIdFor,
   isVersionInLanguage,
+  versionDisplayLabel,
   versionIdsForLanguage,
 } from '../src/language.js';
 
@@ -23,7 +25,7 @@ describe('LANGUAGE_CATALOG (Epic O #311 / O2 #314 — pinned by O1 #313)', () =>
     expect(defaultVersionIdFor('zh')).toBe(43); // CSBS
   });
 
-  it("zh maps to cmn-CN — zh-CN has ZERO Chirp 3 HD voices and must never be re-derived from the tag", () => {
+  it('zh maps to cmn-CN — zh-CN has ZERO Chirp 3 HD voices and must never be re-derived from the tag', () => {
     // The single most re-derivable-wrong fact in the epic (#311 decision
     // 4): the "obvious" locale for zh is the one with no voices at all.
     expect(LANGUAGE_CATALOG.zh.ttsLocale).toBe('cmn-CN');
@@ -97,5 +99,41 @@ describe('isVersionInLanguage / LanguageTagSchema — the write-path gates', () 
   it('the default language is en, and it is a member of the catalog it defaults into', () => {
     expect(DEFAULT_LANGUAGE).toBe('en');
     expect(LANGUAGE_TAGS).toContain(DEFAULT_LANGUAGE);
+  });
+});
+
+describe('VERSION_LABELS / versionDisplayLabel (O5 #317 — pickers never render a bare id)', () => {
+  it('labels every versionId in every catalog entry — the flat-map completeness guard', () => {
+    // VERSION_LABELS is deliberately one flat map (versionIds are globally
+    // unique — asserted above), so the compiler cannot enforce coverage;
+    // this test is the lockstep guard instead. An id added to a catalog
+    // entry without a label would render as the "Version {id}" fallback in
+    // the web translation picker, which is exactly the raw-id leak #302
+    // exists to prevent.
+    for (const tag of LANGUAGE_TAGS) {
+      for (const id of versionIdsForLanguage(tag)) {
+        const label = VERSION_LABELS[id];
+        expect(label, `versionId ${id} (${tag}) has no label`).toBeDefined();
+        expect(label!.abbreviation.length).toBeGreaterThan(0);
+        expect(label!.title.length).toBeGreaterThan(0);
+      }
+    }
+  });
+
+  it('labels no versionId outside the catalog — the map cannot quietly widen the offering', () => {
+    const catalogIds = new Set(LANGUAGE_TAGS.flatMap((tag) => [...versionIdsForLanguage(tag)]));
+    for (const key of Object.keys(VERSION_LABELS)) {
+      expect(catalogIds.has(Number(key)), `label for ${key} names no catalog version`).toBe(true);
+    }
+  });
+
+  it('formats as "Title (ABBR)" — the shape the web option and iOS displayName already use', () => {
+    expect(versionDisplayLabel(3034)).toBe('Berean Standard Bible (BSB)');
+    expect(versionDisplayLabel(3365)).toBe('Palabra de Dios para ti (PDDPT)');
+    expect(versionDisplayLabel(43)).toBe('中文标准译本 (CSBS)');
+  });
+
+  it('degrades to "Version {id}" for an id outside the catalog rather than throwing', () => {
+    expect(versionDisplayLabel(999999)).toBe('Version 999999');
   });
 });
