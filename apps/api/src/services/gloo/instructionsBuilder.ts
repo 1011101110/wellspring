@@ -14,7 +14,8 @@
  * stable prompt.
  */
 
-import type { BandInput, DevotionalFormat, SlotType, Tradition } from '@kairos/shared-contracts';
+import type { BandInput, DevotionalFormat, LanguageTag, SlotType, Tradition } from '@kairos/shared-contracts';
+import { DEFAULT_LANGUAGE } from '@kairos/shared-contracts';
 import {
   getLiturgicalSeason,
   liturgicalSeasonInformsGeneration,
@@ -107,6 +108,21 @@ export interface BuildInstructionsParams {
   /** Translation the user prefers, e.g. "BSB" — used only for prose framing; the
    *  actual versionId lookup/enforcement happens elsewhere (YouVersionClient). */
   translation: string;
+  /**
+   * Devotional content language (Epic O #311, story O3 #315) — the BCP-47
+   * primary subtag stored in `users.language`. Drives ONE English
+   * instruction line telling the model to write every user-facing output
+   * field in this language; every other instruction — tradition framing,
+   * the safety spec, the distress clause — deliberately STAYS English
+   * (epic #311 decision 3: the model follows English instructions to write
+   * Spanish output, and the theological-QA gate reviews the instruction
+   * side, which must therefore stay reviewable in English).
+   *
+   * Optional, defaulting to `'en'`, and `'en'` emits NO line at all — so
+   * every existing caller's output stays byte-identical to before this
+   * field existed (issue #315 acceptance).
+   */
+  language?: LanguageTag;
   bands: BandInput;
   /**
    * Which entries in `bands` are real observations (issue #196 / K10).
@@ -247,6 +263,53 @@ const THEOLOGICAL_SAFETY_SPEC = `Theological safety guardrails (non-negotiable):
 - Bands are framed as "where your body is today," never as verdict. Tone: companionship, not correction.
 - Distress lowers volume: extreme signals trigger gentleness and a resource pointer, never alarm.
 - Exact Scripture text always comes from YouVersion via get_bible_verse.`;
+
+/**
+ * English display names for the content languages (Epic O #311, story O3
+ * #315), used in the language directive below. English names — not the
+ * catalog's native-script labels (`Español`, `中文（简体）`) — because the
+ * directive itself is an ENGLISH instruction to the model (epic decision 3),
+ * and "write entirely in Spanish" is the unambiguous phrasing inside an
+ * English sentence. An exhaustive `Record<LanguageTag, string>` for the same
+ * reason as `TRADITION_FRAMING`: adding a language to the catalog without
+ * naming it here is a compile error, not a silent fallback.
+ */
+const LANGUAGE_ENGLISH_NAMES: Record<LanguageTag, string> = {
+  en: 'English',
+  es: 'Spanish',
+  fr: 'French',
+  de: 'German',
+  pt: 'Portuguese',
+  zh: 'Simplified Chinese',
+};
+
+/**
+ * The ONE language line (issue #315): every user-facing output field in the
+ * target language, Scripture still exclusively from get_bible_verse (which
+ * the orchestrator points at a versionId IN this language — the model must
+ * never translate Scripture itself, in either direction). Only emitted for
+ * non-English; English output needs no directive and gets none, keeping the
+ * en instructions byte-identical to before Epic O.
+ */
+function languageDirective(language: LanguageTag): string {
+  const name = LANGUAGE_ENGLISH_NAMES[language];
+  return `Write every user-facing output field (devotionalBody, cardSummary, prayer, journalingPrompt, actionStep, theme) entirely in ${name}. Scripture text still comes only from get_bible_verse in the preferred translation above — never translate or paraphrase Scripture yourself.`;
+}
+
+/**
+ * Appended to the distress clause for non-English generations (story O3
+ * #315). 988 is a United States service answered in English (Spanish is
+ * available by pressing 2, but no other content language is), so
+ * machine-translating the resource line would misrepresent what a caller
+ * will actually reach. Decision (recorded on the PR for #315): the resource
+ * sentence itself stays in English verbatim, and the model adds one brief
+ * framing sentence in the user's language so the English line arrives
+ * introduced rather than as an unexplained code-switch.
+ */
+function distressResourceLanguageNote(language: LanguageTag): string {
+  const name = LANGUAGE_ENGLISH_NAMES[language];
+  return ` The listener reads ${name}, but keep the 988 resource sentence itself in English exactly as phrased — 988 is a United States, primarily English-language service — and add one brief sentence in ${name} gently framing it, so the listener knows what the English line offers.`;
+}
 
 /** Restates the canonical-tool rule (Foundation §4.4) as an explicit instruction line. */
 const SCRIPTURE_SOURCING_RULE =
@@ -415,6 +478,7 @@ export function buildInstructions(params: BuildInstructionsParams): string {
   const { tradition, translation, bands, durationPreference, signalProvenance } = params;
   const slotType: SlotType = params.slotType ?? 'standard';
   const lectio = params.lectio ?? false;
+  const language: LanguageTag = params.language ?? DEFAULT_LANGUAGE;
   const targetFormat = resolveTargetFormat(bands, durationPreference, slotType);
   const showLiturgicalSeason =
     params.date !== undefined &&
@@ -429,6 +493,11 @@ export function buildInstructions(params: BuildInstructionsParams): string {
         : liturgicalSeasonInstructionLine(getLiturgicalSeason(params.date!))
       : null,
     `Preferred Bible translation: ${translation}.`,
+    // The one non-English addition (issue #315): output language. Everything
+    // else in this array stays English by decision — see the `language`
+    // param doc. `null` for en keeps English output byte-identical to
+    // pre-Epic-O instructions.
+    language === DEFAULT_LANGUAGE ? null : languageDirective(language),
     `Today's signals for this user:\n${describeBandContext(bands, signalProvenance)}`,
     // Placed immediately after the band list, before any of the optional
     // context lines: the model must read the provenance qualifier while the
@@ -445,7 +514,7 @@ export function buildInstructions(params: BuildInstructionsParams): string {
       : null,
     `Target format: ${targetFormat} — ${FORMAT_WORD_TARGETS[targetFormat]}. Match the devotionalBody length to this format.`,
     bands.distressSignal
-      ? 'This user has flagged elevated distress. Keep the devotional to the micro format, gentle-comfort theme, low-pressure tone, and include this resource once, gently: in the US, you can call or text 988 (the Suicide & Crisis Lifeline) anytime for free, confidential support. Offer it as a quiet option, without diagnosing or dramatizing.'
+      ? `This user has flagged elevated distress. Keep the devotional to the micro format, gentle-comfort theme, low-pressure tone, and include this resource once, gently: in the US, you can call or text 988 (the Suicide & Crisis Lifeline) anytime for free, confidential support. Offer it as a quiet option, without diagnosing or dramatizing.${language === DEFAULT_LANGUAGE ? '' : distressResourceLanguageNote(language)}`
       : null,
     slotType === 'examen'
       ? EXAMEN_STRUCTURE_INSTRUCTION

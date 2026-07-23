@@ -871,3 +871,104 @@ describe('buildInstructions — signal provenance (issue #196)', () => {
     expect(examen).toContain('never on one marked NOT OBSERVED');
   });
 });
+
+/**
+ * Content language (Epic O #311, story O3 #315) — the ONE non-English line.
+ *
+ * The design under test: `language` adds exactly one English instruction
+ * telling the model to write all user-facing output fields in the target
+ * language, while everything else — tradition framing, the §9 safety spec,
+ * the distress clause — stays English (epic decision 3: the model follows
+ * English instructions to write Spanish output, and keeping the instruction
+ * side English is what keeps it reviewable by the docs/17 theological-QA
+ * process). `'en'` (and an absent param) must emit NOTHING, so English
+ * instructions stay byte-identical to before Epic O existed.
+ */
+describe('buildInstructions — content language (Epic O #311, O3 #315)', () => {
+  function build(overrides: Partial<BuildInstructionsParams> = {}): string {
+    return buildInstructions({
+      tradition: 'general',
+      translation: TRANSLATION,
+      bands: bands({}),
+      signalProvenance: ALL_SIGNALS_OBSERVED,
+      ...overrides,
+    });
+  }
+
+  it("language='en' is byte-identical to omitting language entirely (issue #315 acceptance: no regression line)", () => {
+    expect(build({ language: 'en' })).toBe(build({}));
+  });
+
+  it('emits no language directive at all for English', () => {
+    expect(build({ language: 'en' })).not.toContain('entirely in');
+    expect(build({})).not.toContain('entirely in');
+  });
+
+  it('emits the exact Spanish directive for es — mutation check: removing or rewording the line fails this', () => {
+    // Asserted as ONE exact string (not toMatch fragments) so a mutant that
+    // drops the field list, the language name, or the Scripture-sourcing
+    // tail cannot pass. This is the line recorded on the #315 PR.
+    expect(build({ language: 'es' })).toContain(
+      'Write every user-facing output field (devotionalBody, cardSummary, prayer, journalingPrompt, actionStep, theme) entirely in Spanish. Scripture text still comes only from get_bible_verse in the preferred translation above — never translate or paraphrase Scripture yourself.',
+    );
+  });
+
+  it('emits the directive with the right English language name for every non-en language', () => {
+    const expectedNames = { es: 'Spanish', fr: 'French', de: 'German', pt: 'Portuguese', zh: 'Simplified Chinese' } as const;
+    for (const [language, name] of Object.entries(expectedNames)) {
+      const instructions = build({ language: language as BuildInstructionsParams['language'] });
+      expect(instructions).toContain(`entirely in ${name}.`);
+      // The directive names exactly one language — no other name leaks in.
+      for (const otherName of Object.values(expectedNames)) {
+        if (otherName === name) continue;
+        expect(instructions).not.toContain(`entirely in ${otherName}.`);
+      }
+    }
+  });
+
+  it('places the directive immediately after the translation line, where the "preferred translation above" back-reference points', () => {
+    const instructions = build({ language: 'fr' });
+    const translationIdx = instructions.indexOf(`Preferred Bible translation: ${TRANSLATION}.`);
+    const directiveIdx = instructions.indexOf('entirely in French');
+    expect(translationIdx).toBeGreaterThanOrEqual(0);
+    expect(directiveIdx).toBeGreaterThan(translationIdx);
+    // Directly adjacent (one section boundary between them), not somewhere
+    // later where "above" could be ambiguous.
+    const between = instructions.slice(translationIdx, directiveIdx);
+    expect(between).not.toContain("Today's signals");
+  });
+
+  it('guardrails, tradition framing, and the safety spec STAY English for a non-English generation (epic #311 decision 3)', () => {
+    const instructions = build({ language: 'es', tradition: 'catholic' });
+    expect(instructions).toContain('Theological safety guardrails (non-negotiable):');
+    expect(instructions).toContain('No medical diagnosis, treatment claims, or inference of health/spiritual condition.');
+    expect(instructions).toContain('Never quote Scripture from memory.');
+    expect(instructions).toContain('Tradition: catholic.');
+  });
+
+  it('distress + non-English: keeps the 988 sentence in English and asks for one same-language framing sentence', () => {
+    // 988 is a US, primarily English-language service; machine-translating
+    // the resource line would misrepresent what the caller reaches. The
+    // decided handling (recorded on the #315 PR): English resource line
+    // verbatim + one brief framing sentence in the user's language.
+    const instructions = build({ language: 'es', bands: bands({ distressSignal: true }) });
+    expect(instructions).toContain('you can call or text 988');
+    expect(instructions).toContain('keep the 988 resource sentence itself in English exactly as phrased');
+    expect(instructions).toContain('add one brief sentence in Spanish gently framing it');
+  });
+
+  it('distress + English: the 988 clause is byte-identical to today — no language note', () => {
+    const withEn = build({ language: 'en', bands: bands({ distressSignal: true }) });
+    const without = build({ bands: bands({ distressSignal: true }) });
+    expect(withEn).toBe(without);
+    expect(withEn).not.toContain('keep the 988 resource sentence itself in English');
+  });
+
+  it('is deterministic per language: identical inputs produce a byte-identical string', () => {
+    expect(build({ language: 'zh' })).toBe(build({ language: 'zh' }));
+  });
+
+  it('matches snapshot for es (general tradition, default bands) — the reviewed Spanish-generation prompt', () => {
+    expect(build({ language: 'es' })).toMatchSnapshot();
+  });
+});

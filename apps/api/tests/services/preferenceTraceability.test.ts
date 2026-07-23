@@ -146,6 +146,8 @@ function buildOrchestrator(opts: {
   timezone?: string;
   tradition?: string;
   translationId?: number;
+  /** users.language (Epic O #311 / O3 #315). Defaults to 'en', the column default. */
+  language?: string;
   withCalendar?: boolean;
   /** #201: a stored `daily_bands` row, so a consent test can prove stored data is ignored at read time. `undefined` keeps the default no-row behavior. */
   bands?: Record<string, unknown> | null;
@@ -164,6 +166,7 @@ function buildOrchestrator(opts: {
       email: 'u@example.com',
       tradition: opts.tradition ?? 'general',
       translation_id: opts.translationId ?? 3034,
+      language: opts.language ?? 'en',
       timezone: opts.timezone ?? 'UTC',
     }),
   } as unknown as UsersRepository;
@@ -313,15 +316,63 @@ describe('users.translation_id — passage fetch + instructions (LIVE)', () => {
   });
 
   it('changes preferredVersionId reaching the engine (the id used for get_bible_verse)', async () => {
+    // Both ids are in the en LANGUAGE_CATALOG entry (O3 #315): since Epic O,
+    // an id OUTSIDE the stored language's catalog no longer flows through —
+    // see the snap test below. (This previously used NIV 111, which our key
+    // was never licensed for; every live fetch of it 403'd.)
     const a = buildOrchestrator({ prefs: defaultPrefsRow(), translationId: 3034 });
     await a.orchestrator.generateNow({ userId: 'user-1', date: '2026-07-18' });
-    const b = buildOrchestrator({ prefs: defaultPrefsRow(), translationId: 111 });
+    const b = buildOrchestrator({ prefs: defaultPrefsRow(), translationId: 206 });
     await b.orchestrator.generateNow({ userId: 'user-1', date: '2026-07-18' });
 
     expect(a.captures.engineParams[0]!.preferredVersionId).toBe(3034);
-    expect(b.captures.engineParams[0]!.preferredVersionId).toBe(111);
+    expect(b.captures.engineParams[0]!.preferredVersionId).toBe(206);
     // ...and the human-readable label follows the id, so the prompt changes too.
     expect(a.captures.engineParams[0]!.translation).not.toBe(b.captures.engineParams[0]!.translation);
+  });
+
+  it('snaps a stored translation OUTSIDE the language catalog to the language default (O3 #315, DEC-K12)', async () => {
+    // NIV 111 is not licensed to our app key (live-verified — the passage
+    // endpoint 403s), so letting it reach the engine guaranteed every
+    // get_bible_verse call failed. It now snaps to the stored language's
+    // default: an out-of-catalog id changes the OUTPUT to the catalog
+    // default rather than flowing through unfetchable.
+    const a = buildOrchestrator({ prefs: defaultPrefsRow(), translationId: 111 });
+    await a.orchestrator.generateNow({ userId: 'user-1', date: '2026-07-18' });
+    expect(a.captures.engineParams[0]!.preferredVersionId).toBe(3034);
+    expect(a.captures.engineParams[0]!.translation).toBe('BSB');
+  });
+});
+
+describe('users.language — engine language + version resolution (LIVE, Epic O #311 / O3 #315)', () => {
+  it('changes the instructions reaching Gloo: es adds the Spanish output directive, en adds nothing', async () => {
+    const en = buildOrchestrator({ prefs: defaultPrefsRow() });
+    await en.orchestrator.generateNow({ userId: 'user-1', date: '2026-07-18' });
+    const es = buildOrchestrator({ prefs: defaultPrefsRow(), language: 'es', translationId: 3365 });
+    await es.orchestrator.generateNow({ userId: 'user-1', date: '2026-07-18' });
+
+    expect(en.captures.engineParams[0]!.language).toBe('en');
+    expect(es.captures.engineParams[0]!.language).toBe('es');
+
+    // The stored value demonstrably changes the generated prompt (K7's bar:
+    // output, not plumbing).
+    const enInstructions = buildInstructions({ ...en.captures.engineParams[0]!, translation: 'BSB' });
+    const esInstructions = buildInstructions({
+      ...es.captures.engineParams[0]!,
+      translation: 'Palabra de Dios para ti',
+    });
+    expect(enInstructions).not.toContain('entirely in');
+    expect(esInstructions).toContain('entirely in Spanish');
+  });
+
+  it("changes the versionId reaching the engine: choosing 'es' with no es translation stored resolves to the es default", async () => {
+    // A user whose language just flipped to 'es' while translation_id still
+    // holds the en default: the engine must get the es catalog default, not
+    // an English Bible under Spanish instructions.
+    const es = buildOrchestrator({ prefs: defaultPrefsRow(), language: 'es', translationId: 3034 });
+    await es.orchestrator.generateNow({ userId: 'user-1', date: '2026-07-18' });
+    expect(es.captures.engineParams[0]!.preferredVersionId).toBe(3365);
+    expect(es.captures.engineParams[0]!.translation).toBe('Palabra de Dios para ti');
   });
 });
 
