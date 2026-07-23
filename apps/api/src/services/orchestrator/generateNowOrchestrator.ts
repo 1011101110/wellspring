@@ -33,11 +33,16 @@
  */
 import { randomUUID } from 'node:crypto';
 import {
+  DEFAULT_LANGUAGE,
   DEFAULT_VOICE_NAME,
+  LanguageTagSchema,
   StillnessSchema,
+  defaultVersionIdFor,
+  isVersionInLanguage,
   resolveVoiceName,
   type BandInput,
   type DevotionalFormat,
+  type LanguageTag,
   type SlotType,
   type Stillness,
   type Tradition,
@@ -175,6 +180,15 @@ export interface GenerateNowParams {
     tradition: Tradition;
     translation: string;
     preferredVersionId: number;
+    /**
+     * Devotional content language (Epic O #311, story O3 #315). Defaults to
+     * `'en'` when omitted — an override caller bypassing the preferences
+     * row gets today's English behavior unless it says otherwise. A caller
+     * setting this is responsible for keeping `preferredVersionId` inside
+     * that language's `LANGUAGE_CATALOG` entry (the normal load path
+     * enforces that pairing in `loadPreferences`).
+     */
+    language?: LanguageTag;
     stillness?: Stillness;
     lectio?: boolean;
     liturgicalSeasonsEnabled?: boolean;
@@ -311,12 +325,14 @@ export class GenerateNowOrchestrator {
   }
 
   /**
-   * Loads tradition/translation/preferredVersionId for a user. Falls back
-   * to general/BSB/3034 (docs/14 §3.5's "return defaults instead of 404")
-   * rather than requiring a preferences row to already exist.
+   * Loads tradition/language/translation/preferredVersionId for a user.
+   * Falls back to general/en/BSB/3034 (docs/14 §3.5's "return defaults
+   * instead of 404") rather than requiring a preferences row to already
+   * exist.
    */
   private async loadPreferences(userId: string): Promise<{
     tradition: Tradition;
+    language: LanguageTag;
     translation: string;
     preferredVersionId: number;
     stillness: Stillness;
@@ -333,7 +349,35 @@ export class GenerateNowOrchestrator {
     const prefsRow = await this.preferences.get(verifiedUserId);
 
     const tradition = user?.tradition ?? DEFAULT_TRADITION;
-    const preferredVersionId = user?.translation_id ?? DEFAULT_VERSION_ID;
+    // `language` is a plain `text` column (migration 1722300000000) — the
+    // preferences route validates on write, but (like `stillness` below) an
+    // out-of-band value must not flow onward unvalidated, so re-check
+    // against the shared-contracts enum and fall back to 'en'.
+    const language = LanguageTagSchema.safeParse(user?.language).data ?? DEFAULT_LANGUAGE;
+    // Version resolution (Epic O #311, story O3 #315): the stored
+    // translation wins when it belongs to the stored language's catalog;
+    // anything else — no row, or a language/translation pair that got out
+    // of sync despite the preferences route's cross-field rule — snaps to
+    // the language's default. The check is `isVersionInLanguage`, not a
+    // null-coalesce, because a stale en versionId on a user who switched to
+    // 'es' would otherwise send Spanish instructions with an English Bible
+    // (exactly the mixed-language devotional DEC-K12 forbids).
+    const storedTranslationId = user?.translation_id;
+    const preferredVersionId =
+      storedTranslationId != null && isVersionInLanguage(language, storedTranslationId)
+        ? storedTranslationId
+        : defaultVersionIdFor(language);
+    if (storedTranslationId != null && storedTranslationId !== preferredVersionId) {
+      // Same class of event as the unrecognized-voice fallback below: a
+      // default was substituted, nothing broke — but a silently ignored
+      // stored preference must be legible in the logs (#193).
+      this.logger.info('Stored translation_id is not in the stored language catalog — using the language default', {
+        userId,
+        language,
+        storedTranslationId,
+        fallbackVersionId: preferredVersionId,
+      });
+    }
     const translation = versionIdToLabel(preferredVersionId);
     // `stillness` is a plain `text` column (see shared-contracts'
     // PreferencesResponseDataSchema comment) — an unrecognized value
@@ -407,6 +451,7 @@ export class GenerateNowOrchestrator {
 
     return {
       tradition,
+      language,
       translation,
       preferredVersionId,
       stillness,
@@ -558,6 +603,7 @@ export class GenerateNowOrchestrator {
 
     const {
       tradition,
+      language,
       translation,
       preferredVersionId,
       stillness,
@@ -570,6 +616,10 @@ export class GenerateNowOrchestrator {
       communicationEnabled,
     } = params.preferencesOverride
       ? {
+          // Escape-hatch default (O3 #315): an override caller that says
+          // nothing about language gets today's English behavior — the
+          // spread below lets it opt into a content language explicitly.
+          language: DEFAULT_LANGUAGE,
           stillness: 'off' as Stillness,
           lectio: false,
           liturgicalSeasonsEnabled: false,
@@ -611,7 +661,7 @@ export class GenerateNowOrchestrator {
       ? { ...loaded.bands, distressSignal: true }
       : loaded.bands;
 
-    this.logger.info('Starting generate-now', { userId, date, tradition, translation, slotType });
+    this.logger.info('Starting generate-now', { userId, date, tradition, language, translation, slotType });
 
     // Deliberate disclosure (docs/14 §5.5, issue #93): weave in whatever
     // the user shared on yesterday's session-completion page, if anything.
@@ -667,6 +717,7 @@ export class GenerateNowOrchestrator {
       tradition,
       translation,
       preferredVersionId,
+      language,
       slotType,
       lectio,
       durationPreference,
@@ -676,6 +727,22 @@ export class GenerateNowOrchestrator {
       inviteContext: params.inviteContext,
     });
     const { devotional, source } = genResult;
+
+    // Fixture fallback stays English by decision (epic #311 §3) — the
+    // corpus is English-only, and an honest English fallback beats a
+    // machine-translated one. For a non-English user that means this
+    // devotional is NOT in their chosen language: the row/response already
+    // carry `isFixtureFallback`, and this log line is the explicit
+    // language-mismatch flag (O3 #315) so the demo/ops story never has to
+    // infer it from the language column and the fixture flag separately.
+    if (source === 'fixture' && language !== DEFAULT_LANGUAGE) {
+      this.logger.info('Fixture fallback served in English to a non-English user (epic #311 §3 decision)', {
+        userId,
+        date,
+        language,
+        fixtureLanguageMismatch: true,
+      });
+    }
 
     // Step 2: create the devotional row FIRST — once we have a validated
     // DevotionalOutput, its text must never be silently lost.
@@ -1021,9 +1088,15 @@ export class GenerateNowOrchestrator {
 }
 
 /**
- * Maps a YouVersion numeric versionId to the short label DevotionalEngine's
- * prose framing expects (Foundation §4.3 table). Falls back to the numeric
- * id itself for any id not in the small known table.
+ * Maps a YouVersion numeric versionId to the human-readable label
+ * DevotionalEngine's prose framing expects (Foundation §4.3 table for en;
+ * epic #311's live-verified table for the non-en catalog). Falls back to
+ * the numeric id itself for any id not in the small known table.
+ *
+ * Non-en entries use readable names rather than en-style short codes: the
+ * label's only consumer is the model's prose framing ("Preferred Bible
+ * translation: X."), and "Palabra de Dios para ti" tells it something
+ * "spaPdDpt" does not.
  */
 function versionIdToLabel(versionId: number): string {
   const known: Record<number, string> = {
@@ -1038,6 +1111,24 @@ function versionIdToLabel(versionId: number): string {
     2163: 'Geneva',
     2660: 'LSV',
     3427: 'TCENT',
+    // es (LANGUAGE_CATALOG, epic #311, live-verified 2026-07-23)
+    3365: 'Palabra de Dios para ti',
+    147: 'Reina-Valera Antigua',
+    // fr
+    93: 'Louis Segond 1910',
+    62: 'Martin 1744',
+    131: 'Ostervald',
+    64: 'Bible Darby (French)',
+    // de
+    51: 'Luther 1912',
+    57: 'Elberfelder',
+    58: 'Elberfelder',
+    2351: 'Elberfelder',
+    // pt
+    3254: 'Bíblia Livre Para Todos',
+    // zh
+    43: 'Chinese Standard Bible (Simplified)',
+    3354: 'FEB',
   };
   return known[versionId] ?? String(versionId);
 }

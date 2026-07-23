@@ -70,4 +70,24 @@ describe('generateTeamDevotional (I4, #64)', () => {
     expect(result.source).toBe('gloo');
     expect(result.devotional.cardSummary).toBe('A shared moment.');
   });
+
+  it('threads the organizer-chosen content language through to the engine (Epic O #311, O3 #315)', async () => {
+    const { engine, generate } = fakeEngine();
+    await generateTeamDevotional(engine, {
+      ...BASE,
+      language: 'es',
+      translation: 'Palabra de Dios para ti',
+      preferredVersionId: 3365,
+    });
+
+    const params = generate.mock.calls[0]![0] as GenerateDevotionalParams;
+    expect(params.language).toBe('es');
+    expect(params.preferredVersionId).toBe(3365);
+  });
+
+  it("omits language when not chosen — the engine's own 'en' default applies", async () => {
+    const { engine, generate } = fakeEngine();
+    await generateTeamDevotional(engine, BASE);
+    expect((generate.mock.calls[0]![0] as GenerateDevotionalParams).language).toBeUndefined();
+  });
 });
