@@ -6,6 +6,7 @@
  * (which doesn't exist yet — see docs/22 §3, H1a spike, issue #129).
  */
 import type { AttendeeBotState, AttendeeClient, BotStatus, CreateBotParams, CreateBotResult } from './attendeeClient.js';
+import { assertCreateBotModeExclusive } from './attendeeClient.js';
 
 export interface FakeAttendeeClientOptions {
   /**
@@ -30,6 +31,10 @@ export class FakeAttendeeClient implements AttendeeClient {
   }
 
   async createBot(params: CreateBotParams): Promise<CreateBotResult> {
+    // Same boundary check as the real client (#335 mode exclusivity) —
+    // a dispatch test that assembles an impossible payload fails here,
+    // exactly where production would.
+    assertCreateBotModeExclusive(params);
     this.createBotCalls.push(params);
     return { botId: this.botId };
   }

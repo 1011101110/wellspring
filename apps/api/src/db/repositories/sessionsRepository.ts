@@ -74,6 +74,27 @@ export class SessionsRepository {
     return result.rows[0] ?? null;
   }
 
+  /**
+   * The second — and only other — unscoped read (see class doc for the
+   * first). Exists for exactly one caller: the `/internal/dispatch-meetbot`
+   * voice-agent mode (Epic Q, #335), which must resolve a devotional's
+   * EXISTING session token to build the Stage URL the bot loads. That
+   * route is behind INTERNAL_API_TOKEN (never user-facing), receives only
+   * a devotionalId, and the token it reads is handed to Attendee as the
+   * same capability the session/stage pages already treat it as (docs/04).
+   * Read-only by design: if no session row exists the dispatch refuses
+   * (`no_session`) — it must NEVER mint a second session for a devotional.
+   * Newest row wins on the off-chance a devotional has more than one
+   * (the FK is not unique — see listScheduledAttendance's notes).
+   */
+  async findByDevotionalId(devotionalId: string): Promise<SessionRow | null> {
+    const result = await this.db.query<SessionRow>(
+      `SELECT * FROM sessions WHERE devotional_id = $1 ORDER BY created_at DESC LIMIT 1`,
+      [devotionalId],
+    );
+    return result.rows[0] ?? null;
+  }
+
   async markJoined(userId: VerifiedUserId, token: string): Promise<SessionRow | null> {
     const result = await this.db.query<SessionRow>(
       `UPDATE sessions SET joined_at = now()

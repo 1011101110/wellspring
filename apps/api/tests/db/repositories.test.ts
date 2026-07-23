@@ -378,6 +378,35 @@ describe('SessionsRepository — join flow + scoping', () => {
     expect(joinedByA?.joined_at).not.toBeNull();
   });
 
+  it('findByDevotionalId resolves the newest session for a devotional, or null when none exists (#335 voice-agent dispatch)', async () => {
+    const userA = await makeUser('sess-devo-a');
+    const devoA = await repos.devotionals.create(userA, minimalDevotional('2026-07-01'));
+    const devoNoSession = await repos.devotionals.create(userA, minimalDevotional('2026-07-02'));
+
+    const first = await repos.sessions.create(userA, {
+      devotionalId: devoA.id,
+      expiresAt: new Date(Date.now() + 3600_000),
+    });
+    // Force distinct created_at ordering (created_at has second/ms precision;
+    // an explicit UPDATE makes "newest" deterministic).
+    await pool.query(`UPDATE sessions SET created_at = created_at - interval '1 minute' WHERE token = $1`, [
+      first.token,
+    ]);
+    const second = await repos.sessions.create(userA, {
+      devotionalId: devoA.id,
+      expiresAt: new Date(Date.now() + 3600_000),
+    });
+
+    const found = await repos.sessions.findByDevotionalId(devoA.id);
+    expect(found?.token).toBe(second.token);
+
+    // Read-only refusal case: a devotional with no session row resolves to
+    // null (the dispatch route turns this into `no_session`) — and, the
+    // load-bearing half, the lookup must not have minted a row.
+    expect(await repos.sessions.findByDevotionalId(devoNoSession.id)).toBeNull();
+    expect(await repos.sessions.findByDevotionalId(devoNoSession.id)).toBeNull();
+  });
+
   it('listForUser never includes another user sessions', async () => {
     const userA = await makeUser('sess-list-a');
     const userB = await makeUser('sess-list-b');

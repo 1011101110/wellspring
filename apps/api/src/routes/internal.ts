@@ -33,7 +33,7 @@ import { decideCadence, type CadenceReason } from '../services/rhythm/cadencePol
 import { runAllPurgeJobs, type PurgeJobsDeps } from '../services/retention/purgeJobs.js';
 import { runRescheduleCheck, type RescheduleWatcherDeps } from '../services/calendar/rescheduleWatcher.js';
 import { refreshCalendarTimezone } from '../services/calendar/refreshCalendarTimezone.js';
-import { runMeetBotDispatch } from '../services/meetBot/meetBotSession.js';
+import { runMeetBotDispatch, type MeetBotDispatchParams } from '../services/meetBot/meetBotSession.js';
 import type { AttendeeClient } from '../services/meetBot/attendeeClient.js';
 import {
   checkMeetBotConsent,
@@ -81,32 +81,17 @@ export interface InternalRoutesDeps {
   /**
    * Required for /internal/dispatch-meetbot (H1c, #131). When omitted,
    * that route returns 501 — same pattern as the deps above.
+   *
+   * A mode union since Epic Q (#335): `websocket` is the pre-existing
+   * PCM path (default when `mode` is omitted, so every existing wiring
+   * and test keeps meaning what it meant); `voice-agent` makes dispatch
+   * create bots that load the Stage page (`/stage/:token`) in Attendee's
+   * container instead of connecting to our audio websocket. Deployment
+   * config picks the mode — see index.ts (`MEETBOT_IMMEDIATE_DISPATCH`,
+   * #336, wires voice-agent mode).
    */
   meetBotDispatch?: {
     attendeeClient: AttendeeClient;
-    /**
-     * `wss://.../meetbot/audio` — the per-devotional capability token and
-     * the devotionalId are both appended here, at dispatch time.
-     *
-     * This used to be the base URL with the global `MEETBOT_AUDIO_TOKEN`
-     * already baked into it, because the token was the same for every
-     * devotional. It no longer is (#221): the token is now derived per
-     * devotional, so it cannot be pre-computed into a static base and this
-     * field carries no secret at all.
-     */
-    audioWebsocketBaseUrl: string;
-    /**
-     * Root secret from which each dispatch's per-devotional audio
-     * capability token is derived (#221) — the value of
-     * `MEETBOT_AUDIO_TOKEN`, NOT a token that ever appears in a URL. See
-     * services/meetBot/meetBotAudioCapabilityToken.ts.
-     *
-     * Required, like `consentGate`: without it this route cannot mint a
-     * URL the audio websocket will accept, and there is no sensible
-     * degraded mode — a dispatch with an unverifiable URL produces a bot
-     * that joins a meeting and then cannot speak.
-     */
-    audioTokenSecret: string;
     /**
      * Fire-time consent gate deps (#217). REQUIRED, not optional, unlike
      * every other dependency in this interface — and that asymmetry is
@@ -116,10 +101,55 @@ export interface InternalRoutesDeps {
      * it would dispatch bots with no consent check at all, which is the
      * exact defect #217 exists to remove. Making it required moves that
      * mistake from a silent production consent violation to a `tsc`
-     * error.
+     * error. Mode-independent: it runs BEFORE bot creation in both modes.
      */
     consentGate: MeetBotConsentGateDeps;
-  };
+  } & (
+    | {
+        mode?: 'websocket';
+        /**
+         * `wss://.../meetbot/audio` — the per-devotional capability token and
+         * the devotionalId are both appended here, at dispatch time.
+         *
+         * This used to be the base URL with the global `MEETBOT_AUDIO_TOKEN`
+         * already baked into it, because the token was the same for every
+         * devotional. It no longer is (#221): the token is now derived per
+         * devotional, so it cannot be pre-computed into a static base and this
+         * field carries no secret at all.
+         */
+        audioWebsocketBaseUrl: string;
+        /**
+         * Root secret from which each dispatch's per-devotional audio
+         * capability token is derived (#221) — the value of
+         * `MEETBOT_AUDIO_TOKEN`, NOT a token that ever appears in a URL. See
+         * services/meetBot/meetBotAudioCapabilityToken.ts.
+         *
+         * Required, like `consentGate`: without it this route cannot mint a
+         * URL the audio websocket will accept, and there is no sensible
+         * degraded mode — a dispatch with an unverifiable URL produces a bot
+         * that joins a meeting and then cannot speak.
+         */
+        audioTokenSecret: string;
+      }
+    | {
+        mode: 'voice-agent';
+        /**
+         * Read-only session-token lookup (#335): voice-agent dispatch
+         * resolves the devotional's EXISTING session token to build the
+         * Stage URL. Never mints a session — a devotional without one
+         * refuses with `no_session` (200 + dispatched:false, same
+         * Cloud-Tasks-retry posture as a consent refusal). Structural
+         * (`SessionsRepository.findByDevotionalId` satisfies it) so tests
+         * fake exactly the one read the route performs.
+         */
+        sessions: { findByDevotionalId(devotionalId: string): Promise<{ token: string } | null> };
+        /**
+         * Absolute origin the Stage URL is built from — same value the
+         * orchestrator derives sessionUrl from (`PUBLIC_BASE_URL`).
+         */
+        publicBaseUrl: string;
+      }
+  );
   /**
    * K1 (#187): resolves a user's connected-calendar IANA zone. Powers the
    * per-user zone refresh inside `/internal/trigger-daily-run` and the
@@ -769,18 +799,45 @@ export function registerInternalRoutes(app: FastifyInstance, deps: InternalRoute
       };
     }
 
-    // Mint a capability scoped to THIS devotional (#221). What we hand
-    // Attendee is now a URL that authorizes streaming one devotional —
-    // this one — rather than a URL containing a global secret that would
-    // authorize streaming anyone's. See
-    // services/meetBot/meetBotAudioCapabilityToken.ts.
-    const audioToken = deriveMeetBotAudioToken(deps.meetBotDispatch.audioTokenSecret, devotionalId);
-    const audioWebsocketUrl = `${deps.meetBotDispatch.audioWebsocketBaseUrl}/${audioToken}/${devotionalId}`;
+    const mbd = deps.meetBotDispatch;
+    let dispatchParams: MeetBotDispatchParams;
+    if (mbd.mode === 'voice-agent') {
+      // Voice-agent mode (Epic Q, #335): the capability handed to Attendee
+      // is the devotional's EXISTING session token, carried in the Stage
+      // URL — /stage/:token is one devotional's session, same UUID-token-
+      // as-credential doctrine as /session/:token (docs/04). Read-only
+      // lookup; never mint a second session here.
+      const session = await mbd.sessions.findByDevotionalId(devotionalId);
+      if (!session) {
+        // Shouldn't happen for scheduled devotionals (sessions are created
+        // at scheduling time), but the route must not 500 into a Cloud
+        // Tasks retry loop over a permanently-absent row — same "this task
+        // is complete, do not retry" posture as the consent refusal above.
+        request.log.warn(
+          { devotionalId, userId: decision.userId },
+          'meetbot dispatch refused — no session row for devotional (voice-agent mode, #335)',
+        );
+        return { ok: true, dispatched: false, reason: 'no_session' };
+      }
+      // Log discipline: the Stage URL contains a live session token — like
+      // the meeting URL it must never be logged; the devotionalId above is
+      // the auditable identifier.
+      const stageUrl = `${mbd.publicBaseUrl.replace(/\/+$/, '')}/stage/${session.token}`;
+      dispatchParams = { mode: 'voice-agent', meetingUrl, botName: botName ?? 'Wellspring', stageUrl };
+    } else {
+      // Mint a capability scoped to THIS devotional (#221). What we hand
+      // Attendee is now a URL that authorizes streaming one devotional —
+      // this one — rather than a URL containing a global secret that would
+      // authorize streaming anyone's. See
+      // services/meetBot/meetBotAudioCapabilityToken.ts.
+      const audioToken = deriveMeetBotAudioToken(mbd.audioTokenSecret, devotionalId);
+      const audioWebsocketUrl = `${mbd.audioWebsocketBaseUrl}/${audioToken}/${devotionalId}`;
+      dispatchParams = { mode: 'websocket', meetingUrl, botName: botName ?? 'Wellspring', audioWebsocketUrl };
+    }
 
-    const result = await runMeetBotDispatch(
-      { meetingUrl, botName: botName ?? 'Wellspring', audioWebsocketUrl },
-      { attendeeClient: deps.meetBotDispatch.attendeeClient },
-    );
+    const result = await runMeetBotDispatch(dispatchParams, {
+      attendeeClient: mbd.attendeeClient,
+    });
     request.log.info({ devotionalId, userId: decision.userId, result }, 'meetbot dispatch completed');
     return { ok: result.ok, dispatched: true, result };
   });

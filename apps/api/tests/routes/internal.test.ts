@@ -240,6 +240,17 @@ function buildTestApp(opts: {
      */
     audioTokenSecret?: string;
   };
+  /**
+   * Voice-agent mode wiring (Epic Q, #335) — mutually exclusive with
+   * `meetBotDispatch` above in these tests, exactly as index.ts wires one
+   * mode or the other.
+   */
+  meetBotDispatchVoiceAgent?: {
+    attendeeClient: AttendeeClient;
+    sessions: { findByDevotionalId(devotionalId: string): Promise<{ token: string } | null> };
+    publicBaseUrl: string;
+    consentGate?: MeetBotConsentGateDeps;
+  };
   getCalendarTimeZoneForUser?: (userId: string) => Promise<string | undefined>;
   internalApiToken?: string;
   now?: () => Date;
@@ -252,13 +263,19 @@ function buildTestApp(opts: {
     rhythm: opts.rhythm,
     purgeJobs: opts.purgeJobs,
     rescheduleWatcher: opts.rescheduleWatcher,
-    meetBotDispatch: opts.meetBotDispatch
+    meetBotDispatch: opts.meetBotDispatchVoiceAgent
       ? {
-          ...opts.meetBotDispatch,
-          consentGate: opts.meetBotDispatch.consentGate ?? consentingGate(),
-          audioTokenSecret: opts.meetBotDispatch.audioTokenSecret ?? TEST_AUDIO_TOKEN_SECRET,
+          mode: 'voice-agent' as const,
+          ...opts.meetBotDispatchVoiceAgent,
+          consentGate: opts.meetBotDispatchVoiceAgent.consentGate ?? consentingGate(),
         }
-      : undefined,
+      : opts.meetBotDispatch
+        ? {
+            ...opts.meetBotDispatch,
+            consentGate: opts.meetBotDispatch.consentGate ?? consentingGate(),
+            audioTokenSecret: opts.meetBotDispatch.audioTokenSecret ?? TEST_AUDIO_TOKEN_SECRET,
+          }
+        : undefined,
     getCalendarTimeZoneForUser: opts.getCalendarTimeZoneForUser,
     internalApiToken: opts.internalApiToken,
     now: opts.now,
@@ -2226,6 +2243,109 @@ describe('POST /internal/dispatch-meetbot', () => {
 
     expect(response.statusCode).toBe(401);
     expect(gate.devotionals.findOwnerUserId).not.toHaveBeenCalled();
+    await app.close();
+  });
+
+  // ────────────────────────────────────────────────────────────
+  // Voice-agent mode (Epic Q, #335)
+  // ────────────────────────────────────────────────────────────
+
+  it('voice-agent mode: resolves the devotional session token and dispatches a bot at the Stage URL (#335)', async () => {
+    const fakeClient = new FakeAttendeeClient({ stateSequence: ['joined_recording', 'ended'] });
+    const findByDevotionalId = vi.fn().mockResolvedValue({ token: 'session-token-uuid' });
+    const app = buildTestApp({
+      orchestrator: fakeOrchestrator(),
+      internalApiToken: 'secret-token',
+      meetBotDispatchVoiceAgent: {
+        attendeeClient: fakeClient as unknown as AttendeeClient,
+        sessions: { findByDevotionalId },
+        publicBaseUrl: 'https://api.example.com/',
+      },
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/internal/dispatch-meetbot',
+      headers: { 'x-internal-token': 'secret-token' },
+      payload: { meetingUrl: 'https://meet.google.com/abc-defg-hij', devotionalId: 'devo-1' },
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json();
+    expect(body.ok).toBe(true);
+    expect(body.dispatched).toBe(true);
+    expect(body.result.ok).toBe(true);
+    expect(findByDevotionalId).toHaveBeenCalledWith('devo-1');
+    // The exact bot-creation payload for voice-agent mode: the Stage URL
+    // (trailing slash on publicBaseUrl normalized away) as voiceAgentUrl,
+    // and — asserted via toEqual — NO websocket fields at all.
+    expect(fakeClient.createBotCalls).toEqual([
+      {
+        meetingUrl: 'https://meet.google.com/abc-defg-hij',
+        botName: 'Wellspring',
+        voiceAgentUrl: 'https://api.example.com/stage/session-token-uuid',
+      },
+    ]);
+    // Lifecycle parity with websocket mode: dispatch ends in leave + delete_data.
+    expect(fakeClient.leaveCalls).toEqual(['fake-bot-id']);
+    expect(fakeClient.deleteDataCalls).toEqual(['fake-bot-id']);
+    await app.close();
+  });
+
+  it('voice-agent mode: no session row -> 200 + dispatched:false + no_session, zero bots (#335 Cloud-Tasks-retry posture)', async () => {
+    const fakeClient = new FakeAttendeeClient({ stateSequence: ['joined_recording', 'ended'] });
+    const app = buildTestApp({
+      orchestrator: fakeOrchestrator(),
+      internalApiToken: 'secret-token',
+      meetBotDispatchVoiceAgent: {
+        attendeeClient: fakeClient as unknown as AttendeeClient,
+        sessions: { findByDevotionalId: vi.fn().mockResolvedValue(null) },
+        publicBaseUrl: 'https://api.example.com',
+      },
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/internal/dispatch-meetbot',
+      headers: { 'x-internal-token': 'secret-token' },
+      payload: { meetingUrl: 'https://meet.google.com/abc-defg-hij', devotionalId: 'devo-1' },
+    });
+
+    expect(fakeClient.createBotCalls).toHaveLength(0);
+    expect(response.statusCode).toBe(200);
+    const body = response.json();
+    expect(body.ok).toBe(true);
+    expect(body.dispatched).toBe(false);
+    expect(body.reason).toBe('no_session');
+    await app.close();
+  });
+
+  it('voice-agent mode: consent refusal still precedes everything — no session read, no bot (#217 parity)', async () => {
+    const fakeClient = new FakeAttendeeClient({ stateSequence: ['joined_recording', 'ended'] });
+    const findByDevotionalId = vi.fn().mockResolvedValue({ token: 'session-token-uuid' });
+    const app = buildTestApp({
+      orchestrator: fakeOrchestrator(),
+      internalApiToken: 'secret-token',
+      meetBotDispatchVoiceAgent: {
+        attendeeClient: fakeClient as unknown as AttendeeClient,
+        sessions: { findByDevotionalId },
+        publicBaseUrl: 'https://api.example.com',
+        consentGate: fakeConsentGate({ connectionStatus: 'revoked' }),
+      },
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/internal/dispatch-meetbot',
+      headers: { 'x-internal-token': 'secret-token' },
+      payload: { meetingUrl: 'https://meet.google.com/abc-defg-hij', devotionalId: 'devo-1' },
+    });
+
+    expect(fakeClient.createBotCalls).toHaveLength(0);
+    expect(findByDevotionalId).not.toHaveBeenCalled();
+    expect(response.statusCode).toBe(200);
+    expect(response.json().dispatched).toBe(false);
+    expect(response.json().reason).toBe('connection_revoked');
     await app.close();
   });
 });
