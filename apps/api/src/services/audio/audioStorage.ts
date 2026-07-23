@@ -29,10 +29,20 @@
 import { createHash, createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import { TimingManifestSchema, type TimingManifest } from '@kairos/shared-contracts';
 
 /** Canonical object key layout — API spec §6: `devotionals/{devotionalId}.mp3`. */
 export function audioObjectKey(devotionalId: string): string {
   return `devotionals/${devotionalId}.mp3`;
+}
+
+/**
+ * Timing-manifest object key (Q1 #331): the audio key plus a
+ * `.manifest.json` suffix, so the manifest always lives next to the MP3
+ * it describes and is covered by the same private-bucket posture.
+ */
+export function manifestObjectKey(devotionalId: string): string {
+  return `${audioObjectKey(devotionalId)}.manifest.json`;
 }
 
 export interface StoredAudioRef {
@@ -66,9 +76,24 @@ export interface AudioStorage {
    * purge job (audio 14 days, Privacy §retention) and account hard-delete.
    * Must not throw when the object is already absent — deletion is
    * idempotent, matching how the retention job re-runs are expected to be
-   * safe to retry.
+   * safe to retry. Also removes the timing manifest (Q1 #331) — the
+   * manifest carries spoken devotional text, so it follows the audio's
+   * retention lifecycle exactly.
    */
   delete(devotionalId: string): Promise<void>;
+  /**
+   * Uploads/overwrites the Stage timing manifest for a devotional
+   * (Q1 #331). Stored under `manifestObjectKey`, next to the MP3. A
+   * failure here must be treated as non-fatal by callers — the Stage page
+   * degrades to no-captions.
+   */
+  uploadManifest(devotionalId: string, manifest: TimingManifest): Promise<StoredAudioRef>;
+  /**
+   * Reads the Stage timing manifest, or null when absent or unparseable
+   * (schema-validated on read — a corrupt manifest must degrade to
+   * no-captions, never 500 the Stage page).
+   */
+  getManifest(devotionalId: string): Promise<TimingManifest | null>;
 }
 
 const DEFAULT_EXPIRY_SECONDS = 15 * 60; // API spec §6: 15-minute expiry.
@@ -152,10 +177,30 @@ export class LocalFileAudioStorage implements AudioStorage {
 
   /** Idempotent: deleting an already-absent file is not an error (retention job doc — see AudioStorage interface). */
   async delete(devotionalId: string): Promise<void> {
+    for (const objectKey of [audioObjectKey(devotionalId), manifestObjectKey(devotionalId)]) {
+      try {
+        await rm(this.filePathFor(objectKey));
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException)?.code !== 'ENOENT') throw err;
+      }
+    }
+  }
+
+  async uploadManifest(devotionalId: string, manifest: TimingManifest): Promise<StoredAudioRef> {
+    const objectKey = manifestObjectKey(devotionalId);
+    const filePath = this.filePathFor(objectKey);
+    await mkdir(path.dirname(filePath), { recursive: true });
+    await writeFile(filePath, JSON.stringify(manifest), 'utf8');
+    return { objectKey };
+  }
+
+  async getManifest(devotionalId: string): Promise<TimingManifest | null> {
     try {
-      await rm(this.filePathFor(audioObjectKey(devotionalId)));
-    } catch (err) {
-      if ((err as NodeJS.ErrnoException)?.code !== 'ENOENT') throw err;
+      const raw = await readFile(this.filePathFor(manifestObjectKey(devotionalId)), 'utf8');
+      const parsed = TimingManifestSchema.safeParse(JSON.parse(raw));
+      return parsed.success ? parsed.data : null;
+    } catch {
+      return null;
     }
   }
 
@@ -279,6 +324,8 @@ export interface GcsFileLike {
   exists(): Promise<[boolean]>;
   getSignedUrl(options: { version: 'v4'; action: 'read'; expires: number }): Promise<[string]>;
   delete(options?: { ignoreNotFound?: boolean }): Promise<unknown>;
+  /** Q1 (#331): server-side manifest read for the Stage page — the manifest is inlined into the HTML, never served via signed URL. */
+  download(): Promise<[Buffer]>;
 }
 export interface GcsBucketLike {
   file(name: string): GcsFileLike;
@@ -332,8 +379,36 @@ export class GcsAudioStorage implements AudioStorage {
    */
   async delete(devotionalId: string): Promise<void> {
     const client = await this.getClient();
-    const file = client.bucket(this.bucketName).file(audioObjectKey(devotionalId));
-    await file.delete({ ignoreNotFound: true });
+    const bucket = client.bucket(this.bucketName);
+    await bucket.file(audioObjectKey(devotionalId)).delete({ ignoreNotFound: true });
+    await bucket.file(manifestObjectKey(devotionalId)).delete({ ignoreNotFound: true });
+  }
+
+  async uploadManifest(devotionalId: string, manifest: TimingManifest): Promise<StoredAudioRef> {
+    const objectKey = manifestObjectKey(devotionalId);
+    const client = await this.getClient();
+    const file = client.bucket(this.bucketName).file(objectKey);
+    await file.save(Buffer.from(JSON.stringify(manifest), 'utf8'), {
+      contentType: 'application/json',
+      resumable: false,
+    });
+    return { objectKey };
+  }
+
+  async getManifest(devotionalId: string): Promise<TimingManifest | null> {
+    try {
+      const client = await this.getClient();
+      const file = client.bucket(this.bucketName).file(manifestObjectKey(devotionalId));
+      const [exists] = await file.exists();
+      if (!exists) return null;
+      const [raw] = await file.download();
+      const parsed = TimingManifestSchema.safeParse(JSON.parse(raw.toString('utf8')));
+      return parsed.success ? parsed.data : null;
+    } catch {
+      // Absent/corrupt/unreachable all degrade the same way: the Stage
+      // page renders without captions rather than erroring (Q1 #331).
+      return null;
+    }
   }
 
   /**

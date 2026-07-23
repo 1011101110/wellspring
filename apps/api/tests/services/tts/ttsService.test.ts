@@ -29,15 +29,45 @@ function fakeClient(audioContent: Buffer | null = Buffer.from('fake-mp3-bytes'))
   };
 }
 
+/**
+ * Maps each fake per-segment MP3 buffer to PCM of a known byte length so
+ * manifest duration math is deterministic without spawning ffmpeg
+ * (durationsSec[i] applies to the i-th synthesized segment, matched by
+ * buffer content `seg{i+1}`). 16000 Hz mono s16le: bytes = sec × 16000 × 2.
+ */
+function fakeDecoder(durationsSec: number[]) {
+  return async (mp3: Buffer, options?: { sampleRate?: number }) => {
+    const rate = options?.sampleRate ?? 16_000;
+    const index = Number(mp3.toString('utf8').replace('seg', '')) - 1;
+    const sec = durationsSec[index];
+    if (sec === undefined) throw new Error(`no fixture duration for segment ${index}`);
+    return Buffer.alloc(Math.round(sec * rate * 2));
+  };
+}
+
+/** Fake client emitting `seg1`, `seg2`, … per call, so buffer order is observable. */
+function sequenceClient(): TtsClientLike {
+  let call = 0;
+  return {
+    synthesizeSpeech: vi.fn().mockImplementation(async () => {
+      call += 1;
+      return [{ audioContent: Buffer.from(`seg${call}`) }];
+    }),
+  };
+}
+
 describe('TtsService', () => {
-  it('synthesizes a single segment and returns concatenated audio + charCount', async () => {
+  it('synthesizes one segment per section (Q1 #331) and returns concatenated audio + charCount', async () => {
     const client = fakeClient(Buffer.from('abc'));
     const service = new TtsService({ client });
 
     const result = await service.synthesize(devotional);
 
-    expect(result.audio.equals(Buffer.from('abc'))).toBe(true);
-    expect(result.segmentCount).toBe(1);
+    // micro fixture: greeting, scripture, reflection, prayer, scripture recap.
+    expect(result.segmentCount).toBe(5);
+    expect(result.audio.equals(Buffer.concat(Array.from({ length: 5 }, () => Buffer.from('abc'))))).toBe(
+      true,
+    );
     expect(result.charCount).toBeGreaterThan(0);
     expect(result.voiceName).toBe('en-US-Chirp3-HD-Achernar');
   });
@@ -128,9 +158,11 @@ describe('TtsService', () => {
     const client = fakeClient();
     const service = new TtsService({ client });
     await service.synthesize(devotional, 'brief');
-    const call = (client.synthesizeSpeech as ReturnType<typeof vi.fn>).mock.calls[0][0];
-    expect(call.input.ssml).toContain("Let's sit with this — I'll keep the time.");
-    expect(call.input.ssml).toContain('still here.');
+    const allSsml = (client.synthesizeSpeech as ReturnType<typeof vi.fn>).mock.calls
+      .map((c) => c[0].input.ssml)
+      .join('');
+    expect(allSsml).toContain("Let's sit with this — I'll keep the time.");
+    expect(allSsml).toContain('still here.');
   });
 
   /* ---------------------------------------------------------------- *
@@ -184,7 +216,7 @@ describe('TtsService', () => {
     const result = await service.synthesize(devotional, 'off', false, 'not-a-real-voice');
 
     expect(voiceSentToClient(client)).toBe('en-US-Chirp3-HD-Achernar');
-    expect(result.audio.equals(Buffer.from('abc'))).toBe(true);
+    expect(result.audio.equals(Buffer.concat(Array.from({ length: result.segmentCount }, () => Buffer.from('abc'))))).toBe(true);
   });
 
   it('omitting the voice argument keeps the constructor voice (existing callers unaffected)', async () => {
@@ -286,10 +318,12 @@ describe('TtsService', () => {
     const client = fakeClient();
     await new TtsService({ client }).synthesize(devotional, 'brief', false, undefined, 'es');
 
-    const { ssml } = requestSentToClient(client).input;
-    expect(ssml).not.toContain("Let's sit with this");
-    expect(ssml).not.toContain('That was');
-    expect(ssml).toContain('Quedémonos un momento con esto — yo llevo el tiempo.');
+    const allSsml = (client.synthesizeSpeech as ReturnType<typeof vi.fn>).mock.calls
+      .map((c) => c[0].input.ssml)
+      .join('');
+    expect(allSsml).not.toContain("Let's sit with this");
+    expect(allSsml).not.toContain('That was');
+    expect(allSsml).toContain('Quedémonos un momento con esto — yo llevo el tiempo.');
   });
 
   it('TtsServiceError carries the canonical AUDIO_UNAVAILABLE code (Foundation §4.5)', async () => {
@@ -304,5 +338,200 @@ describe('TtsService', () => {
       expect(err).toBeInstanceOf(TtsServiceError);
       expect((err as TtsServiceError).code).toBe('AUDIO_UNAVAILABLE');
     }
+  });
+});
+
+/* ------------------------------------------------------------------ *
+ * Timing manifest — Q1 (kairos-devotional #331). Duration math is
+ * measured from each segment's own MP3→PCM decode; these tests inject a
+ * deterministic decoder so the offsets are exact.
+ * ------------------------------------------------------------------ */
+
+describe('TtsService — timing manifest (Q1 #331)', () => {
+  // micro fixture sections: greeting, scripture, reflection, prayer, recap.
+  const DURATIONS = [1.5, 4, 6, 3, 2];
+
+  it('emits script-ordered rows whose offsets chain exactly from 0 to the total duration', async () => {
+    const client = sequenceClient();
+    const service = new TtsService({ client, decodeMp3: fakeDecoder(DURATIONS) });
+
+    const { manifest } = await service.synthesize(devotional);
+
+    expect(manifest).toEqual([
+      { section: 'greeting', startSec: 0, endSec: 1.5, text: 'A moment of peace.' },
+      {
+        section: 'scripture',
+        startSec: 1.5,
+        endSec: 5.5,
+        text: 'From Philippians 4:6-7. Do not be anxious about anything. Berean Standard Bible (BSB).',
+      },
+      {
+        section: 'reflection',
+        startSec: 5.5,
+        endSec: 11.5,
+        text: 'A short steady word for a short steady day.',
+      },
+      { section: 'prayer', startSec: 11.5, endSec: 14.5, text: 'Father, thank You. Amen.' },
+      {
+        section: 'scripture',
+        startSec: 14.5,
+        endSec: 16.5,
+        text: "That was Philippians 4:6-7 — it'll be here when you want to come back.",
+      },
+    ]);
+    // Anchored-assertion invariants, independent of the literal above:
+    expect(manifest[0]!.startSec).toBe(0);
+    for (let i = 1; i < manifest.length; i += 1) {
+      expect(manifest[i]!.startSec).toBe(manifest[i - 1]!.endSec);
+    }
+    expect(manifest[manifest.length - 1]!.endSec).toBeCloseTo(
+      DURATIONS.reduce((a, b) => a + b, 0),
+      3,
+    );
+  });
+
+  it('mutation check: swapping two segment durations moves the boundary between their rows', async () => {
+    // If the per-segment decode were ignored (e.g. durations divided
+    // uniformly, or buffers measured out of order), swapping two segment
+    // lengths would leave the boundaries unchanged and this test fails.
+    const swapped = [...DURATIONS];
+    [swapped[1], swapped[2]] = [swapped[2]!, swapped[1]!];
+    const client = sequenceClient();
+    const service = new TtsService({ client, decodeMp3: fakeDecoder(swapped) });
+
+    const { manifest } = await service.synthesize(devotional);
+
+    expect(manifest[1]).toMatchObject({ section: 'scripture', startSec: 1.5, endSec: 7.5 });
+    expect(manifest[2]).toMatchObject({ section: 'reflection', startSec: 7.5, endSec: 11.5 });
+  });
+
+  it('coalesces byte-limit body chunks into ONE reflection row spanning their combined time and text', async () => {
+    const longBody = Array.from(
+      { length: 60 },
+      (_, i) => `Sentence number ${i} about steady grace today.`,
+    ).join(' ');
+    const extended = { ...devotional, format: 'extended' as const, devotionalBody: longBody };
+    const client = sequenceClient();
+    // Every segment 2s — we only care about structure here.
+    const service = new TtsService({
+      client,
+      maxSegmentBytes: 500,
+      decodeMp3: async () => Buffer.alloc(2 * 16_000 * 2),
+    });
+
+    const result = await service.synthesize(extended);
+
+    expect(result.segmentCount).toBeGreaterThan(5); // body really did split
+    const reflections = result.manifest.filter((r) => r.section === 'reflection');
+    expect(reflections).toHaveLength(1);
+    const reflection = reflections[0]!;
+    // Combined time: one 2s slot per body chunk.
+    const bodyChunks = result.segmentCount - 4; // greeting, scripture, prayer, recap
+    expect(reflection.endSec - reflection.startSec).toBeCloseTo(bodyChunks * 2, 3);
+    expect(reflection.text).toBe(longBody);
+  });
+
+  it('coalesces multiple verses into one scripture row, while the recap stays its own row', async () => {
+    const twoVerses: DevotionalOutput = {
+      ...devotional,
+      verses: [
+        devotional.verses[0]!,
+        {
+          usfm: 'JHN.3.16',
+          versionId: 3034,
+          reference: 'John 3:16',
+          fetchedText: 'For God so loved the world.',
+          attribution: 'Berean Standard Bible (BSB). Public domain.',
+        },
+      ],
+    };
+    const client = sequenceClient();
+    const service = new TtsService({
+      client,
+      decodeMp3: async () => Buffer.alloc(1 * 16_000 * 2),
+    });
+
+    const { manifest } = await service.synthesize(twoVerses);
+
+    expect(manifest.map((r) => r.section)).toEqual([
+      'greeting',
+      'scripture',
+      'reflection',
+      'prayer',
+      'scripture',
+    ]);
+    const verses = manifest[1]!;
+    expect(verses.endSec - verses.startSec).toBeCloseTo(2, 3); // both verse segments
+    expect(verses.text).toContain('Do not be anxious about anything.');
+    expect(verses.text).toContain('For God so loved the world.');
+  });
+
+  it('lectio produces a valid manifest too (repeated-verse structure)', async () => {
+    const client = sequenceClient();
+    const service = new TtsService({
+      client,
+      decodeMp3: async () => Buffer.alloc(3 * 16_000 * 2),
+    });
+
+    const { manifest } = await service.synthesize(devotional, 'brief', true);
+
+    expect(manifest.map((r) => r.section)).toEqual([
+      'greeting',
+      'scripture',
+      'stillness',
+      'prayer',
+      'stillness',
+      'scripture',
+    ]);
+    expect(manifest[0]!.startSec).toBe(0);
+    for (let i = 1; i < manifest.length; i += 1) {
+      expect(manifest[i]!.startSec).toBe(manifest[i - 1]!.endSec);
+    }
+    const stillnessRows = manifest.filter((r) => r.section === 'stillness');
+    for (const row of stillnessRows) {
+      expect(row.text).toBe('');
+    }
+  });
+
+  it('manifest rows carry plain text, never SSML markup', async () => {
+    const withMarkupBait: DevotionalOutput = {
+      ...devotional,
+      theme: 'peace & <quiet>',
+      devotionalBody: 'Grace & truth < mercy > judgment.',
+    };
+    const client = sequenceClient();
+    const service = new TtsService({
+      client,
+      decodeMp3: async () => Buffer.alloc(16_000 * 2),
+    });
+
+    const { manifest } = await service.synthesize(withMarkupBait);
+
+    for (const row of manifest) {
+      // Plain pre-escape text: no SSML entities, no SSML/markup tags. The
+      // content's own literal `& < >` characters must survive UNescaped.
+      expect(row.text).not.toContain('&amp;');
+      expect(row.text).not.toContain('&lt;');
+      expect(row.text).not.toContain('<speak>');
+      expect(row.text).not.toContain('<p>');
+      expect(row.text).not.toContain('<break');
+    }
+    expect(manifest[0]!.text).toBe('A moment of peace & <quiet>.');
+  });
+
+  it('a decode failure yields an empty manifest but never costs the caller their audio', async () => {
+    const client = sequenceClient();
+    const service = new TtsService({
+      client,
+      decodeMp3: async () => {
+        throw new Error('ffmpeg unavailable');
+      },
+    });
+
+    const result = await service.synthesize(devotional);
+
+    expect(result.manifest).toEqual([]);
+    expect(result.audio.length).toBeGreaterThan(0);
+    expect(result.segmentCount).toBe(5);
   });
 });

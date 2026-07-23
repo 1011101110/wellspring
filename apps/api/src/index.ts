@@ -346,6 +346,12 @@ const app = buildApp({
         calendarClient: orchestratorCalendarDeps.calendarClient,
       }
     : undefined,
+  // GET /stage/:token (Q2 #332 / Q3 #333, epic #330) — the Stage page the
+  // Attendee voice-agent loads into a Meet, and the standalone demo floor.
+  // Wired whenever sessionService exists (same data source as /session);
+  // uses the READ-ONLY getStageView so a bot container load never counts
+  // as a join (Epic P attendance integrity).
+  stageRoutes: { sessionService },
   roomRoutes,
   liveKitWebhookRoutes,
   meetBotAudioRoutes,

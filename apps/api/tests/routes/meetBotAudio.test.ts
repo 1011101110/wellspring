@@ -39,6 +39,8 @@ function fakeAudioStorage(): AudioStorage {
     getSignedUrl: vi.fn().mockResolvedValue({ url: 'https://example.test/fake.mp3', expiresAt: new Date() }),
     exists: vi.fn(),
     delete: vi.fn(),
+    uploadManifest: vi.fn(),
+    getManifest: vi.fn().mockResolvedValue(null),
   } as unknown as AudioStorage;
 }
 

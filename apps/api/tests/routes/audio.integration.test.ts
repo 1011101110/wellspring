@@ -238,6 +238,7 @@ describe('GET /audio/:token', () => {
             exists: async () => [false] as [boolean],
             getSignedUrl: async () => ['https://storage.googleapis.com/irrelevant-bucket/x.mp3'] as [string],
             delete: async () => undefined,
+            download: async () => [Buffer.alloc(0)] as [Buffer],
           }),
         }),
       },

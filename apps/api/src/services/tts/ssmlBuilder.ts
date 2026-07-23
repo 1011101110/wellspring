@@ -16,8 +16,22 @@
  * not change when the words around them do.
  */
 
-import type { DevotionalOutput, LanguageTag, Stillness } from '@kairos/shared-contracts';
+import type { DevotionalOutput, LanguageTag, StageSection, Stillness } from '@kairos/shared-contracts';
 import { SPOKEN_PHRASES, type SpokenPhrases } from './spokenPhrases.js';
+
+/**
+ * One labeled SSML segment (Q1 #331). `ssml` is a complete `<speak>`
+ * document (what gets sent to Cloud TTS); `text` is the plain spoken text
+ * of the same segment BEFORE `escapeSsml` — the Stage page's caption
+ * source. Stillness segments carry `text: ''` (the hand-off/re-entry
+ * lines are spoken but the Stage caption chip fades out during stillness
+ * rather than captioning the silence — story #333).
+ */
+export interface LabeledSsmlSegment {
+  section: StageSection;
+  ssml: string;
+  text: string;
+}
 
 /** Between-section pause — API spec §6: "<break time="1200ms"/> between sections". */
 export const SECTION_BREAK_MS = 1200;
@@ -119,6 +133,16 @@ function spokenReferenceLeadIn(reference: string, phrases: SpokenPhrases): strin
   return phrases.verseLeadIn(escapeSsml(reference));
 }
 
+/** Joins a devotional's verse references with the language's separators, e.g. "Matthew 11:28-30 and John 3:16" — plain text, unescaped. */
+function joinedReferences(devotional: DevotionalOutput, phrases: SpokenPhrases): string {
+  const references = devotional.verses.map((v) => v.reference);
+  // devotional.verses is schema-guaranteed non-empty (VerseSchema `.min(1)`).
+  const last = references[references.length - 1] as string;
+  return references.length === 1
+    ? last
+    : `${references.slice(0, -1).join(phrases.referenceListSeparator)}${phrases.referenceFinalJoiner}${last}`;
+}
+
 /**
  * Builds the closing reference recap spoken after the prayer, e.g. "That
  * was Matthew 11:28-30 — it'll be here when you want to come back."
@@ -126,14 +150,7 @@ function spokenReferenceLeadIn(reference: string, phrases: SpokenPhrases): strin
  * devotional cites more than one passage.
  */
 function spokenReferenceRecap(devotional: DevotionalOutput, phrases: SpokenPhrases): string {
-  const references = devotional.verses.map((v) => v.reference);
-  // devotional.verses is schema-guaranteed non-empty (VerseSchema `.min(1)`).
-  const last = references[references.length - 1] as string;
-  const joined =
-    references.length === 1
-      ? last
-      : `${references.slice(0, -1).join(phrases.referenceListSeparator)}${phrases.referenceFinalJoiner}${last}`;
-  return phrases.referenceRecap(escapeSsml(joined));
+  return phrases.referenceRecap(escapeSsml(joinedReferences(devotional, phrases)));
 }
 
 /**
@@ -247,22 +264,27 @@ function buildLectioSsml(
  * Google Cloud TTS enforces a per-request input-byte limit (5000 bytes for
  * SSML as of the current API). `extended` devotionals can exceed this, so
  * the spec (§6) calls for splitting on section boundaries and concatenating
- * MP3 segments. This returns one SSML `<speak>` document per top-level
- * section (greeting, each verse+attribution, stillness, body, prayer) when
- * the full document would be too large, else a single-element array with
- * the whole thing — callers synthesize each element and concatenate the
+ * MP3 segments. This returns one labeled SSML `<speak>` document per
+ * top-level section (greeting, each verse+attribution, stillness, body,
+ * prayer, recap) — callers synthesize each element and concatenate the
  * resulting audio buffers.
  *
- * docs/14 §3.4: the between-section `<break>` only existed inside the
- * single-`<speak>` path (`buildDevotionalSsml`) — segments concatenated as
- * separate synthesis calls lost their inter-section pauses entirely, since
- * a `<break>` tag has no effect once it's stranded outside every segment's
- * own `<speak>`. Fix: every non-final segment ends with a trailing
- * `SECTION_BREAK_MS` break inside its own `<speak>`, so the pause survives
- * MP3 concatenation. The exception is body sub-chunks produced purely by
- * byte-limit splitting (not a real section boundary) — only the last one
- * gets the trailing break, so a long body doesn't gain artificial pauses
- * mid-paragraph.
+ * Q1 (#331): this function now ALWAYS splits into per-section segments and
+ * labels each with its `StageSection` + plain spoken `text`. The old
+ * fits-under-maxBytes fast path (one `<speak>` for the whole script) is
+ * gone: the Stage timing manifest needs per-section MP3 durations, which
+ * only exist when each section is its own synthesis call. The audible
+ * result is designed to be equivalent — see the §3.4 note below on how
+ * inter-section pauses survive concatenation — at the cost of a few more
+ * (billed-per-character, so cost-neutral) TTS requests per devotional.
+ *
+ * docs/14 §3.4: a `<break>` tag has no effect once it's stranded outside
+ * every segment's own `<speak>`, so every non-final segment ends with a
+ * trailing `SECTION_BREAK_MS` break inside its own `<speak>` and the pause
+ * survives MP3 concatenation. The exception is body sub-chunks produced
+ * purely by byte-limit splitting (not a real section boundary) — only the
+ * last one gets the trailing break, so a long body doesn't gain artificial
+ * pauses mid-paragraph.
  */
 export function buildDevotionalSsmlSegments(
   devotional: DevotionalOutput,
@@ -270,57 +292,72 @@ export function buildDevotionalSsmlSegments(
   stillness: Stillness = 'off',
   lectio = false,
   language: LanguageTag = 'en',
-): string[] {
-  const full = buildDevotionalSsml(devotional, stillness, lectio, language);
-  if (Buffer.byteLength(full, 'utf8') <= maxBytes) {
-    return [full];
-  }
-
+): LabeledSsmlSegment[] {
   if (lectio) {
     return buildLectioSsmlSegments(devotional, maxBytes, stillness, language);
   }
 
   const phrases = SPOKEN_PHRASES[language];
-  const segments: string[] = [];
-  segments.push(
-    `<speak><p>${phrases.greeting(escapeSsml(devotional.theme))}</p>${breakTag(SECTION_BREAK_MS)}</speak>`,
-  );
+  const segments: LabeledSsmlSegment[] = [];
+  segments.push({
+    section: 'greeting',
+    ssml: `<speak><p>${phrases.greeting(escapeSsml(devotional.theme))}</p>${breakTag(SECTION_BREAK_MS)}</speak>`,
+    text: phrases.greeting(devotional.theme),
+  });
 
   for (const verse of devotional.verses) {
-    segments.push(
-      `<speak><p>${spokenReferenceLeadIn(verse.reference, phrases)}</p><p>${escapeSsml(verse.fetchedText)}</p>${breakTag(VERSE_BREAK_MS)}<p>${escapeSsml(
+    segments.push({
+      section: 'scripture',
+      ssml: `<speak><p>${spokenReferenceLeadIn(verse.reference, phrases)}</p><p>${escapeSsml(verse.fetchedText)}</p>${breakTag(VERSE_BREAK_MS)}<p>${escapeSsml(
         shortSpokenAttribution(verse.attribution),
       )}.</p>${breakTag(SECTION_BREAK_MS)}</speak>`,
-    );
+      text: `${phrases.verseLeadIn(verse.reference)} ${verse.fetchedText} ${shortSpokenAttribution(verse.attribution)}.`,
+    });
   }
 
   if (stillness !== 'off') {
-    segments.push(
-      `<speak>${stillnessParts(stillness, phrases)}${breakTag(SECTION_BREAK_MS)}</speak>`,
-    );
+    segments.push({
+      section: 'stillness',
+      ssml: `<speak>${stillnessParts(stillness, phrases)}${breakTag(SECTION_BREAK_MS)}</speak>`,
+      text: '',
+    });
   }
 
   // The body itself may still exceed the limit for `extended` scripts;
-  // split on paragraph/sentence boundaries as a further fallback.
+  // split on paragraph/sentence boundaries as a further fallback. All
+  // chunks are labeled `reflection` — the manifest writer coalesces
+  // adjacent same-section segments into one row (#331).
   const bodySegments = splitTextToFit(devotional.devotionalBody, maxBytes - 50);
   bodySegments.forEach((chunk, i) => {
     const isLast = i === bodySegments.length - 1;
-    segments.push(
-      `<speak><p>${escapeSsml(chunk)}</p>${isLast ? breakTag(SECTION_BREAK_MS) : ''}</speak>`,
-    );
+    segments.push({
+      section: 'reflection',
+      ssml: `<speak><p>${escapeSsml(chunk)}</p>${isLast ? breakTag(SECTION_BREAK_MS) : ''}</speak>`,
+      text: chunk,
+    });
   });
 
-  segments.push(
-    `<speak><p>${escapeSsml(devotional.prayer)}</p>${breakTag(SECTION_BREAK_MS)}</speak>`,
-  );
+  segments.push({
+    section: 'prayer',
+    ssml: `<speak><p>${escapeSsml(devotional.prayer)}</p>${breakTag(SECTION_BREAK_MS)}</speak>`,
+    text: devotional.prayer,
+  });
 
   if (stillness !== 'off') {
-    segments.push(
-      `<speak>${stillnessParts(stillness, phrases)}${breakTag(SECTION_BREAK_MS)}</speak>`,
-    );
+    segments.push({
+      section: 'stillness',
+      ssml: `<speak>${stillnessParts(stillness, phrases)}${breakTag(SECTION_BREAK_MS)}</speak>`,
+      text: '',
+    });
   }
 
-  segments.push(`<speak><p>${spokenReferenceRecap(devotional, phrases)}</p></speak>`);
+  // The recap names the passage again — labeled 'scripture' so the Stage
+  // page returns to the verse for the closing line (timingManifest.ts).
+  segments.push({
+    section: 'scripture',
+    ssml: `<speak><p>${spokenReferenceRecap(devotional, phrases)}</p></speak>`,
+    text: phrases.referenceRecap(joinedReferences(devotional, phrases)),
+  });
 
   return segments;
 }
@@ -340,17 +377,24 @@ function buildLectioSsmlSegments(
   maxBytes: number,
   stillness: Stillness,
   language: LanguageTag,
-): string[] {
+): LabeledSsmlSegment[] {
   const phrases = SPOKEN_PHRASES[language];
-  const segments: string[] = [];
-  segments.push(
-    `<speak><p>${phrases.greeting(escapeSsml(devotional.theme))}</p>${breakTag(SECTION_BREAK_MS)}</speak>`,
-  );
+  const segments: LabeledSsmlSegment[] = [];
+  segments.push({
+    section: 'greeting',
+    ssml: `<speak><p>${phrases.greeting(escapeSsml(devotional.theme))}</p>${breakTag(SECTION_BREAK_MS)}</speak>`,
+    text: phrases.greeting(devotional.theme),
+  });
 
   const verse = devotional.verses[0];
   if (verse) {
-    segments.push(
-      `<speak><p>${spokenReferenceLeadIn(verse.reference, phrases)}</p><p>${prosodyRate(
+    // One 'scripture' segment carries both readings AND the 20s meditatio
+    // silence between them — caption interpolation within it is knowingly
+    // approximate (story #333 accepts ±seconds of drift; the chip shows a
+    // line, not karaoke).
+    segments.push({
+      section: 'scripture',
+      ssml: `<speak><p>${spokenReferenceLeadIn(verse.reference, phrases)}</p><p>${prosodyRate(
         0.95,
         verse.fetchedText,
       )}</p>${chainedBreaks(LECTIO_MEDITATIO_MS)}<p>${phrases.lectioOnceMore}</p><p>${prosodyRate(
@@ -359,7 +403,8 @@ function buildLectioSsmlSegments(
       )}</p>${breakTag(VERSE_BREAK_MS)}<p>${escapeSsml(
         shortSpokenAttribution(verse.attribution),
       )}.</p>${breakTag(SECTION_BREAK_MS)}</speak>`,
-    );
+      text: `${phrases.verseLeadIn(verse.reference)} ${verse.fetchedText} ${phrases.lectioOnceMore} ${verse.fetchedText} ${shortSpokenAttribution(verse.attribution)}.`,
+    });
   }
 
   if (devotional.journalingPrompt) {
@@ -367,32 +412,46 @@ function buildLectioSsmlSegments(
     // (instructionsBuilder's LECTIO_STRUCTURE_INSTRUCTION), but split it the
     // same way the non-lectio path splits devotionalBody, for correctness
     // rather than assuming the model always honors that instruction.
+    // Labeled 'reflection': lectio's spoken question plays the role the
+    // body plays in the standard format (timingManifest.ts).
     const questionChunks = splitTextToFit(devotional.journalingPrompt, maxBytes - 50);
     questionChunks.forEach((chunk, i) => {
       const isLast = i === questionChunks.length - 1;
-      segments.push(
-        `<speak><p>${escapeSsml(chunk)}</p>${isLast ? breakTag(SECTION_BREAK_MS) : ''}</speak>`,
-      );
+      segments.push({
+        section: 'reflection',
+        ssml: `<speak><p>${escapeSsml(chunk)}</p>${isLast ? breakTag(SECTION_BREAK_MS) : ''}</speak>`,
+        text: chunk,
+      });
     });
   }
 
   if (stillness !== 'off') {
-    segments.push(
-      `<speak>${stillnessParts(stillness, phrases)}${breakTag(SECTION_BREAK_MS)}</speak>`,
-    );
+    segments.push({
+      section: 'stillness',
+      ssml: `<speak>${stillnessParts(stillness, phrases)}${breakTag(SECTION_BREAK_MS)}</speak>`,
+      text: '',
+    });
   }
 
-  segments.push(
-    `<speak><p>${escapeSsml(devotional.prayer)}</p>${breakTag(SECTION_BREAK_MS)}</speak>`,
-  );
+  segments.push({
+    section: 'prayer',
+    ssml: `<speak><p>${escapeSsml(devotional.prayer)}</p>${breakTag(SECTION_BREAK_MS)}</speak>`,
+    text: devotional.prayer,
+  });
 
   if (stillness !== 'off') {
-    segments.push(
-      `<speak>${stillnessParts(stillness, phrases)}${breakTag(SECTION_BREAK_MS)}</speak>`,
-    );
+    segments.push({
+      section: 'stillness',
+      ssml: `<speak>${stillnessParts(stillness, phrases)}${breakTag(SECTION_BREAK_MS)}</speak>`,
+      text: '',
+    });
   }
 
-  segments.push(`<speak><p>${spokenReferenceRecap(devotional, phrases)}</p></speak>`);
+  segments.push({
+    section: 'scripture',
+    ssml: `<speak><p>${spokenReferenceRecap(devotional, phrases)}</p></speak>`,
+    text: phrases.referenceRecap(joinedReferences(devotional, phrases)),
+  });
 
   return segments;
 }

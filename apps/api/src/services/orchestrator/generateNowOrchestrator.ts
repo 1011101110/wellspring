@@ -780,6 +780,26 @@ export class GenerateNowOrchestrator {
       const stored = await this.audioStorage.upload(devotionalRow.id, synthesized.audio);
       await this.devotionals.setAudioObject(verifiedUserId, devotionalRow.id, stored.objectKey);
       audio = { status: 'uploaded', objectKey: stored.objectKey };
+
+      // Stage timing manifest (Q1 #331) — written right after the MP3 it
+      // describes. Its OWN try/catch, inside the audio-success path: a
+      // manifest failure must NOT fail generation and must NOT flip the
+      // already-uploaded audio to `unavailable` — the Stage page simply
+      // degrades to no-captions (same posture as other non-fatal audio
+      // issues). An empty manifest means duration measurement itself
+      // failed in TtsService; nothing useful to store.
+      if ((synthesized.manifest?.length ?? 0) > 0) {
+        try {
+          await this.audioStorage.uploadManifest(devotionalRow.id, synthesized.manifest);
+        } catch (err) {
+          this.logger.error('Timing-manifest upload failed — continuing without captions (#331)', {
+            userId,
+            devotionalId: devotionalRow.id,
+            reason: err instanceof Error ? err.message : String(err),
+          });
+        }
+      }
+
       this.logger.info('TTS + upload succeeded', {
         userId,
         devotionalId: devotionalRow.id,

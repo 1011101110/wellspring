@@ -211,6 +211,7 @@ function buildOrchestrator(opts: {
             segmentCount: 1,
             charCount: 10,
             voiceName: voiceName ?? 'x',
+            manifest: [],
           });
         },
       ),
