@@ -196,10 +196,15 @@ describe('Contract tests — live route responses validate against shared Zod sc
         healthEnabled: true,
         communicationEnabled: false,
         notifyOnSkip: false,
+        // #314: the two users-table fields with a write path on this route
+        // — exercised here against the real column + migration, not a fake.
+        language: 'es',
+        translationId: 147,
       },
     });
     expect(res.statusCode).toBe(200);
     expect(() => PreferencesResponseSchema.parse(res.json())).not.toThrow();
+    expect(res.json().data).toMatchObject({ language: 'es', translationId: 147 });
   });
 
   it('GET /v1/preferences — response after PUT validates PreferencesResponseSchema', async () => {

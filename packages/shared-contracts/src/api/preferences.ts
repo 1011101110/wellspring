@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { DevotionalFormatSchema } from '../bands.js';
+import { LanguageTagSchema } from '../language.js';
 import { TimezoneIdSchema } from './timezone.js';
 
 /**
@@ -12,11 +13,15 @@ import { TimezoneIdSchema } from './timezone.js';
  * /v1/preferences has zero Zod validation... free text into enum
  * columns").
  *
- * `tradition`/`translationId` live on `users`, not `preferences` (a
- * different table/repository, `UsersRepository.updateProfile`) — docs/03
- * §8.1's prose groups them with preferences conceptually, but they are
- * intentionally NOT part of this schema; wiring a users-profile PUT is a
- * separate, undertaken-elsewhere concern (issue #89 note).
+ * `tradition` lives on `users`, not `preferences` (a different
+ * table/repository, `UsersRepository.updateProfile`) — docs/03 §8.1's
+ * prose groups it with preferences conceptually, but it is intentionally
+ * NOT part of this schema; wiring a users-profile PUT is a separate,
+ * undertaken-elsewhere concern (issue #89 note). `translationId` used to
+ * sit under the same exclusion, until Epic O (#311/#314) gave it a write
+ * path — it now rides this route on the established `users`-table
+ * exception (`timezone` #187, `onboardingCompleted` #225, and now
+ * `language`/`translationId` #314), see the field docs below.
  *
  * `activeDays` is 0=Sunday..6=Saturday per the migration comment.
  * `windowStartLocal`/`windowEndLocal` are `HH:MM` or `HH:MM:SS` (Postgres
@@ -234,6 +239,32 @@ export const PreferencesUpdateRequestSchema = z.object({
    * the recorded instant.
    */
   onboardingCompleted: z.literal(true).optional(),
+  /**
+   * Devotional content language (Epic O #311, story #314) — the third and
+   * fourth fields in this body that are not `preferences` columns: this
+   * writes `users.language` (migration 1722300000000) and `translationId`
+   * below writes `users.translation_id`, riding this route on the same
+   * `users`-table exception as `timezone`/`onboardingCompleted` above.
+   *
+   * The two are one choice wearing two fields, and the route makes
+   * contradictory state unrepresentable in the same spirit as
+   * `cadence`↔`activeDays`: a `language` write with no `translationId`
+   * snaps `translation_id` to that language's default
+   * (`defaultVersionIdFor`, language.ts), and a `translationId` outside
+   * the chosen — or, when absent, the stored — language's catalog fails
+   * the whole request with 400 rather than storing a Bible the language
+   * cannot read.
+   */
+  language: LanguageTagSchema.optional(),
+  /**
+   * YouVersion numeric version id (`users.translation_id`) — writable at
+   * last (#314): the column has existed since the first migration with no
+   * API able to change it (web renders a disabled select over it; iOS
+   * captures a choice it can never push). Positive-int here is only the
+   * shape gate; catalog membership against the effective language is the
+   * route's cross-field rule, since it needs the stored row to evaluate.
+   */
+  translationId: z.number().int().positive().optional(),
 });
 export type PreferencesUpdateRequest = z.infer<typeof PreferencesUpdateRequestSchema>;
 
@@ -337,6 +368,21 @@ export const PreferencesResponseDataSchema = z.object({
    * only a configuration one.
    */
   inviteAddress: z.string().optional(),
+  /**
+   * Devotional content language (`users.language`, #314). Plain
+   * `z.string()`, not `LanguageTagSchema` — same reasoning as `stillness`
+   * above: the column is unconstrained `text`, so the write side
+   * (`LanguageTagSchema` in the request schema) is the gate and the read
+   * side must round-trip whatever is stored rather than 400 a GET.
+   */
+  language: z.string(),
+  /**
+   * `users.translation_id` (#314) — until now readable nowhere, which is
+   * how web ended up hard-coding its disabled select's display value.
+   * Real Postgres `integer NOT NULL` column, so the DB is authoritative
+   * on the read side (same reasoning as `lectio` above).
+   */
+  translationId: z.number().int(),
   updatedAt: z.string(),
 });
 export type PreferencesResponseData = z.infer<typeof PreferencesResponseDataSchema>;

@@ -26,8 +26,11 @@ import {
   PreferencesUpdateRequestSchema,
   UuidParamSchema,
   YearParamSchema,
+  DEFAULT_LANGUAGE,
   activeDaysForCadence,
   cadenceForActiveDays,
+  defaultVersionIdFor,
+  isVersionInLanguage,
   type BandsUploadResponseData,
   type DevotionalCard,
   type JournalEntry,
@@ -83,12 +86,16 @@ function toBandsResponseData(row: DailyBandsRow): BandsUploadResponseData {
  * `onboardedAt` is passed in separately rather than read off `row` because
  * it is not a `preferences` column — it lives on `users` (migration
  * 1721800000000, issue #225). See the field's doc in shared-contracts for
- * why it is served from this endpoint at all.
+ * why it is served from this endpoint at all. `timezone` (#187/#246),
+ * `language` and `translationId` (#314) are the same story — `users`
+ * columns riding the payload both clients already fetch.
  */
 function toPreferencesResponseData(
   row: PreferencesRow,
   onboardedAt: Date | null,
   timezone: string,
+  language: string,
+  translationId: number,
   inviteEmailDomain: string | undefined,
 ): PreferencesResponseData {
   return {
@@ -112,6 +119,8 @@ function toPreferencesResponseData(
     liturgicalSeasonsEnabled: row.liturgical_seasons_enabled,
     onboardedAt: onboardedAt ? onboardedAt.toISOString() : null,
     timezone,
+    language,
+    translationId,
     // L3 (#239): the user's invite routing address, minted by the SAME
     // helper `routes/inboundInvite.ts` parses with
     // (`generateInviteRoutingAddress` / `parseInviteRoutingAddress`, one
@@ -384,7 +393,14 @@ export function registerUserScopedRoutes(app: FastifyInstance, deps: UserScopedR
     const user = await repositories.users.findById(request.auth!.userId);
     return {
       ok: true,
-      data: toPreferencesResponseData(prefs, user?.onboarded_at ?? null, user?.timezone ?? 'UTC', deps.inviteEmailDomain),
+      data: toPreferencesResponseData(
+        prefs,
+        user?.onboarded_at ?? null,
+        user?.timezone ?? 'UTC',
+        user?.language ?? DEFAULT_LANGUAGE,
+        user?.translation_id ?? defaultVersionIdFor(DEFAULT_LANGUAGE),
+        deps.inviteEmailDomain,
+      ),
     };
   });
 
@@ -499,8 +515,53 @@ export function registerUserScopedRoutes(app: FastifyInstance, deps: UserScopedR
       liturgical_seasons_enabled: b.liturgicalSeasonsEnabled,
     };
 
-    // `timezone` is the one field in this body that isn't a `preferences`
-    // column — it writes `users.timezone` (issue #187). It rides along on
+    // `language`/`translationId` (#314, Epic O #311): two more fields that
+    // aren't `preferences` columns — they write `users.language` /
+    // `users.translation_id` through `updateProfile`, giving the
+    // translation column its first-ever write path (until now web rendered
+    // it as a disabled select and iOS captured a choice it could never
+    // push).
+    //
+    // The cross-field rule, same spirit as `cadence`↔`activeDays` above —
+    // make the contradictory pair unrepresentable rather than storable:
+    //
+    //  1. `language` alone — the translation *snaps* to that language's
+    //     default (`defaultVersionIdFor`). Picking Español and keeping an
+    //     English Bible is not a state any user means; a client that wants
+    //     a specific translation sends it explicitly.
+    //  2. Both — accepted only if the translation IS one of that
+    //     language's verified versions; otherwise 400. Unlike the cadence
+    //     case, silently correcting here would discard an explicit choice
+    //     the user just made, so loud rejection is right (the disagreement
+    //     is genuine client error, not this codebase's own legacy).
+    //  3. `translationId` alone — validated against the *stored* language,
+    //     which costs the pre-write `findById` below; skipped entirely
+    //     when neither field is present, so every pre-#314 request shape
+    //     pays nothing.
+    //
+    // This block runs BEFORE the timezone/onboarding side effects so the
+    // 400 rejects the request wholesale — a body that failed validation
+    // must not have half-applied (#314 acceptance: stored values
+    // untouched on the 400 path).
+    if (b.language !== undefined || b.translationId !== undefined) {
+      const stored = await repositories.users.findById(request.auth!.userId);
+      const effectiveLanguage = b.language ?? stored?.language ?? DEFAULT_LANGUAGE;
+      if (b.translationId !== undefined && !isVersionInLanguage(effectiveLanguage, b.translationId)) {
+        return badRequest(reply, `translationId is not a ${effectiveLanguage} translation`);
+      }
+      const profile = await repositories.users.updateProfile(request.auth!.userId, {
+        language: b.language,
+        translation_id: b.translationId ?? (b.language !== undefined ? defaultVersionIdFor(b.language) : undefined),
+      });
+      // requireAuth provisioned this user, so a null here (no row matched)
+      // is the same cannot-legitimately-happen case as the preferences
+      // update below — handled rather than asserted, for the same reason.
+      if (!profile) return notFound(reply);
+    }
+
+    // `timezone` was the first field in this body that isn't a
+    // `preferences` column — it writes `users.timezone` (issue #187). It
+    // rides along on
     // this route because this is the first authenticated write a new user
     // makes, and #187 requires a real zone to land *before* any calendar
     // is connected: `users.timezone` defaults to `'UTC'`, and the first
@@ -571,7 +632,14 @@ export function registerUserScopedRoutes(app: FastifyInstance, deps: UserScopedR
     const user = await repositories.users.findById(request.auth!.userId);
     return {
       ok: true,
-      data: toPreferencesResponseData(updated, user?.onboarded_at ?? null, user?.timezone ?? 'UTC', deps.inviteEmailDomain),
+      data: toPreferencesResponseData(
+        updated,
+        user?.onboarded_at ?? null,
+        user?.timezone ?? 'UTC',
+        user?.language ?? DEFAULT_LANGUAGE,
+        user?.translation_id ?? defaultVersionIdFor(DEFAULT_LANGUAGE),
+        deps.inviteEmailDomain,
+      ),
     };
   });
 

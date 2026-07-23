@@ -52,12 +52,37 @@ describe('UsersRepository', () => {
     });
     expect(created.tradition).toBe('catholic');
     expect(created.translation_id).toBe(3034); // BSB default — Foundation §4.3
+    // #314 acceptance: rows created (or predating migration 1722300000000)
+    // read back as en/BSB — the column default IS the backfill.
+    expect(created.language).toBe('en');
 
     const byUid = await repos.users.findByFirebaseUid('fb-1');
     expect(byUid?.id).toBe(created.id);
 
     const byId = await repos.users.findById(asVerifiedUserId(created.id));
     expect(byId?.email).toBe('a@example.com');
+  });
+
+  it('updateProfile round-trips language + translation_id, and COALESCE leaves absent fields alone (#314)', async () => {
+    const user = await makeUser('lang-roundtrip');
+
+    const updated = await repos.users.updateProfile(user, {
+      language: 'es',
+      translation_id: 3365,
+    });
+    expect(updated?.language).toBe('es');
+    expect(updated?.translation_id).toBe(3365);
+
+    // A translation-only write (the O5 "different Bible, same language"
+    // case) must not disturb the stored language — the COALESCE contract
+    // the route's inert-when-absent acceptance rests on.
+    const translationOnly = await repos.users.updateProfile(user, { translation_id: 147 });
+    expect(translationOnly?.language).toBe('es');
+    expect(translationOnly?.translation_id).toBe(147);
+
+    const reread = await repos.users.findById(user);
+    expect(reread?.language).toBe('es');
+    expect(reread?.translation_id).toBe(147);
   });
 
   it('hard delete cascades to every child table (account deletion)', async () => {
