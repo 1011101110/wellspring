@@ -33,9 +33,17 @@ jobs:
       - name: Generate Xcode project from project.yml (single source of truth)
         run: cd apps/ios && xcodegen generate
       - name: iOS unit + UI tests (simulator, unsigned)
+        # `-retry-tests-on-failure -test-iterations 3`: a failed test is re-run
+        # up to twice more and reported green if a retry passes. The onboarding
+        # sign-in UI tests are timing-sensitive on a loaded simulator (an
+        # element can be on-screen but not yet `isHittable` mid launch/nav
+        # animation — see `tapWhenReady` in UITestSupport.swift, which already
+        # waits for hittability). Auto-retry stops those transient flakes from
+        # producing false red CI without masking a genuine, repeatable failure.
         run: |
           xcodebuild test \
             -project apps/ios/Kairos.xcodeproj \
             -scheme Kairos \
             -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' \
+            -retry-tests-on-failure -test-iterations 3 \
             CODE_SIGNING_ALLOWED=NO

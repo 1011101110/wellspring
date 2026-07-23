@@ -56,6 +56,7 @@
 		5D3C6E7D348E0D899D4FFB86 /* DataPrivacyViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 982732059F8188168569B7D2 /* DataPrivacyViewModel.swift */; };
 		62B67EFC2CF20E614849002E /* CalendarConnectServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5B400AFEA67C3FAF3B159FA /* CalendarConnectServiceTests.swift */; };
 		63534DCCE76D13DFD020E997 /* PreferencesCaptureView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 228B068F0A95497B58F6AE6C /* PreferencesCaptureView.swift */; };
+		67A0318575A2BD5AF8560F0A /* UITestSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B502B1AF3EFA0EDE60F2B3E /* UITestSupport.swift */; };
 		6884019A4E90FD2399ACB5C5 /* BandPhrase.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C38373AAAD69B2D16624B3F /* BandPhrase.swift */; };
 		6892DC69C4EFDB1601532A5F /* CalendarConnectView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE3581DD6AE13D5FD334DD48 /* CalendarConnectView.swift */; };
 		6AA1F153E252FAE0AA0B883E /* DistressCheckinClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 26B61FCFA6FFA13374E7C036 /* DistressCheckinClient.swift */; };
@@ -136,6 +137,7 @@
 		015B66C29B884BAC5A105E13 /* BandPhraseTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BandPhraseTests.swift; sourceTree = "<group>"; };
 		04D3A0B237B296CDC0CCBB9A /* BandUploadClientTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BandUploadClientTests.swift; sourceTree = "<group>"; };
 		0ABF73E2CEBF222399530641 /* PreferencesSyncCoordinatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreferencesSyncCoordinatorTests.swift; sourceTree = "<group>"; };
+		0B502B1AF3EFA0EDE60F2B3E /* UITestSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UITestSupport.swift; sourceTree = "<group>"; };
 		13C5F4E51EF70C8F92499B50 /* InviteEmailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InviteEmailView.swift; sourceTree = "<group>"; };
 		16D966FA6ECCABF05A11FEB7 /* EventKitSlotCollectorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EventKitSlotCollectorTests.swift; sourceTree = "<group>"; };
 		17971371FD4DDB4D05CAF5D4 /* EventKitCalendarConnectService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EventKitCalendarConnectService.swift; sourceTree = "<group>"; };
@@ -292,6 +294,7 @@
 				86ACCDB0E9535872273BA4A6 /* HomeDashboardUITests.swift */,
 				F840002AA4A48B78795616A0 /* OnboardingFlowUITests.swift */,
 				1F5483E5A11C9CF962698746 /* PreferencesDaysUITests.swift */,
+				0B502B1AF3EFA0EDE60F2B3E /* UITestSupport.swift */,
 			);
 			path = KairosUITests;
 			sourceTree = "<group>";
@@ -779,6 +782,7 @@
 				6F546DA8580B1F86715A2CF3 /* HomeDashboardUITests.swift in Sources */,
 				C65DCF48CDBB3B731E5A829C /* OnboardingFlowUITests.swift in Sources */,
 				5043FE6F78A70703C1D27B0F /* PreferencesDaysUITests.swift in Sources */,
+				67A0318575A2BD5AF8560F0A /* UITestSupport.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

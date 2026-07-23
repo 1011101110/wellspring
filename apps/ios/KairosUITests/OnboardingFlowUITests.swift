@@ -24,7 +24,7 @@ final class OnboardingFlowUITests: XCTestCase {
     func test_tappingGetStarted_showsSignInOptions() {
         app.launch()
 
-        app.buttons["welcome.getStarted"].tap()
+        app.buttons["welcome.getStarted"].tapWhenReady()
 
         XCTAssertTrue(app.buttons["signIn.withApple"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.buttons["signIn.showEmailFallback"].exists)
@@ -32,10 +32,10 @@ final class OnboardingFlowUITests: XCTestCase {
 
     func test_emailFallback_revealsFieldsAndPrimingIsShownBeforeSignIn() {
         app.launch()
-        app.buttons["welcome.getStarted"].tap()
+        app.buttons["welcome.getStarted"].tapWhenReady()
 
         XCTAssertTrue(app.buttons["signIn.showEmailFallback"].waitForExistence(timeout: 10))
-        app.buttons["signIn.showEmailFallback"].tap()
+        app.buttons["signIn.showEmailFallback"].tapWhenReady()
 
         XCTAssertTrue(app.textFields["signIn.emailField"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.secureTextFields["signIn.passwordField"].exists)
@@ -44,13 +44,13 @@ final class OnboardingFlowUITests: XCTestCase {
 
     func test_emailSignIn_withShortPassword_showsError() {
         app.launch()
-        app.buttons["welcome.getStarted"].tap()
-        app.buttons["signIn.showEmailFallback"].tap()
+        app.buttons["welcome.getStarted"].tapWhenReady()
+        app.buttons["signIn.showEmailFallback"].tapWhenReady()
 
         type("test@example.com", into: app.textFields["signIn.emailField"])
         type("abc", into: app.secureTextFields["signIn.passwordField"])
 
-        app.buttons["signIn.emailContinue"].tap()
+        app.buttons["signIn.emailContinue"].tapWhenReady()
 
         XCTAssertTrue(app.staticTexts["signIn.error"].waitForExistence(timeout: 10))
     }
@@ -62,7 +62,7 @@ final class OnboardingFlowUITests: XCTestCase {
         let inviteField = app.textFields["inviteEmail.field"]
         XCTAssertTrue(inviteField.exists)
         // Pre-filled from the email sign-in address.
-        app.buttons["inviteEmail.confirm"].tap()
+        app.buttons["inviteEmail.confirm"].tapWhenReady()
 
         // Calendar connect step (docs/05_UX_FLOWS.md §2 screen 3) — all
         // three paths visible with priming copy, and skippable (P4).
@@ -76,10 +76,10 @@ final class OnboardingFlowUITests: XCTestCase {
     func test_skippingCalendarConnect_reachesHealthPriming() {
         signInWithEmailAndReachInviteEmailStep()
 
-        app.buttons["inviteEmail.confirm"].tap()
+        app.buttons["inviteEmail.confirm"].tapWhenReady()
 
         XCTAssertTrue(app.buttons["calendarConnect.skip"].waitForExistence(timeout: 10))
-        app.buttons["calendarConnect.skip"].tap()
+        app.buttons["calendarConnect.skip"].tapWhenReady()
 
         XCTAssertTrue(app.staticTexts["healthPriming.headline"].waitForExistence(timeout: 10))
     }
@@ -89,13 +89,13 @@ final class OnboardingFlowUITests: XCTestCase {
     /// docs/05_UX_FLOWS.md §1 P4 "everything skippable."
     func test_skippingEveryOptionalStep_reachesDoneScreen() {
         signInWithEmailAndReachInviteEmailStep()
-        app.buttons["inviteEmail.confirm"].tap()
+        app.buttons["inviteEmail.confirm"].tapWhenReady()
 
         XCTAssertTrue(app.buttons["calendarConnect.skip"].waitForExistence(timeout: 10))
-        app.buttons["calendarConnect.skip"].tap()
+        app.buttons["calendarConnect.skip"].tapWhenReady()
 
         XCTAssertTrue(app.buttons["healthPriming.skip"].waitForExistence(timeout: 10))
-        app.buttons["healthPriming.skip"].tap()
+        app.buttons["healthPriming.skip"].tapWhenReady()
 
         XCTAssertTrue(app.navigationBars["Preferences"].waitForExistence(timeout: 10))
         tapAfterScrollingIntoView(app.buttons["preferencesCapture.skip"])
@@ -108,10 +108,10 @@ final class OnboardingFlowUITests: XCTestCase {
     /// defaults, per docs/05_UX_FLOWS.md §2.
     func test_fullHappyPath_throughEveryScreen_reachesDone() {
         signInWithEmailAndReachInviteEmailStep()
-        app.buttons["inviteEmail.confirm"].tap()
+        app.buttons["inviteEmail.confirm"].tapWhenReady()
 
         XCTAssertTrue(app.buttons["calendarConnect.appleEventKit"].waitForExistence(timeout: 10))
-        app.buttons["calendarConnect.appleEventKit"].tap()
+        app.buttons["calendarConnect.appleEventKit"].tapWhenReady()
 
         // EventKit permission prompts don't reliably appear in this launch
         // configuration (demo/fake services back the calendar connect
@@ -139,8 +139,8 @@ final class OnboardingFlowUITests: XCTestCase {
     /// off (docs/04_DATA_PRIVACY_SECURITY.md §3 — independent, opt-in).
     func test_healthPriming_showsGranularTogglesAndPrimingCopyForEveryCategory() {
         signInWithEmailAndReachInviteEmailStep()
-        app.buttons["inviteEmail.confirm"].tap()
-        app.buttons["calendarConnect.skip"].tap()
+        app.buttons["inviteEmail.confirm"].tapWhenReady()
+        app.buttons["calendarConnect.skip"].tapWhenReady()
 
         XCTAssertTrue(app.staticTexts["healthPriming.headline"].waitForExistence(timeout: 10))
 
@@ -157,8 +157,8 @@ final class OnboardingFlowUITests: XCTestCase {
     func test_healthPriming_deniedPermission_stillAdvancesToPreferences() {
         app.launchArguments += ["-UITEST_HEALTH_DENIED", "1"]
         signInWithEmailAndReachInviteEmailStep()
-        app.buttons["inviteEmail.confirm"].tap()
-        app.buttons["calendarConnect.skip"].tap()
+        app.buttons["inviteEmail.confirm"].tapWhenReady()
+        app.buttons["calendarConnect.skip"].tapWhenReady()
 
         XCTAssertTrue(app.switches["healthPriming.toggle.sleepQuality"].waitForExistence(timeout: 10))
         flipSwitchOn("healthPriming.toggle.sleepQuality")
@@ -175,9 +175,9 @@ final class OnboardingFlowUITests: XCTestCase {
     /// edits, per docs/05_UX_FLOWS.md §2 screen 5.
     func test_preferencesCapture_showsAllFieldsAndConfirmReachesDone() {
         signInWithEmailAndReachInviteEmailStep()
-        app.buttons["inviteEmail.confirm"].tap()
-        app.buttons["calendarConnect.skip"].tap()
-        app.buttons["healthPriming.skip"].tap()
+        app.buttons["inviteEmail.confirm"].tapWhenReady()
+        app.buttons["calendarConnect.skip"].tapWhenReady()
+        app.buttons["healthPriming.skip"].tapWhenReady()
 
         XCTAssertTrue(app.navigationBars["Preferences"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.segmentedControls["preferencesCapture.duration"].exists || app.otherElements["preferencesCapture.duration"].exists)
@@ -196,10 +196,10 @@ final class OnboardingFlowUITests: XCTestCase {
     func test_calendarConnect_eventKitDenied_degradesToEmailOnlyAndAdvances() {
         app.launchArguments += ["-UITEST_CALENDAR_DENIED", "1"]
         signInWithEmailAndReachInviteEmailStep()
-        app.buttons["inviteEmail.confirm"].tap()
+        app.buttons["inviteEmail.confirm"].tapWhenReady()
 
         XCTAssertTrue(app.buttons["calendarConnect.appleEventKit"].waitForExistence(timeout: 10))
-        app.buttons["calendarConnect.appleEventKit"].tap()
+        app.buttons["calendarConnect.appleEventKit"].tapWhenReady()
 
         XCTAssertTrue(
             app.staticTexts["healthPriming.headline"].waitForExistence(timeout: 10),
@@ -214,10 +214,10 @@ final class OnboardingFlowUITests: XCTestCase {
     func test_googleCalendarConnect_notYetImplemented_showsError() {
         signInWithEmailAndReachInviteEmailStep()
 
-        app.buttons["inviteEmail.confirm"].tap()
+        app.buttons["inviteEmail.confirm"].tapWhenReady()
 
         XCTAssertTrue(app.buttons["calendarConnect.google"].waitForExistence(timeout: 10))
-        app.buttons["calendarConnect.google"].tap()
+        app.buttons["calendarConnect.google"].tapWhenReady()
 
         XCTAssertTrue(app.staticTexts["calendarConnect.error"].waitForExistence(timeout: 10))
     }
@@ -272,13 +272,13 @@ final class OnboardingFlowUITests: XCTestCase {
     /// the invite-email step (docs/05_UX_FLOWS.md §2 screen 2).
     private func signInWithEmailAndReachInviteEmailStep() {
         app.launch()
-        app.buttons["welcome.getStarted"].tap()
-        app.buttons["signIn.showEmailFallback"].tap()
+        app.buttons["welcome.getStarted"].tapWhenReady()
+        app.buttons["signIn.showEmailFallback"].tapWhenReady()
 
         type("test@example.com", into: app.textFields["signIn.emailField"])
         type("longenoughpassword", into: app.secureTextFields["signIn.passwordField"])
 
-        app.buttons["signIn.emailContinue"].tap()
+        app.buttons["signIn.emailContinue"].tapWhenReady()
 
         // Generous timeout: this transition follows an async sign-in call
         // and, on a loaded CI/simulator host, can take noticeably longer

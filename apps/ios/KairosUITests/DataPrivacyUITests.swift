@@ -93,27 +93,27 @@ final class DataPrivacyUITests: XCTestCase {
 
     private func completeOnboardingSkippingEverything() {
         app.launch()
-        app.buttons["welcome.getStarted"].tap()
-        app.buttons["signIn.showEmailFallback"].tap()
+        app.buttons["welcome.getStarted"].tapWhenReady()
+        app.buttons["signIn.showEmailFallback"].tapWhenReady()
 
         type("test@example.com", into: app.textFields["signIn.emailField"])
         type("longenoughpassword", into: app.secureTextFields["signIn.passwordField"])
-        app.buttons["signIn.emailContinue"].tap()
+        app.buttons["signIn.emailContinue"].tapWhenReady()
 
         XCTAssertTrue(app.staticTexts["inviteEmail.headline"].waitForExistence(timeout: 15))
-        app.buttons["inviteEmail.confirm"].tap()
+        app.buttons["inviteEmail.confirm"].tapWhenReady()
 
         XCTAssertTrue(app.buttons["calendarConnect.skip"].waitForExistence(timeout: 10))
-        app.buttons["calendarConnect.skip"].tap()
+        app.buttons["calendarConnect.skip"].tapWhenReady()
 
         XCTAssertTrue(app.buttons["healthPriming.skip"].waitForExistence(timeout: 10))
-        app.buttons["healthPriming.skip"].tap()
+        app.buttons["healthPriming.skip"].tapWhenReady()
 
         XCTAssertTrue(app.navigationBars["Preferences"].waitForExistence(timeout: 10))
         tapAfterScrollingIntoView(app.buttons["preferencesCapture.skip"])
 
         XCTAssertTrue(app.buttons["done.continue"].waitForExistence(timeout: 10))
-        app.buttons["done.continue"].tap()
+        app.buttons["done.continue"].tapWhenReady()
 
         XCTAssertTrue(app.tabBars.buttons["Home"].waitForExistence(timeout: 10))
     }
