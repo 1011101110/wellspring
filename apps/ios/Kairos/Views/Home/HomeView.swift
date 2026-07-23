@@ -31,6 +31,7 @@ struct HomeView: View {
                     TodayCard(viewModel: viewModel)
                     UpcomingCard(viewModel: viewModel)
                     ConnectionCard(viewModel: viewModel)
+                    CalendarDayCard(viewModel: viewModel)
                     InviteAddressCard(viewModel: viewModel)
                     JournalCard(viewModel: viewModel)
                     HistoryCard(viewModel: viewModel)

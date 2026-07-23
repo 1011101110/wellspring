@@ -34,6 +34,7 @@
 		343E47FA4AA502A4D1B1597B /* PreferencesStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E771470C893B0E25767E0707 /* PreferencesStoreTests.swift */; };
 		38C47ADE52FDD64DDB9034E2 /* EventKitSlotCollector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 979B13A562A502EA847BE47D /* EventKitSlotCollector.swift */; };
 		3C61699E9F5C2F963DD3300F /* HealthKitConnectService.swift in Sources */ = {isa = PBXBuildFile; fileRef = BFA3B0083B469D4C9A742E80 /* HealthKitConnectService.swift */; };
+		40D9C80D8A53602F6C87E1E8 /* CalendarDayCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3022B77B263C7F1A91199EDC /* CalendarDayCard.swift */; };
 		45DBB6E52A510728108BF511 /* PreferencesViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 53152D0BCC96925FA1700C4A /* PreferencesViewModel.swift */; };
 		47B30FE646A87D1DC8D0A927 /* HomeViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8F638B1B1C0CFB0E281C5CC5 /* HomeViewModel.swift */; };
 		47FA693F013FBF300431C5C6 /* AccountDeletionClientTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4948F7F9E33A7407C8ED4107 /* AccountDeletionClientTests.swift */; };
@@ -154,6 +155,7 @@
 		28E40278047EBEC9094B7A2A /* DevotionalDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DevotionalDetailView.swift; sourceTree = "<group>"; };
 		2D6A4C9BB1EC590903905D4E /* FakeAuthServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FakeAuthServiceTests.swift; sourceTree = "<group>"; };
 		2F4C6B4EAB7D65E78A2C3F63 /* DashboardModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardModels.swift; sourceTree = "<group>"; };
+		3022B77B263C7F1A91199EDC /* CalendarDayCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalendarDayCard.swift; sourceTree = "<group>"; };
 		32E01D397E23DD723FB73297 /* AuthService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthService.swift; sourceTree = "<group>"; };
 		352472024120B3204487CAC9 /* FirebaseAuthServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FirebaseAuthServiceTests.swift; sourceTree = "<group>"; };
 		37A60DDE1E0BA007E245B00B /* DataPrivacyUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DataPrivacyUITests.swift; sourceTree = "<group>"; };
@@ -516,6 +518,7 @@
 		CB87607619FE3FC7766B8F4A /* Cards */ = {
 			isa = PBXGroup;
 			children = (
+				3022B77B263C7F1A91199EDC /* CalendarDayCard.swift */,
 				550307C606CEAE6ED8F3B06A /* CardFrame.swift */,
 				23B67A1A5C3FCA68272F8C05 /* DashboardCards.swift */,
 			);
@@ -709,6 +712,7 @@
 				C815146CAE902317D39D3472 /* BandUploadService.swift in Sources */,
 				75A7584FB0AE08F32FDA1019 /* CalendarConnectService.swift in Sources */,
 				6892DC69C4EFDB1601532A5F /* CalendarConnectView.swift in Sources */,
+				40D9C80D8A53602F6C87E1E8 /* CalendarDayCard.swift in Sources */,
 				C6B62B20096BCEF29A9BAE30 /* CardFrame.swift in Sources */,
 				5426495D4B30779EF69930C9 /* ConsentCategory.swift in Sources */,
 				F7DB4AC6D32A963B5B44B118 /* ConsentStore.swift in Sources */,
