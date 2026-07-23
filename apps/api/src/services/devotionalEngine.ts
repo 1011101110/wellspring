@@ -76,10 +76,15 @@ const DEFAULT_MODEL = 'gloo-anthropic-claude-sonnet-4.6';
  * non-empty string.
  */
 const MAX_OUTPUT_TOKENS: Record<DevotionalOutput['format'], number> = {
-  micro: 1200,
-  short: 1800,
-  standard: 2800,
-  extended: 4000,
+  // Raised (kairos-devotional #295 follow-up): the prior budgets truncated
+  // real 'standard'/'extended' generations mid-sentence (hit max_output_tokens
+  // before the model finished writing the body + both verses' full fetchedText),
+  // which both failed the truncation guard AND left later verses' fetchedText
+  // empty → repair round-trip → fixture fallback. Headroom added per format.
+  micro: 1600,
+  short: 2400,
+  standard: 4096,
+  extended: 6000,
 };
 
 const TEMPERATURE = 0.7;
