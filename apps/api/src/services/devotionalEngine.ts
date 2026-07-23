@@ -27,6 +27,7 @@ import { readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
+  CARD_SUMMARY_HARD_LIMIT,
   DevotionalOutputSchema,
   GetBibleVerseArgsSchema,
   GET_BIBLE_VERSE_TOOL_NAME,
@@ -76,11 +77,14 @@ const DEFAULT_MODEL = 'gloo-anthropic-claude-sonnet-4.6';
  * non-empty string.
  */
 const MAX_OUTPUT_TOKENS: Record<DevotionalOutput['format'], number> = {
-  // Raised (kairos-devotional #295 follow-up): the prior budgets truncated
-  // real 'standard'/'extended' generations mid-sentence (hit max_output_tokens
-  // before the model finished writing the body + both verses' full fetchedText),
-  // which both failed the truncation guard AND left later verses' fetchedText
-  // empty → repair round-trip → fixture fallback. Headroom added per format.
+  // Generous per-format headroom. NOTE (kairos-devotional #295, live-verified
+  // 2026-07-23): the token ceiling is NOT the reliability bottleneck — real
+  // 'standard' generations return ~550-1550 output tokens, far under even the
+  // 'micro' budget here, so raising these had no effect on the fixture-fallback
+  // rate. The actual causes were two over-strict validators (a colon-ended body
+  // read as truncation; a slightly-over-300-char cardSummary hard-failing Zod),
+  // fixed in `detectLikelyTruncation` and `clampCardSummary` below. These
+  // budgets are kept comfortably above observed usage purely as a safety margin.
   micro: 1600,
   short: 2400,
   standard: 4096,
@@ -456,6 +460,37 @@ export function applyAuthoritativeFetchedText(
   }
 }
 
+/**
+ * Trims an over-long `cardSummary` down to the hard limit in place, at a word
+ * boundary with a trailing ellipsis (issue #295). The model reliably produces a
+ * valid devotional but occasionally overshoots the 300-char cardSummary cap by a
+ * little; without this, that single trivial one-line blurb hard-fails Zod and
+ * sinks the whole generation into a repair round-trip — or, if the repair also
+ * overshoots, a canned fixture. A card teaser trimmed to 300 chars is a
+ * non-event next to serving a fixture, so we make it valid by construction here
+ * (mirroring `applyAuthoritativeFetchedText`). Safe no-op on anything malformed
+ * or already within the limit — downstream Zod still rejects genuinely bad shapes.
+ */
+export function clampCardSummary(parsed: unknown): void {
+  if (typeof parsed !== 'object' || parsed === null) return;
+  const obj = parsed as { cardSummary?: unknown };
+  if (typeof obj.cardSummary !== 'string') return;
+  const summary = obj.cardSummary.trim();
+  if (summary.length <= CARD_SUMMARY_HARD_LIMIT) {
+    obj.cardSummary = summary;
+    return;
+  }
+  const ellipsis = '…';
+  // Reserve room for the ellipsis, cut to the last word boundary, and drop any
+  // trailing punctuation so we don't end on e.g. ", …".
+  const budget = CARD_SUMMARY_HARD_LIMIT - ellipsis.length;
+  let cut = summary.slice(0, budget);
+  const lastSpace = cut.lastIndexOf(' ');
+  if (lastSpace > 0) cut = cut.slice(0, lastSpace);
+  cut = cut.replace(/[\s.,;:!?—-]+$/u, '');
+  obj.cardSummary = `${cut}${ellipsis}`;
+}
+
 export function findFetchedTextMismatches(
   devotional: DevotionalOutput,
   fetchedTexts: Map<string, FetchedVerse>,
@@ -489,8 +524,22 @@ export function findFetchedTextMismatches(
 
 // --- Truncation detection -----------------------------------------------------
 
-/** Sentence-ending punctuation (optionally followed by a closing quote/paren) that a complete prose field should end with. */
-const TERMINAL_PUNCTUATION_RE = /[.!?…"'”’)]$/;
+/**
+ * Sentence-ending punctuation (optionally followed by a closing quote/paren)
+ * that a complete prose field should end with.
+ *
+ * A trailing COLON is deliberately included (kairos-devotional #295,
+ * live-verified 2026-07-23): the model routinely, and intentionally, ends the
+ * `devotionalBody` by teeing up the Scripture that is then read aloud —
+ * "...and it sounds like this:", "...God speaks a single, arresting sentence:".
+ * These are complete, well-formed lead-ins (the verse follows in `verses[]`/the
+ * spoken audio), not mid-sentence cutoffs, yet the old pattern flagged them as
+ * truncation → needless repair round-trips and, when the repair also ended on a
+ * colon, fixture fallback. Real max_output_tokens cutoffs are caught by the
+ * mid-WORD / no-terminator case that remains (a genuine cutoff essentially
+ * never lands exactly on a colon), so admitting `:` costs no real coverage.
+ */
+const TERMINAL_PUNCTUATION_RE = /[.!?…:"'”’)]$/;
 
 /**
  * Heuristically detects a `devotionalBody`/`prayer`/`cardSummary` that was
@@ -677,6 +726,14 @@ export class DevotionalEngine {
     // empty" Zod check nor the byte-exact anti-hallucination check — the real
     // YouVersion text is always what gets displayed and validated.
     applyAuthoritativeFetchedText(parsed, fetchedTexts);
+
+    // Clamp an over-long cardSummary to the hard limit BEFORE Zod (issue #295):
+    // the model reliably writes a good devotional but occasionally overshoots
+    // the 300-char cardSummary cap by a little. That one trivial one-line blurb
+    // should never sink an otherwise-valid generation into a repair round-trip
+    // or a fixture — same "make it valid by construction" stance as
+    // applyAuthoritativeFetchedText above.
+    clampCardSummary(parsed);
 
     const result = DevotionalOutputSchema.safeParse(parsed);
     if (!result.success) {

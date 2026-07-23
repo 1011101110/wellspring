@@ -17,11 +17,13 @@ import {
   DevotionalEngine,
   DevotionalEngineFixtureError,
   applyAuthoritativeFetchedText,
+  clampCardSummary,
   detectLikelyTruncation,
   findFetchedTextMismatches,
   loadFixtureDevotional,
   type DevotionalEngineLogger,
 } from '../../src/services/devotionalEngine.js';
+import { CARD_SUMMARY_HARD_LIMIT } from '@kairos/shared-contracts';
 
 const FIXTURES_DIR = new URL('../../../../fixtures/snapshots', import.meta.url).pathname;
 
@@ -939,5 +941,58 @@ describe('detectLikelyTruncation', () => {
       }),
     );
     expect(detectLikelyTruncation(devotional)).toBeUndefined();
+  });
+
+  it('accepts a devotionalBody ending in a colon that tees up the spoken Scripture (issue #295)', () => {
+    // Live-observed 2026-07-23: the model intentionally ends the body by
+    // introducing the verse read aloud next ("...and it sounds like this:").
+    // That is a complete lead-in, not a mid-sentence cutoff, and must not be
+    // flagged as truncation.
+    const devotional = JSON.parse(
+      validDevotionalJson({
+        devotionalBody:
+          'This word comes from the forty-sixth Psalm, and it sounds like this:',
+      }),
+    );
+    expect(detectLikelyTruncation(devotional)).toBeUndefined();
+  });
+});
+
+describe('clampCardSummary (issue #295)', () => {
+  it('leaves a within-limit cardSummary untouched (aside from trimming whitespace)', () => {
+    const obj = { cardSummary: '  Come to Me, weary one.  ' };
+    clampCardSummary(obj);
+    expect(obj.cardSummary).toBe('Come to Me, weary one.');
+  });
+
+  it('trims an over-long cardSummary to the hard limit at a word boundary with an ellipsis', () => {
+    // Distinct words so a mid-word split would be detectable as a fragment.
+    const words = Array.from({ length: 80 }, (_, i) => `alpha${i}`);
+    const long = words.join(' '); // ~600 chars, well over 300
+    const obj = { cardSummary: long };
+    clampCardSummary(obj);
+    expect(obj.cardSummary.length).toBeLessThanOrEqual(CARD_SUMMARY_HARD_LIMIT);
+    expect(obj.cardSummary.endsWith('…')).toBe(true);
+    // Every token before the ellipsis is a whole original word — nothing was
+    // split mid-word.
+    const kept = obj.cardSummary.slice(0, -1).trim().split(' ');
+    expect(kept.every((w) => words.includes(w))).toBe(true);
+  });
+
+  it('produces a cardSummary that then passes detectLikelyTruncation (ends in …)', () => {
+    const obj = JSON.parse(validDevotionalJson());
+    obj.cardSummary = 'x'.repeat(400);
+    clampCardSummary(obj);
+    expect(obj.cardSummary.length).toBeLessThanOrEqual(CARD_SUMMARY_HARD_LIMIT);
+    expect(detectLikelyTruncation(obj)).toBeUndefined();
+  });
+
+  it('is a safe no-op on a non-string / missing cardSummary', () => {
+    const a: { cardSummary?: unknown } = {};
+    clampCardSummary(a);
+    expect(a.cardSummary).toBeUndefined();
+    const b = { cardSummary: 42 };
+    clampCardSummary(b);
+    expect(b.cardSummary).toBe(42);
   });
 });
