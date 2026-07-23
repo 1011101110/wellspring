@@ -8,6 +8,9 @@ import FirebaseCore
 #if canImport(FirebaseAuth)
 import FirebaseAuth
 #endif
+#if canImport(GoogleSignIn)
+import GoogleSignIn
+#endif
 
 /// Real `AuthService` backed by Firebase Auth (Sign in with Apple + email
 /// fallback), per docs/00_FOUNDATION.md §3 and docs/01_PRD.md F1.
@@ -65,11 +68,26 @@ public final class FirebaseAuthService: NSObject, ObservableObject, AuthService,
             FirebaseApp.configure()
         }
         isConfigured = true
+        configureGoogleSignInIfPossible()
         #if canImport(FirebaseAuth)
         restoreSessionAndObserveAuthState()
         #endif
         #else
         isConfigured = false
+        #endif
+    }
+
+    /// Point GoogleSignIn at the same OAuth client Firebase was configured
+    /// with. The client ID lives in `GoogleService-Info.plist` (surfaced as
+    /// `FirebaseApp.app()?.options.clientID`), so there is nothing extra to
+    /// commit — and if Firebase never configured (no plist, e.g. demo mode
+    /// / a fork), this is a no-op and the live Google path simply stays
+    /// unavailable rather than crashing. Safe to call once, after
+    /// `FirebaseApp.configure()`.
+    private func configureGoogleSignInIfPossible() {
+        #if canImport(GoogleSignIn) && canImport(FirebaseCore)
+        guard let clientID = FirebaseApp.app()?.options.clientID else { return }
+        GIDSignIn.sharedInstance.configuration = GIDConfiguration(clientID: clientID)
         #endif
     }
 
@@ -124,6 +142,58 @@ public final class FirebaseAuthService: NSObject, ObservableObject, AuthService,
         }
         #else
         throw AuthError.notConfigured("FirebaseAuth SDK not linked.")
+        #endif
+    }
+
+    /// Sign in with Google (docs/01_PRD.md F1 — the web app's MVP provider).
+    /// Presents GoogleSignIn from the top-most view controller, exchanges the
+    /// returned Google ID + access tokens for a Firebase `GoogleAuthProvider`
+    /// credential, signs in, and maps the result exactly like the Apple path.
+    @discardableResult
+    public func signInWithGoogle() async throws -> KairosUser {
+        guard isConfigured else {
+            throw AuthError.notConfigured("No Firebase project connected yet (missing GoogleService-Info.plist).")
+        }
+        #if canImport(FirebaseAuth) && canImport(GoogleSignIn)
+        guard let presenter = Self.topViewController() else {
+            throw AuthError.unknown("No view controller available to present Google Sign-In.")
+        }
+        // Ensure GoogleSignIn has a client ID even if the initializer's
+        // configure step raced app launch (idempotent).
+        if GIDSignIn.sharedInstance.configuration == nil {
+            configureGoogleSignInIfPossible()
+        }
+        guard GIDSignIn.sharedInstance.configuration != nil else {
+            throw AuthError.notConfigured("GoogleSignIn has no client ID (missing GoogleService-Info.plist clientID).")
+        }
+
+        do {
+            let result = try await GIDSignIn.sharedInstance.signIn(withPresenting: presenter)
+            guard let idToken = result.user.idToken?.tokenString else {
+                throw AuthError.invalidCredential
+            }
+            let accessToken = result.user.accessToken.tokenString
+            let credential = GoogleAuthProvider.credential(withIDToken: idToken, accessToken: accessToken)
+            let authResult = try await Auth.auth().signIn(with: credential)
+            var user = Self.map(authResult.user)
+            // Google always shares a profile name/email; fall back to the raw
+            // GoogleSignIn profile if Firebase didn't persist a displayName.
+            if user.displayName == nil, let name = result.user.profile?.name {
+                user.displayName = name
+            }
+            currentUser = user
+            return user
+        } catch let error as AuthError {
+            throw error
+        } catch {
+            // GoogleSignIn surfaces user-cancellation as GIDSignInError.canceled.
+            if let gidError = error as? GIDSignInError, gidError.code == .canceled {
+                throw AuthError.cancelled
+            }
+            throw Self.mapAuthError(error)
+        }
+        #else
+        throw AuthError.notConfigured("FirebaseAuth/GoogleSignIn SDK not linked.")
         #endif
     }
 
@@ -302,6 +372,26 @@ public final class FirebaseAuthService: NSObject, ObservableObject, AuthService,
         let hashed = SHA256.hash(data: Data(input.utf8))
         return hashed.compactMap { String(format: "%02x", $0) }.joined()
     }
+
+    // MARK: - Presentation helper (GoogleSignIn needs a UIViewController)
+
+    #if canImport(UIKit)
+    /// The top-most presented view controller of the app's key window —
+    /// GoogleSignIn's `signIn(withPresenting:)` requires a live
+    /// `UIViewController` to anchor its flow, whereas Apple's flow only
+    /// needs an `ASPresentationAnchor` (see `presentationAnchor(for:)`).
+    @MainActor
+    private static func topViewController() -> UIViewController? {
+        let keyWindow = UIApplication.shared.connectedScenes
+            .compactMap { ($0 as? UIWindowScene)?.keyWindow }
+            .first
+        var top = keyWindow?.rootViewController
+        while let presented = top?.presentedViewController {
+            top = presented
+        }
+        return top
+    }
+    #endif
 }
 
 #if canImport(FirebaseAuth)

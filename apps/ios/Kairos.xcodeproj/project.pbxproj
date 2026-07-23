@@ -47,6 +47,7 @@
 		520F1EF92716CB48483D7236 /* HealthConnectServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8A36025B7AD02753E4BE229 /* HealthConnectServiceTests.swift */; };
 		521A47358CD27B02D9C16AAB /* SignInView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 225C2C52FDDE9CA7AA327D36 /* SignInView.swift */; };
 		53125BB9D1781C4D456E8262 /* DistressCheckinClientTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2229A9C7DB8BD6BE929F8BC7 /* DistressCheckinClientTests.swift */; };
+		537B4874822EC48CC0221357 /* GoogleSignIn in Frameworks */ = {isa = PBXBuildFile; productRef = 308CEE9BE954EBBA04CAFE16 /* GoogleSignIn */; };
 		5426495D4B30779EF69930C9 /* ConsentCategory.swift in Sources */ = {isa = PBXBuildFile; fileRef = 877248042152D9130C306B1B /* ConsentCategory.swift */; };
 		549457CBC77822D3D92FB5CB /* EventKitSlotCollectorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 16D966FA6ECCABF05A11FEB7 /* EventKitSlotCollectorTests.swift */; };
 		565294670F2B51C9DFDC705F /* DashboardClientsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9E925B65DB23CFB18814A7DD /* DashboardClientsTests.swift */; };
@@ -244,6 +245,7 @@
 				AD6CB5E8329F0D2E4F46145F /* BandDeriver in Frameworks */,
 				8CC3B479E41531C58B923DD0 /* FirebaseAuth in Frameworks */,
 				8624EE2A62D9D2D09CAD74C5 /* FirebaseCore in Frameworks */,
+				537B4874822EC48CC0221357 /* GoogleSignIn in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -589,6 +591,7 @@
 				EFD5050A9841BB1BD16AD2DE /* BandDeriver */,
 				D7321BF4221FEF5CC24F8BC0 /* FirebaseAuth */,
 				578AB598BC8BEC0015BB7658 /* FirebaseCore */,
+				308CEE9BE954EBBA04CAFE16 /* GoogleSignIn */,
 			);
 			productName = Kairos;
 			productReference = E43372EFD253509C9CD5A7F7 /* Kairos.app */;
@@ -663,6 +666,7 @@
 			packageReferences = (
 				671BD7F0501A90E6138BB14A /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */,
 				CFB71434C4346FF34458FD5D /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */,
+				6978FFB3F15A124309BAF537 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */,
 				83E8D902B11A33574C53D792 /* XCLocalSwiftPackageReference "Packages/BandDeriver" */,
 			);
 			preferredProjectObjectVersion = 77;
@@ -1125,6 +1129,14 @@
 				minimumVersion = 11.0.0;
 			};
 		};
+		6978FFB3F15A124309BAF537 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/google/GoogleSignIn-iOS";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 8.0.0;
+			};
+		};
 		CFB71434C4346FF34458FD5D /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/firebase/firebase-ios-sdk";
@@ -1136,6 +1148,11 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		308CEE9BE954EBBA04CAFE16 /* GoogleSignIn */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 6978FFB3F15A124309BAF537 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */;
+			productName = GoogleSignIn;
+		};
 		578AB598BC8BEC0015BB7658 /* FirebaseCore */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = CFB71434C4346FF34458FD5D /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;

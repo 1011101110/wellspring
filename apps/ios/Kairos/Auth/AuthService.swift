@@ -44,6 +44,15 @@ public protocol AuthService: AnyObject, Sendable {
     @discardableResult
     func signInWithApple() async throws -> KairosUser
 
+    /// Sign in with Google — the web app's MVP sign-in provider
+    /// (docs/01_PRD.md F1). Presents the GoogleSignIn flow, exchanges the
+    /// resulting Google ID/access tokens for a Firebase credential, and
+    /// returns the mapped `KairosUser`. Mirrors `signInWithApple`'s
+    /// return/throw contract exactly (`AuthError.cancelled` on user
+    /// cancellation, `.notConfigured` without a live Firebase project).
+    @discardableResult
+    func signInWithGoogle() async throws -> KairosUser
+
     @discardableResult
     func signInWithEmail(email: String, password: String) async throws -> KairosUser
 

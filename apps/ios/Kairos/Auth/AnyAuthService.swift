@@ -35,6 +35,13 @@ public final class AnyAuthService: ObservableObject, AuthService, AuthServiceObs
     }
 
     @discardableResult
+    public func signInWithGoogle() async throws -> KairosUser {
+        let user = try await base.signInWithGoogle()
+        currentUser = base.currentUser
+        return user
+    }
+
+    @discardableResult
     public func signInWithEmail(email: String, password: String) async throws -> KairosUser {
         let user = try await base.signInWithEmail(email: email, password: password)
         currentUser = base.currentUser
