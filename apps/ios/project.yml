@@ -51,6 +51,12 @@ targets:
       path: Kairos/Kairos.entitlements
       properties:
         com.apple.developer.healthkit: true
+        # Keychain Sharing — required by Firebase Auth, which keychains the
+        # signed-in session after every sign-in (Google/Apple/email). Without
+        # it a code-signed build hits errSecMissingEntitlement (-34018),
+        # surfaced in-app as "Network problem: keychain error".
+        keychain-access-groups:
+          - $(AppIdentifierPrefix)com.kairos.devotional
     info:
       path: Kairos/Info.plist
       properties:
@@ -105,6 +111,21 @@ targets:
       configs:
         debug:
           INFOPLIST_KEY_API_BASE_URL: https://your-api-host.example.com
+          # Local Debug: adhoc-sign the simulator build (identity "-") with
+          # MANUAL style so the entitlements file (keychain-access-groups
+          # above) is embedded verbatim — NO Apple provisioning profile
+          # needed. A free personal team can't provision keychain-sharing, and
+          # AUTOMATIC signing silently STRIPS the entitlement and falls back to
+          # entitlement-less adhoc — which is exactly what caused Firebase
+          # Auth's keychain write to fail with -34018 ("keychain error").
+          # $(AppIdentifierPrefix) resolves empty under adhoc, so the group is
+          # just "com.kairos.devotional" — valid on the simulator; Firebase
+          # uses it as the default access group. CI stays fully unsigned
+          # because apple-ci passes CODE_SIGNING_ALLOWED=NO on the xcodebuild
+          # command line, which overrides this target-level setting.
+          CODE_SIGNING_ALLOWED: YES
+          CODE_SIGN_STYLE: Manual
+          CODE_SIGN_IDENTITY: "-"
     dependencies:
       - package: BandDeriver
       - package: FirebaseAuth

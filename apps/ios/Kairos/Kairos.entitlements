@@ -4,5 +4,19 @@
 <dict>
 	<key>com.apple.developer.healthkit</key>
 	<true/>
+	<!-- Keychain Sharing: Firebase Auth persists the signed-in session to the
+	     keychain after every sign-in (Google/Apple/email). Without a
+	     keychain-access-group the write fails with errSecMissingEntitlement
+	     (-34018), surfaced in-app as "Network problem: keychain error".
+	     Embedded only on a code-signed Debug build — see project.yml, which
+	     signs local Debug MANUAL adhoc (identity "-") so this entitlement is
+	     applied without a provisioning profile. (Automatic signing with a
+	     free personal team silently STRIPS it and falls back to
+	     entitlement-less adhoc.) CI's unsigned builds pass
+	     CODE_SIGNING_ALLOWED=NO and ignore this entirely. -->
+	<key>keychain-access-groups</key>
+	<array>
+		<string>$(AppIdentifierPrefix)com.kairos.devotional</string>
+	</array>
 </dict>
 </plist>
