@@ -220,6 +220,31 @@ export function App() {
     await save({ calendarEnabled: next });
   }
 
+  /**
+   * The "Your rhythm" controls (P8 #327). A sparse PUT of exactly the
+   * field that changed, immediately — same reasoning as the calendar
+   * reading toggle above (#299): "keep my schedule fixed" is a decision,
+   * not a staged edit. The response re-populates `serverPrefs` (whose
+   * `rhythm` object the card renders from) so the card shows what the
+   * server now believes, never what was clicked (Epic L rule #1 / #225).
+   * Deliberately NOT routed through `save()`: that would re-send the
+   * whole staged form, silently committing edits the user hasn't saved.
+   */
+  async function saveRhythm(fields: { adaptiveEnabled?: boolean; minPerWeek?: number }) {
+    setBusy(true);
+    setError(null);
+    try {
+      const data = await putPreferences(fields);
+      setPrefs(fromServer(data));
+      setServerPrefs(data);
+      setCalendarReadingEnabled(data.calendarEnabled);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'We could not save your settings.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function startCalendarConnect() {
     setError(null);
     try {
@@ -321,6 +346,10 @@ export function App() {
           onConnectCalendar={() => void startCalendarConnect()}
           onSignOut={() => void signOutOfKairos()}
           email={user?.email ?? null}
+          rhythm={serverPrefs?.rhythm}
+          activeDaysCount={serverPrefs ? new Set(serverPrefs.activeDays).size : 7}
+          onToggleScheduleFixed={(fixed) => void saveRhythm({ adaptiveEnabled: !fixed })}
+          onChangeMinPerWeek={(n) => void saveRhythm({ minPerWeek: n })}
         />
       </Shell>
     );

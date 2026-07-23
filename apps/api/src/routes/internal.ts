@@ -519,6 +519,13 @@ export function registerInternalRoutes(app: FastifyInstance, deps: InternalRoute
         await generateNowOrchestrator.generateNow({
           userId: user.id,
           ...(isSabbathToday ? { sabbathSession: true } : {}),
+          // P7 (#326): the daily run is the one "scheduled, standard-slot"
+          // caller, so it is the one place feedback steering applies —
+          // generate-now/examen/invite/distress callers never set this.
+          // A no-op unless the orchestrator was built with a
+          // FeedbackSteering dep, and fail-open inside the orchestrator
+          // regardless.
+          applyFeedbackSteering: true,
         });
         succeeded++;
       } catch (err) {

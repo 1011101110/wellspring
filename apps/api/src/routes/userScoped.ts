@@ -48,6 +48,7 @@ import type { UpcomingCalendarEventRow } from '../db/repositories/calendarEvents
 import type { PreferencesRow } from '../db/repositories/preferencesRepository.js';
 import type { AudioStorage } from '../services/audio/audioStorage.js';
 import { hardDeleteAccount } from '../services/retention/purgeJobs.js';
+import { composeRhythm } from '../services/rhythm/rhythmSummary.js';
 import {
   getLiturgicalSeason,
   liturgicalSeasonInformsGeneration,
@@ -122,6 +123,13 @@ function toPreferencesResponseData(
     // §9-safe copy over it (#327).
     minPerWeek: row.min_per_week,
     adaptiveEnabled: row.adaptive_enabled,
+    // P8 (#327): the server-composed rhythm summary — the engine's last
+    // stored decision folded with the user's own bounds into the strict
+    // (closed-shape, §9-safe) `Rhythm` contract. Composed on both GET and
+    // PUT because both return this payload: a toggle of `adaptiveEnabled`
+    // must come back already re-captioned (`fixed_by_user`), so the card
+    // can re-render from the response rather than from local state.
+    rhythm: composeRhythm(row),
     onboardedAt: onboardedAt ? onboardedAt.toISOString() : null,
     timezone,
     language,

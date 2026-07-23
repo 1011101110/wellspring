@@ -1,8 +1,10 @@
 import { useState } from 'react';
 import { PreferencesForm } from '../components/PreferencesForm';
+import { RhythmCard } from '../components/RhythmCard';
 import { ErrorNote } from './Onboarding';
 import type { WebPreferences } from '../lib/preferences';
 import { calendarSettingsState, type ConnectionState } from '../lib/connectionState';
+import type { Rhythm } from '@kairos/shared-contracts';
 
 /**
  * Preferences after onboarding (docs/05 §3.1 F7), so parity is not an
@@ -30,6 +32,10 @@ export function SettingsView({
   onConnectCalendar,
   onSignOut,
   email,
+  rhythm,
+  activeDaysCount,
+  onToggleScheduleFixed,
+  onChangeMinPerWeek,
 }: {
   value: WebPreferences;
   onChange: (next: WebPreferences) => void;
@@ -47,6 +53,18 @@ export function SettingsView({
   onConnectCalendar: () => void;
   onSignOut: () => void;
   email: string | null;
+  /**
+   * The server-composed rhythm summary from the LAST `/v1/preferences`
+   * response (P8 #327). `undefined` (older server) hides the card
+   * entirely — #244: absent, not a placeholder.
+   */
+  rhythm: Rhythm | undefined;
+  /** |activeDays| from the same response — the ceiling the min-per-week control stays under. */
+  activeDaysCount: number;
+  /** Persists `adaptiveEnabled: !next` immediately (the #299 toggle pattern: a consent-like decision, not a staged edit). */
+  onToggleScheduleFixed: (next: boolean) => void;
+  /** Persists a new `minPerWeek` immediately. */
+  onChangeMinPerWeek: (next: number) => void;
 }) {
   const [confirmingSignOut, setConfirmingSignOut] = useState(false);
 
@@ -100,6 +118,19 @@ export function SettingsView({
           </>
         )}
       </fieldset>
+
+      {/* "Your rhythm" (P8 #327). Rendered from the last server response
+          and persisted immediately via its callbacks — deliberately
+          OUTSIDE the staged PreferencesForm/save flow, like the calendar
+          reading toggle above, so the engine's transparency card can
+          never disagree with what the engine is actually doing. */}
+      <RhythmCard
+        rhythm={rhythm}
+        activeDaysCount={activeDaysCount}
+        busy={busy}
+        onToggleScheduleFixed={onToggleScheduleFixed}
+        onChangeMinPerWeek={onChangeMinPerWeek}
+      />
 
       <PreferencesForm value={value} onChange={onChange} timezone={timezone} idPrefix="settings" />
 

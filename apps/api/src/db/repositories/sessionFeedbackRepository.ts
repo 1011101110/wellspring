@@ -16,6 +16,21 @@ export interface SessionFeedbackRow {
   updated_at: Date;
 }
 
+/**
+ * One feedback row as the steering engine reads it (P7 #326): only the
+ * columns the rules consume, plus the joined devotional theme. Narrow on
+ * purpose — `content_helpful` and `note` are deliberately absent (no v1
+ * rule reads them), so the steering seam carries nothing it does not use.
+ */
+export interface SteeringFeedbackRow {
+  created_at: Date;
+  topic_more: boolean | null;
+  length_feel: LengthFeel | null;
+  time_feel: TimeFeel | null;
+  /** Theme of the devotional this feedback was about, or null once the devotional is purged (or the FK was nulled). */
+  devotional_theme: string | null;
+}
+
 export interface UpsertSessionFeedbackInput {
   sessionToken: string;
   devotionalId: string;
@@ -80,6 +95,34 @@ export class SessionFeedbackRepository {
     const row = result.rows[0];
     if (!row) throw new Error('upsert: no row returned');
     return row;
+  }
+
+  /**
+   * The trailing window of this user's feedback, newest first, each row
+   * joined with the theme of the devotional it was about (P7 #326 — the
+   * steering engine's whole input). LEFT JOIN because feedback outlives
+   * both the session AND (via ON DELETE SET NULL / retention) potentially
+   * the devotional: a row whose theme is gone still carries
+   * length/time signal, so it must not vanish from the window.
+   *
+   * SERVER-SIDE ONLY, same as every read of this table (#320, §9): the
+   * consumer is `FeedbackSteering` in-process; nothing under `/v1`
+   * returns these rows. Reads the `(user_id, created_at)` index from
+   * migration 1722400000000.
+   */
+  async listRecentForSteering(
+    userId: VerifiedUserId,
+    since: Date,
+  ): Promise<SteeringFeedbackRow[]> {
+    const result = await this.db.query<SteeringFeedbackRow>(
+      `SELECT f.created_at, f.topic_more, f.length_feel, f.time_feel, d.theme AS devotional_theme
+         FROM session_feedback f
+         LEFT JOIN devotionals d ON d.id = f.devotional_id
+        WHERE f.user_id = $1 AND f.created_at >= $2
+        ORDER BY f.created_at DESC`,
+      [userId, since],
+    );
+    return result.rows;
   }
 
   /** Whether feedback exists for this session — drives the complete page's form-vs-thanked state (P2 #321: once submitted, never re-asked). */

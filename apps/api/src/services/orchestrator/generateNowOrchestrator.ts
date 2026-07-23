@@ -48,7 +48,13 @@ import {
   type Tradition,
 } from '@kairos/shared-contracts';
 import { DevotionalEngine, type GenerateDevotionalResult } from '../devotionalEngine.js';
-import { NO_SIGNALS_OBSERVED, type SignalProvenance } from '../gloo/instructionsBuilder.js';
+import {
+  NO_SIGNALS_OBSERVED,
+  resolveTargetFormat,
+  type SignalProvenance,
+} from '../gloo/instructionsBuilder.js';
+import { NO_STEERING, type FeedbackSteering, type SteeringDecision } from '../rhythm/feedbackSteering.js';
+import { resolvePreferredInstant, selectGap } from '../calendar/gapSelection.js';
 import { TtsService, TtsServiceError } from '../tts/ttsService.js';
 import type { AudioStorage } from '../audio/audioStorage.js';
 import type { GoogleCalendarClient } from '../calendar/googleCalendarClient.js';
@@ -86,6 +92,24 @@ export const EXTENDED_FORMAT_MIN_GAP_MINUTES = 15;
  * Neutral fallback bands used ONLY when the user has no `daily_bands` row
  * for today yet (e.g. has never opened the iOS app / granted HealthKit).
  */
+/** The duration bands in ascending length order — the ladder the P7 duration nudge steps along. */
+export const DURATION_BANDS: readonly DevotionalFormat[] = ['micro', 'short', 'standard', 'extended'];
+
+/**
+ * One band shorter/longer, clamped at the ends (P7 #326): 2 of the last 3
+ * feedback rows saying "shorter" moves an auto-resolved `standard` to
+ * `short`, never further, and a `micro` stays `micro`. Pure and exported
+ * so the golden tests can mutation-check the clamp directly.
+ */
+export function nudgeDuration(
+  format: DevotionalFormat,
+  direction: 'shorter' | 'longer',
+): DevotionalFormat {
+  const index = DURATION_BANDS.indexOf(format);
+  const next = direction === 'shorter' ? Math.max(0, index - 1) : Math.min(DURATION_BANDS.length - 1, index + 1);
+  return DURATION_BANDS[next]!;
+}
+
 export const NEUTRAL_DEFAULT_BANDS: BandInput = {
   recovery: 'moderate',
   sleepQuality: 'fair',
@@ -142,6 +166,13 @@ export interface GenerateNowOrchestratorDeps {
   calendarEvents?: CalendarEventsRepository;
   /** Optional (docs/14 §5.5, issue #93): when wired, generateNow() looks up yesterday's recorded prayer intention and weaves it into today's instructions. Omitted, behavior is unchanged (no line). */
   prayerIntentions?: PrayerIntentionsRepository;
+  /**
+   * P7 (#326): feedback → generation params. Only consulted when a caller
+   * also sets `GenerateNowParams.applyFeedbackSteering` (the daily run
+   * does; generate-now/examen/invite/distress never do), so omitting this
+   * — or the flag — is byte-identical to pre-P7 behavior.
+   */
+  feedbackSteering?: FeedbackSteering;
   /**
    * How the session's join link is delivered (D4/#32, docs/22 §2.1).
    * Defaults to `HostedSessionProvider` — omitting this is byte-identical
@@ -244,6 +275,17 @@ export interface GenerateNowParams {
    * calendar-skip condition are unaffected by this flag.
    */
   sabbathSession?: boolean;
+  /**
+   * P7 (#326): apply feedback steering (theme carry-forward, duration
+   * nudge, time-of-day bias) to this generation. Set ONLY by the
+   * scheduled daily run — the story scopes steering to "standard-slot,
+   * scheduled generation", so the user-initiated generate-now, the
+   * examen, invites, and the distress check-in all leave it unset and
+   * stay byte-identical to today. Requires `deps.feedbackSteering`;
+   * a failure while deriving fails OPEN (unsteered generation), the
+   * same posture as the daily run's adaptive-rhythm evaluation.
+   */
+  applyFeedbackSteering?: boolean;
 }
 
 export type GenerateNowAudioOutcome =
@@ -300,6 +342,7 @@ export class GenerateNowOrchestrator {
   private readonly kmsService?: GoogleKmsService;
   private readonly calendarEvents?: CalendarEventsRepository;
   private readonly prayerIntentions?: PrayerIntentionsRepository;
+  private readonly feedbackSteering?: FeedbackSteering;
   private readonly deliveryProvider: DeliveryProvider;
   private readonly meetBotDispatch?: GenerateNowOrchestratorDeps['meetBotDispatch'];
 
@@ -320,6 +363,7 @@ export class GenerateNowOrchestrator {
     this.kmsService = deps.kmsService;
     this.calendarEvents = deps.calendarEvents;
     this.prayerIntentions = deps.prayerIntentions;
+    this.feedbackSteering = deps.feedbackSteering;
     this.deliveryProvider = deps.deliveryProvider ?? new HostedSessionProvider(this.publicBaseUrl);
     this.meetBotDispatch = deps.meetBotDispatch;
   }
@@ -680,6 +724,66 @@ export class GenerateNowOrchestrator {
       }
     }
 
+    // ── Feedback steering (P7 #326, epic #312) ─────────────────────────
+    //
+    // Scheduled standard-slot generations only: the daily run passes
+    // `applyFeedbackSteering: true`; generate-now, examen, invite, and
+    // distress paths never do, so their params are untouched by
+    // construction. The distress guard below is belt-and-braces on top of
+    // that (safety paths must not depend on a caller remembering a flag).
+    //
+    // FAIL-OPEN, same ground rule as the daily run's adaptive-rhythm
+    // evaluation: a broken steering read costs the nudges, never the
+    // devotional.
+    let steering: SteeringDecision = NO_STEERING;
+    if (
+      this.feedbackSteering &&
+      params.applyFeedbackSteering &&
+      slotType === 'standard' &&
+      !params.distressSignalOverride
+    ) {
+      try {
+        steering = await this.feedbackSteering.deriveSteering(verifiedUserId, { now: this.now() });
+        if (steering.reasons.length > 0) {
+          this.logger.info('Feedback steering applied to generation params', {
+            userId,
+            date,
+            reasons: steering.reasons,
+            theme: steering.theme,
+            durationNudge: steering.durationNudge,
+            preferredTimeLocal: steering.preferredTimeLocal,
+          });
+        }
+      } catch (err) {
+        this.logger.error('Feedback steering failed — continuing unsteered', {
+          userId,
+          date,
+          error: err instanceof Error ? err.message : String(err),
+        });
+        steering = NO_STEERING;
+      }
+    }
+
+    // Theme precedence (P7 #326 — first present wins):
+    //
+    //   1. invite context        — the user's own written words for THIS
+    //      meeting (I2 #62); a topical echo of last week's devotional has
+    //      no business displacing them.
+    //   2. prayer intention      — yesterday's deliberate disclosure
+    //      (#93); same reasoning, an explicit act outranks an inference.
+    //   3. feedback-steered theme — the "more on this topic" carry-forward,
+    //      lowest rung: it is the only one of the three the user never
+    //      typed. (Team/invite themes that call the engine directly with a
+    //      `theme` param never pass through this orchestrator path at all.)
+    //
+    // Distinct params, one precedence rule: inviteContext and
+    // prayerIntention keep flowing as their own engine params exactly as
+    // before — what yields is only the steered `theme`.
+    const steeredTheme =
+      steering.theme !== undefined && params.inviteContext === undefined && prayerIntention === undefined
+        ? steering.theme
+        : undefined;
+
     // Step 1: DevotionalEngine — never throws for the "provider had a bad
     // day" case (falls back to fixture internally).
     // Duration precedence (issue #202). First match wins:
@@ -707,10 +811,23 @@ export class GenerateNowOrchestrator {
     // and slotType='examen' is always micro/short because the examen is a
     // brief evening reflection by design — the user's duration preference
     // governs the morning devotional's length, not the examen's.
-    const durationPreference: DevotionalFormat | undefined =
+    const explicitDurationPreference: DevotionalFormat | undefined =
       params.durationPreferenceOverride ??
       (params.sabbathSession ? 'extended' : undefined) ??
       storedDurationPreference;
+    // P7 (#326) — rung 5, BELOW everything above: the feedback duration
+    // nudge applies only when every explicit source declined (i.e. the
+    // user's stored preference is 'auto'), and then nudges what the auto
+    // band heuristic would have picked by exactly one band. An explicit
+    // preference is never silently overridden (the ceiling principle).
+    // Passing the nudged band as `durationPreference` is safe against the
+    // floors resolveTargetFormat enforces above preferences: distress
+    // still forces 'micro' (and the distress path never steers anyway).
+    const durationPreference: DevotionalFormat | undefined =
+      explicitDurationPreference ??
+      (steering.durationNudge !== undefined
+        ? nudgeDuration(resolveTargetFormat(bands, undefined, slotType), steering.durationNudge)
+        : undefined);
     const genResult = await this.devotionalEngine.generate({
       bands,
       signalProvenance,
@@ -725,6 +842,9 @@ export class GenerateNowOrchestrator {
       liturgicalSeasonsEnabled,
       prayerIntention,
       inviteContext: params.inviteContext,
+      // Spread-conditional so an unsteered generation's params object is
+      // byte-identical to pre-P7 (the #326 zero-feedback regression pin).
+      ...(steeredTheme !== undefined ? { theme: steeredTheme } : {}),
     });
     const { devotional, source } = genResult;
 
@@ -876,6 +996,12 @@ export class GenerateNowOrchestrator {
         joinUrl,
         devotional,
         date,
+        // P7 (#326): the feedback-derived slot-time bias. Threaded from
+        // the steering decision rather than re-read from the preferences
+        // row inside the step, so ONLY steered (scheduled) generations
+        // order gaps by it — a user-initiated generate-now keeps the
+        // longest-gap-first behavior it has always had.
+        preferredTimeLocal: steering.preferredTimeLocal,
       });
     }
 
@@ -921,6 +1047,8 @@ export class GenerateNowOrchestrator {
     joinUrl: string;
     devotional: import('../devotionalEngine.js').GenerateDevotionalResult['devotional'];
     date: string;
+    /** P7 (#326): wall-clock slot preference (`HH:MM:SS`, already window-clamped) — orders candidate gaps by proximity when set. */
+    preferredTimeLocal?: string;
   }): Promise<GenerateNowCalendarOutcome> {
     const { userId, verifiedUserId, devotionalRow, sessionRow, sessionUrl, joinUrl, devotional } = params;
 
@@ -1008,14 +1136,21 @@ export class GenerateNowOrchestrator {
         busyBlocks.map((b) => ({ start: b.start, end: b.end })),
       );
 
-      // Gaps are sorted longest-first (busynessAnalyzer.ts), so checking only
-      // the largest against the floor is equivalent to checking all of them.
       // An 'extended' (~15+ min) session — natural via bands or forced by
       // sabbathSession (docs/14 §5.6, issue #94) — stuffed into a 2-minute
       // gap would just get cut off; shorter formats have no such floor.
       const requiredMinutes = devotional.format === 'extended' ? EXTENDED_FORMAT_MIN_GAP_MINUTES : 0;
-      const bestGap = analysis.gaps[0];
-      if (!bestGap || bestGap.durationMinutes < requiredMinutes) {
+      // Gap choice (P7 #326, gapSelection.ts): without a preferred time
+      // this is exactly the old rule — the analyzer's longest gap, floor-
+      // checked. With one (feedback-derived `preferred_time_local`,
+      // resolved on tomorrow's date in the window's own zone), the nearest
+      // qualifying gap wins instead: the bias moves the slot WITHIN the
+      // window the user stated, never the window itself.
+      const preferredInstant = params.preferredTimeLocal
+        ? resolvePreferredInstant(tomorrowStr, params.preferredTimeLocal, windowBounds.timeZone)
+        : null;
+      const bestGap = selectGap(analysis.gaps, requiredMinutes, preferredInstant);
+      if (!bestGap) {
         this.logger.info('No suitable gap found — skipping calendar event', {
           userId,
           busyness: analysis.busyness,
