@@ -17,6 +17,7 @@ import {
 
 const CHICAGO = 'America/Chicago';
 const SYDNEY = 'Australia/Sydney';
+const NEW_YORK = 'America/New_York';
 
 describe('dateKeyInZone', () => {
   it('answers in the given zone, not UTC — the two disagree here', () => {
@@ -131,5 +132,33 @@ describe('resolveZone', () => {
 
   it('does not claim travel when the two agree', () => {
     expect(resolveZone(CHICAGO, CHICAGO).travelling).toBe(false);
+  });
+
+  it('treats a bare UTC profile zone as unknown and renders in the browser zone (#301)', () => {
+    // `users.timezone` defaults to UTC; a user who never triggered a save or
+    // a completed connect reads it back as UTC. That is not "schedule me in
+    // UTC" — it is "the server never learned my zone" — so the browser's is
+    // the better answer and there is no travel to claim.
+    expect(resolveZone('UTC', NEW_YORK)).toEqual({
+      zone: NEW_YORK,
+      travelling: false,
+      browserZone: NEW_YORK,
+    });
+  });
+
+  it('leaves a genuine UTC user in UTC (browser is UTC too)', () => {
+    expect(resolveZone('UTC', 'UTC')).toEqual({
+      zone: 'UTC',
+      travelling: false,
+      browserZone: 'UTC',
+    });
+  });
+
+  it('still prefers a real, non-UTC profile zone and still flags travel', () => {
+    expect(resolveZone(SYDNEY, NEW_YORK)).toEqual({
+      zone: SYDNEY,
+      travelling: true,
+      browserZone: NEW_YORK,
+    });
   });
 });

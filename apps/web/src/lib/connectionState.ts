@@ -94,6 +94,57 @@ export function schedulingCapability(state: CardState<ConnectionState>): Schedul
 }
 
 /**
+ * What the Settings → Calendar section should show (#299).
+ *
+ * ## Two axes, one honest readout
+ *
+ * Whether Wellspring can read a calendar is the conjunction of two
+ * independent facts:
+ *
+ *  - **Connection** — the OAuth grant, from `GET /v1/connections`
+ *    (`ConnectionState` above).
+ *  - **Reading consent** — `calendar_enabled` on preferences, the
+ *    Foundation §8 gate `calendarFreeBusy` checks.
+ *
+ * Settings used to render only the *consent* flag under a
+ * "Connected"/"Not connected" label. So a user who had connected but whose
+ * `calendar_enabled` was false read as "Not connected" and was offered a
+ * reconnect — the wrong remedy, since the OAuth grant was fine and only the
+ * switch was off (the same distinction #246 draws for the dashboard card,
+ * and Foundation §8: revoking a category is not revoking the grant). This
+ * collapses the two axes into the three states the section can honestly be
+ * in, and it is a pure function so it can be checked without a browser.
+ */
+export type CalendarSettingsState =
+  /** No usable OAuth grant — the remedy is (re)connect, and a reading toggle would control nothing. */
+  | { kind: 'not_connected'; action: string }
+  /** Connected and reading is on. */
+  | { kind: 'reading_on' }
+  /** Connected but reading is off — this is the state that had no web switch, #299. */
+  | { kind: 'reading_off' };
+
+export function calendarSettingsState(
+  connection: ConnectionState | null,
+  readingEnabled: boolean,
+): CalendarSettingsState {
+  // Only an *active* grant makes a reading toggle meaningful. `never`,
+  // `revoked`, `unknown`, and an absent/failed fetch (`null`) all resolve to
+  // "(re)connect first" — a switch over a calendar we cannot read is a
+  // control that does nothing (docs/05 P7). The button label comes from the
+  // same `connectionActionLabel` the dashboard card uses, so the two never
+  // disagree about "connect" vs "reconnect".
+  if (!connection || connection.kind !== 'active') {
+    return {
+      kind: 'not_connected',
+      action: connection
+        ? (connectionActionLabel(connection) ?? 'Connect Google Calendar')
+        : 'Connect Google Calendar',
+    };
+  }
+  return readingEnabled ? { kind: 'reading_on' } : { kind: 'reading_off' };
+}
+
+/**
  * Card copy per state. Each is a complete sentence about what is true,
  * and the two "not working" states are worded differently on purpose.
  */

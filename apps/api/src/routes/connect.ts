@@ -35,6 +35,7 @@ import { requireAuth } from '../auth/middleware.js';
 import type { ConnectionsRepository } from '../db/repositories/connectionsRepository.js';
 import type { UsersRepository } from '../db/repositories/usersRepository.js';
 import type { OAuthStatesRepository } from '../db/repositories/oauthStatesRepository.js';
+import type { PreferencesRepository } from '../db/repositories/preferencesRepository.js';
 import type { GoogleOAuthService } from '../services/calendar/googleOAuthService.js';
 import type { GoogleKmsService } from '../services/calendar/googleKmsService.js';
 import { revokeGoogleConnection } from '../services/calendar/revokeGoogleConnection.js';
@@ -45,6 +46,24 @@ export interface ConnectRoutesDeps {
   connections: ConnectionsRepository;
   users: UsersRepository;
   oauthStates: OAuthStatesRepository;
+  /**
+   * Preferences store, used to turn calendar reading ON when a user
+   * completes the OAuth grant (#299).
+   *
+   * `calendar_enabled` is the Foundation §8 consent gate that
+   * `calendarFreeBusy` reads: a connected user whose flag is `false` gets a
+   * `consent_disabled` grid and no free/busy read. `users.timezone`
+   * defaults to UTC and `calendar_enabled` defaults similarly out of step
+   * with a fresh connect — so a user could approve the Google grant and
+   * still see "reading is turned off", with no way in the web UI to turn it
+   * back on. Consenting to the OAuth grant *is* the consent to read, so
+   * this records it as one.
+   *
+   * Optional and best-effort by design, mirroring `getCalendarTimeZone`
+   * below: a failure here must never fail a connect the user has already
+   * approved, and a deploy wiring calendar routes without it still works.
+   */
+  preferences?: Pick<PreferencesRepository, 'update'>;
   /**
    * Custom URL scheme the iOS app registers (`CFBundleURLTypes`) and
    * passes as `ASWebAuthenticationSession`'s `callbackURLScheme` (issue
@@ -265,6 +284,32 @@ export function registerConnectRoutes(app: FastifyInstance, deps: ConnectRoutesD
         scopes,
       },
     );
+
+    // Turn calendar reading ON (#299). The OAuth grant the user just
+    // completed *is* the act of consenting to a free/busy read, but the
+    // `calendar_enabled` gate that `calendarFreeBusy` checks is a separate
+    // column that a connect never touched — so a user could approve Google
+    // and still land on a "reading is turned off" grid with no web switch
+    // to flip. Recording the consent here is what keeps the connect and the
+    // read in agreement.
+    //
+    // Best-effort, like the time-zone adoption below: a failure must not
+    // fail a connect the user has already approved. The gate is fail-open
+    // in the readers (`calendar_enabled ?? true`), so the stored default
+    // still permits reading; this only repairs an explicitly-false flag.
+    if (deps.preferences) {
+      try {
+        await deps.preferences.update(
+          userId as import('../db/repositories/types.js').VerifiedUserId,
+          { calendar_enabled: true },
+        );
+      } catch (err) {
+        request.log.warn(
+          { err, userId },
+          'connect: could not enable calendar reading after connect — keeping stored value',
+        );
+      }
+    }
 
     // Learn the user's real time zone from the calendar they just connected
     // and persist it on `users`. Everything downstream that means "their
