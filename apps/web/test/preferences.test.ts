@@ -42,6 +42,11 @@ function serverRow(overrides: Partial<PreferencesResponseData> = {}): Preference
     liturgicalSeasonsEnabled: false,
     onboardedAt: null,
     timezone: 'America/Chicago',
+    // #314 added these to the payload; the web *surface* for them is O5
+    // (kairos-devotional #317) — until it lands, web reads them nowhere
+    // and the disabled translation select keeps its hard-coded display.
+    language: 'en',
+    translationId: 3034,
     updatedAt: '2026-07-18T10:00:00.000Z',
     ...overrides,
   };

@@ -1,5 +1,6 @@
 import {
   TIMEZONE_SOURCE_RANK,
+  type LanguageTag,
   type Tradition,
   type TimezoneSource,
 } from '@kairos/shared-contracts';
@@ -18,6 +19,15 @@ export interface UserRow {
   email: string | null;
   tradition: Tradition;
   translation_id: number;
+  /**
+   * Devotional content language (migration 1722300000000, Epic O #311 /
+   * story #314): a BCP-47 primary subtag, default `'en'`. Kept consistent
+   * with `translation_id` by the preferences route's cross-field rule
+   * (a language write snaps the translation to that language's default;
+   * an out-of-catalog pair is a 400) — writers must go through that door,
+   * not call `updateProfile` with an unvalidated pair.
+   */
+  language: LanguageTag;
   timezone: string;
   /**
    * Which writer last set `timezone` (migration 1721400000000, issue
@@ -141,16 +151,17 @@ export class UsersRepository {
    */
   async updateProfile(
     userId: VerifiedUserId,
-    updates: Partial<Pick<UserRow, 'tradition' | 'translation_id'>>,
+    updates: Partial<Pick<UserRow, 'tradition' | 'translation_id' | 'language'>>,
   ): Promise<UserRow | null> {
     const result = await this.db.query<UserRow>(
       `UPDATE users
        SET tradition = COALESCE($2::tradition, tradition),
            translation_id = COALESCE($3::integer, translation_id),
+           language = COALESCE($4::text, language),
            updated_at = now()
        WHERE id = $1
        RETURNING *`,
-      [userId, updates.tradition ?? null, updates.translation_id ?? null],
+      [userId, updates.tradition ?? null, updates.translation_id ?? null, updates.language ?? null],
     );
     return result.rows[0] ?? null;
   }

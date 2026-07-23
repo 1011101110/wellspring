@@ -8,4 +8,5 @@ export * from './toolEnvelope.js';
 export * from './fallbackKey.js';
 export * from './gloo.js';
 export * from './voice.js';
+export * from './language.js';
 export * from './api/index.js';
