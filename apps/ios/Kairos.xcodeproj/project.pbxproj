@@ -99,6 +99,7 @@
 		D4FABCE1634ACD32DEFB3225 /* BandUploadServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DD67613D65678B47BE2F643 /* BandUploadServiceTests.swift */; };
 		D7B926BC7D9B113DA3AC0CD8 /* AppEnvironmentTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D8CD9922E8758B7FCE724FF0 /* AppEnvironmentTests.swift */; };
 		D8A292D2EBCAB6447FB6F64E /* OnboardingContainerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 23D4B3ABBA316A764CA3FC67 /* OnboardingContainerView.swift */; };
+		DCA0F7565CF829B8C531F69A /* HistoryViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5897F08BA9510E2B1A811DBD /* HistoryViewModel.swift */; };
 		E17A4571BBEC9FD6FBB75158 /* KairosUser.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9DEED509BBDF81D12E1BCAB /* KairosUser.swift */; };
 		ECC4755C284F487DE2B621B6 /* DashboardModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2F4C6B4EAB7D65E78A2C3F63 /* DashboardModels.swift */; };
 		ECC6FA6062A9B86A5ADEF21B /* FakeHealthSampleReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA30CBDE195BF342CC787C18 /* FakeHealthSampleReader.swift */; };
@@ -173,6 +174,7 @@
 		53152D0BCC96925FA1700C4A /* PreferencesViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreferencesViewModel.swift; sourceTree = "<group>"; };
 		550307C606CEAE6ED8F3B06A /* CardFrame.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CardFrame.swift; sourceTree = "<group>"; };
 		573F23B4CACDB25A2DC2C2A7 /* KairosUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = KairosUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		5897F08BA9510E2B1A811DBD /* HistoryViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryViewModel.swift; sourceTree = "<group>"; };
 		58C8019FF79B107631D11796 /* HealthKitMappingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthKitMappingTests.swift; sourceTree = "<group>"; };
 		5A774F6FF8FEE96EDDABE049 /* HomeViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeViewModelTests.swift; sourceTree = "<group>"; };
 		5A82EF295CA9A39C85CF828B /* FakeHealthConnectService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FakeHealthConnectService.swift; sourceTree = "<group>"; };
@@ -504,6 +506,7 @@
 			isa = PBXGroup;
 			children = (
 				4C8B15F8FEDFD08AE8F0D6C3 /* HistoryView.swift */,
+				5897F08BA9510E2B1A811DBD /* HistoryViewModel.swift */,
 			);
 			path = History;
 			sourceTree = "<group>";
@@ -735,6 +738,7 @@
 				8BFA8C3C5CA4444A4863AA27 /* HealthPrimingView.swift in Sources */,
 				B4A03B15F291157968AD69C0 /* HealthSampleReader.swift in Sources */,
 				2EDAAF4F39605BADBA77F9B8 /* HistoryView.swift in Sources */,
+				DCA0F7565CF829B8C531F69A /* HistoryViewModel.swift in Sources */,
 				7652C5DB9C640FBFA6AFC0DC /* HomeView.swift in Sources */,
 				47B30FE646A87D1DC8D0A927 /* HomeViewModel.swift in Sources */,
 				1787187A4BEAEFD90EEDABA7 /* InviteEmailView.swift in Sources */,

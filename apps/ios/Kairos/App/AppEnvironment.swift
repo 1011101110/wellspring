@@ -519,6 +519,15 @@ public final class AppEnvironment: ObservableObject {
         )
     }
 
+    /// Composition helper for the History tab (backlog #4): assembles a
+    /// `HistoryViewModel` from this environment's devotionals client, so the
+    /// full-screen archive shares the same data source as the Home dashboard's
+    /// "Your devotionals" card.
+    @MainActor
+    public func makeHistoryViewModel() -> HistoryViewModel {
+        HistoryViewModel(devotionals: devotionalsClient)
+    }
+
     /// UI-test-only escape hatch (see `launchImpliesDemoMode` doc for why
     /// this is checked the same way): lets `PreferencesPersistenceUITests`
     /// prove real `UserDefaultsPreferencesStore` persistence survives an
