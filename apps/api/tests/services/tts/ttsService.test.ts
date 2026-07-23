@@ -198,6 +198,100 @@ describe('TtsService', () => {
     expect(voiceSentToClient(client)).toBe('en-US-Chirp3-HD-Charon');
   });
 
+  /* ---------------------------------------------------------------- *
+   * Per-request language — story O4 #316 (epic #311 decision 4). Same
+   * absent-argument contract as the per-request voice above: omitted =
+   * constructor languageCode + canonical en-US voice, byte-identical to
+   * before.
+   * ---------------------------------------------------------------- */
+
+  function requestSentToClient(client: TtsClientLike) {
+    return (client.synthesizeSpeech as ReturnType<typeof vi.fn>).mock.calls[0][0];
+  }
+
+  it('a per-request language swaps BOTH the languageCode and the voice-name locale prefix', async () => {
+    const client = fakeClient();
+    const service = new TtsService({ client });
+
+    const result = await service.synthesize(
+      devotional,
+      'off',
+      false,
+      'en-US-Chirp3-HD-Achernar',
+      'de',
+    );
+
+    expect(requestSentToClient(client).voice).toEqual({
+      languageCode: 'de-DE',
+      name: 'de-DE-Chirp3-HD-Achernar',
+    });
+    // The reported voice is what was actually synthesized — the localized
+    // name, never the canonical en-US form dressed up as German audio.
+    expect(result.voiceName).toBe('de-DE-Chirp3-HD-Achernar');
+  });
+
+  it('zh synthesizes under cmn-CN, never zh-CN — the locale with zero Chirp 3 HD voices', async () => {
+    // The single sharpest trap in the epic (#311 risk list): `zh-CN` looks
+    // right and has NO Chirp 3 HD voices (live-verified 2026-07-23). The
+    // catalog's ttsLocale must be what reaches the wire.
+    const client = fakeClient();
+    await new TtsService({ client }).synthesize(devotional, 'off', false, undefined, 'zh');
+
+    const { voice } = requestSentToClient(client);
+    expect(voice.languageCode).toBe('cmn-CN');
+    expect(voice.name).toBe('cmn-CN-Chirp3-HD-Achernar');
+    expect(voice.languageCode).not.toBe('zh-CN');
+  });
+
+  it('a picker label resolves to its canonical voice FIRST, then localizes — fr calm is fr-FR Kore', async () => {
+    // Order matters: validation happens on the canonical en-US form (the
+    // allow-list's live-verified invariant), the locale swap comes last.
+    const client = fakeClient();
+    await new TtsService({ client }).synthesize(devotional, 'off', false, 'calm', 'fr');
+
+    expect(requestSentToClient(client).voice).toEqual({
+      languageCode: 'fr-FR',
+      name: 'fr-FR-Chirp3-HD-Kore',
+    });
+  });
+
+  it('an unrecognized voice still degrades to the configured default — localized into the requested language', async () => {
+    // #202's "a bad name must not fail generation" survives #316: the
+    // fallback voice follows the user's language too, rather than snapping
+    // their Portuguese devotional back to an en-US voice.
+    const client = fakeClient();
+    const service = new TtsService({ client, voiceName: 'en-US-Chirp3-HD-Achernar' });
+
+    await service.synthesize(devotional, 'off', false, 'not-a-real-voice', 'pt');
+
+    expect(requestSentToClient(client).voice).toEqual({
+      languageCode: 'pt-BR',
+      name: 'pt-BR-Chirp3-HD-Achernar',
+    });
+  });
+
+  it("language 'en' produces a request byte-identical to omitting the argument (acceptance: en unchanged)", async () => {
+    const explicit = fakeClient();
+    const omitted = fakeClient();
+    await new TtsService({ client: explicit }).synthesize(devotional, 'brief', false, 'warm', 'en');
+    await new TtsService({ client: omitted }).synthesize(devotional, 'brief', false, 'warm');
+
+    expect(requestSentToClient(explicit)).toEqual(requestSentToClient(omitted));
+  });
+
+  it('the SSML sent to Cloud TTS speaks the per-language phrases — es carries no English hand-off', async () => {
+    // Mutation check at the request boundary: a language param that reached
+    // the voice but never the SSML builder would pass every test above and
+    // still play English speech in an es-US voice.
+    const client = fakeClient();
+    await new TtsService({ client }).synthesize(devotional, 'brief', false, undefined, 'es');
+
+    const { ssml } = requestSentToClient(client).input;
+    expect(ssml).not.toContain("Let's sit with this");
+    expect(ssml).not.toContain('That was');
+    expect(ssml).toContain('Quedémonos un momento con esto — yo llevo el tiempo.');
+  });
+
   it('TtsServiceError carries the canonical AUDIO_UNAVAILABLE code (Foundation §4.5)', async () => {
     const client: TtsClientLike = {
       synthesizeSpeech: vi.fn().mockRejectedValue(new Error('boom')),

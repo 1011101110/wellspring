@@ -33,11 +33,13 @@
  */
 import { randomUUID } from 'node:crypto';
 import {
+  DEFAULT_LANGUAGE,
   DEFAULT_VOICE_NAME,
   StillnessSchema,
   resolveVoiceName,
   type BandInput,
   type DevotionalFormat,
+  type LanguageTag,
   type SlotType,
   type Stillness,
   type Tradition,
@@ -319,6 +321,7 @@ export class GenerateNowOrchestrator {
     tradition: Tradition;
     translation: string;
     preferredVersionId: number;
+    language: LanguageTag;
     stillness: Stillness;
     lectio: boolean;
     liturgicalSeasonsEnabled: boolean;
@@ -335,6 +338,12 @@ export class GenerateNowOrchestrator {
     const tradition = user?.tradition ?? DEFAULT_TRADITION;
     const preferredVersionId = user?.translation_id ?? DEFAULT_VERSION_ID;
     const translation = versionIdToLabel(preferredVersionId);
+    // `language` is a users-table column with a NOT NULL 'en' default and a
+    // write path that validates against the LanguageTag enum (#314), so no
+    // re-validation here — the `??` covers only the no-user-row case, same
+    // as tradition/translation above. Consumed by the TTS step (O4 #316):
+    // the voice locale and the spoken connective phrases follow it.
+    const language = user?.language ?? DEFAULT_LANGUAGE;
     // `stillness` is a plain `text` column (see shared-contracts'
     // PreferencesResponseDataSchema comment) — an unrecognized value
     // stored out-of-band would otherwise silently fall through to Cloud
@@ -409,6 +418,7 @@ export class GenerateNowOrchestrator {
       tradition,
       translation,
       preferredVersionId,
+      language,
       stillness,
       lectio,
       liturgicalSeasonsEnabled,
@@ -560,6 +570,7 @@ export class GenerateNowOrchestrator {
       tradition,
       translation,
       preferredVersionId,
+      language,
       stillness,
       lectio,
       liturgicalSeasonsEnabled,
@@ -590,6 +601,9 @@ export class GenerateNowOrchestrator {
           // on the deployment default.
           durationPreference: undefined as DevotionalFormat | undefined,
           voiceName: DEFAULT_VOICE_NAME,
+          // Same reasoning as the voice above: no preferences row was read,
+          // so the TTS language lands on the default ('en' — O4 #316).
+          language: DEFAULT_LANGUAGE,
           ...params.preferencesOverride,
         }
       : await this.loadPreferences(userId);
@@ -700,8 +714,16 @@ export class GenerateNowOrchestrator {
     try {
       // `voiceName` is already catalog-validated by loadPreferences (#202) —
       // TtsService validates again on its own account, since it is a public
-      // entry point other callers reach directly.
-      const synthesized = await this.ttsService.synthesize(devotional, stillness, lectio, voiceName);
+      // entry point other callers reach directly. `language` (O4 #316) makes
+      // the synthesis speak the user's content language: TtsService derives
+      // the locale (zh -> cmn-CN) and re-homes the voice name from it.
+      const synthesized = await this.ttsService.synthesize(
+        devotional,
+        stillness,
+        lectio,
+        voiceName,
+        language,
+      );
       const stored = await this.audioStorage.upload(devotionalRow.id, synthesized.audio);
       await this.devotionals.setAudioObject(verifiedUserId, devotionalRow.id, stored.objectKey);
       audio = { status: 'uploaded', objectKey: stored.objectKey };
