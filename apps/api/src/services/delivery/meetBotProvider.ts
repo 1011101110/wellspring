@@ -1,4 +1,5 @@
 import type { DeliveryPreparation, DeliveryProvider } from './deliveryProvider.js';
+import { sessionUrlFor } from './sessionUrls.js';
 
 /**
  * H1 (#53) delivery provider — Epic H's Attendee/Google-Meet join-and-speak
@@ -19,11 +20,11 @@ export class MeetBotProvider implements DeliveryProvider {
   private readonly publicBaseUrl: string;
 
   constructor(publicBaseUrl: string) {
-    this.publicBaseUrl = publicBaseUrl.replace(/\/+$/, '');
+    this.publicBaseUrl = publicBaseUrl;
   }
 
   prepareDelivery(params: { sessionToken: string }): DeliveryPreparation {
-    const url = `${this.publicBaseUrl}/session/${params.sessionToken}`;
+    const url = sessionUrlFor(this.publicBaseUrl, params.sessionToken);
     return { joinUrl: url, fallbackUrl: url };
   }
 }

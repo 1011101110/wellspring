@@ -1,4 +1,5 @@
 import type { DeliveryPreparation, DeliveryProvider } from './deliveryProvider.js';
+import { sessionUrlFor } from './sessionUrls.js';
 
 /**
  * Stretch delivery provider (D4/#32, docs/22 §2.1): the join link points at
@@ -22,10 +23,12 @@ export class LiveKitRoomProvider implements DeliveryProvider {
   prepareDelivery(params: { sessionToken: string }): DeliveryPreparation {
     // The LiveKit room name (see liveKitRoomNaming.ts) is re-derived from
     // the token by routes/room.ts and the webhook handler — not embedded
-    // in this URL — keeping one source of truth for the mapping.
+    // in this URL — keeping one source of truth for the mapping. The room
+    // URL stays inline (this is its only construction site); the fallback
+    // session URL comes from the shared helper (#343).
     return {
       joinUrl: `${this.publicBaseUrl}/room/${params.sessionToken}`,
-      fallbackUrl: `${this.publicBaseUrl}/session/${params.sessionToken}`,
+      fallbackUrl: sessionUrlFor(this.publicBaseUrl, params.sessionToken),
     };
   }
 }
