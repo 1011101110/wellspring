@@ -125,6 +125,7 @@ export function registerSessionRoutes(app: FastifyInstance, deps: SessionRoutesD
         renderSessionCompletePage({
           token: result.token,
           feedbackSubmitted: result.feedbackSubmitted,
+          youVersionHighlightSaved: result.youVersionHighlightSaved,
         }),
       );
   });

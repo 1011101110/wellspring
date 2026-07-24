@@ -60,6 +60,8 @@ import {
   type FeedbackSteering,
   type SteeringDecision,
 } from '../rhythm/feedbackSteering.js';
+import { decideHighlightWeaving } from '../youversion/highlightsBridge.js';
+import type { NormalizedHighlight } from '../youversion/youVersionHighlightsClient.js';
 import { resolvePreferredInstant, selectGap } from '../calendar/gapSelection.js';
 import { TtsService, TtsServiceError } from '../tts/ttsService.js';
 import type { AudioStorage } from '../audio/audioStorage.js';
@@ -104,6 +106,25 @@ export const SESSION_EXPIRY_MS = 48 * 60 * 60 * 1000;
 
 /** Minimum calendar gap (minutes) required before inserting an 'extended'-format devotional (docs/14 §5.6, issue #94) — see runCalendarStep. */
 export const EXTENDED_FORMAT_MIN_GAP_MINUTES = 15;
+
+/**
+ * READ bridge (U4 #357): how far back to fetch highlights, and the no-repeat
+ * window. A highlighted passage that already appears in any devotional's
+ * verses within the last {@link HIGHLIGHT_NO_REPEAT_DAYS} days is not woven
+ * again — the same marked verse should not recur day after day. Deriving the
+ * "recently used" set from recent devotionals' verses (rather than a new
+ * column) keeps the guard migration-free and self-correcting.
+ */
+export const HIGHLIGHT_READ_LIMIT = 20;
+export const HIGHLIGHT_NO_REPEAT_DAYS = 30;
+
+/** The narrow READ seam the orchestrator consumes — the whole HighlightsBridge satisfies it. */
+export interface HighlightsReadBridge {
+  readRecentHighlights(
+    userId: VerifiedUserId,
+    opts: { limit?: number },
+  ): Promise<NormalizedHighlight[]>;
+}
 
 /** The duration bands in ascending length order — the ladder the P7 duration nudge steps along. */
 export const DURATION_BANDS: readonly DevotionalFormat[] = [
@@ -217,6 +238,16 @@ export interface GenerateNowOrchestratorDeps {
    * — or the flag — is byte-identical to pre-P7 behavior.
    */
   feedbackSteering?: FeedbackSteering;
+  /**
+   * U4 (#357): the YouVersion READ bridge. Consulted for standard-slot
+   * scheduled generations that also set `applyFeedbackSteering` (the same
+   * scoping as feedback steering — generate-now/examen/invite/distress never
+   * weave a highlight), and only when the read consent is on (the bridge gates
+   * that internally). Omitted — or a user who has not connected / has read
+   * consent off — is byte-identical to no highlight weaving. Fail-open: a
+   * broken read costs the weave, never the devotional.
+   */
+  highlightsBridge?: HighlightsReadBridge;
   /**
    * How the session's join link is delivered (D4/#32, docs/22 §2.1).
    * Defaults to `HostedSessionProvider` — omitting this is byte-identical
@@ -375,6 +406,13 @@ function previousIsoDate(date: string): string {
   return d.toISOString().slice(0, 10);
 }
 
+/** `n` calendar days before `date` (YYYY-MM-DD) — the no-repeat window start for highlight weaving (U4 #357). Pure, no clock read. */
+function previousIsoDateBy(date: string, n: number): string {
+  const d = new Date(`${date}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() - n);
+  return d.toISOString().slice(0, 10);
+}
+
 /**
  * Theme precedence (P7 #326 — first present wins):
  *
@@ -481,6 +519,7 @@ export class GenerateNowOrchestrator {
   private readonly calendarEvents?: CalendarEventsRepository;
   private readonly prayerIntentions?: PrayerIntentionsRepository;
   private readonly feedbackSteering?: FeedbackSteering;
+  private readonly highlightsBridge?: HighlightsReadBridge;
   private readonly deliveryProvider: DeliveryProvider;
   private readonly meetBotDispatch?: GenerateNowOrchestratorDeps['meetBotDispatch'];
 
@@ -502,6 +541,7 @@ export class GenerateNowOrchestrator {
     this.calendarEvents = deps.calendarEvents;
     this.prayerIntentions = deps.prayerIntentions;
     this.feedbackSteering = deps.feedbackSteering;
+    this.highlightsBridge = deps.highlightsBridge;
     this.deliveryProvider = deps.deliveryProvider ?? new HostedSessionProvider(this.publicBaseUrl);
     this.meetBotDispatch = deps.meetBotDispatch;
   }
@@ -938,6 +978,82 @@ export class GenerateNowOrchestrator {
   }
 
   /**
+   * Highlight weaving (phase helper — U4 #357). Returns the USFM passage to
+   * weave in as "a verse you've marked", or undefined for no weave.
+   *
+   * Scoped exactly like feedback steering: standard-slot scheduled generations
+   * that set `applyFeedbackSteering`, never distress. Precedence (the #326
+   * idiom, highlight at the BOTTOM): if inviteContext, a prayer intention, or a
+   * steered theme already shapes this devotional, the highlight yields — the
+   * pure `decideHighlightWeaving` is told `higherPrecedenceActive` and returns
+   * nothing. No-repeat: a passage already present in the last
+   * {@link HIGHLIGHT_NO_REPEAT_DAYS} days of devotionals is skipped.
+   *
+   * FAIL-OPEN: any read/derive failure returns undefined (unwoven), never
+   * throws — a YouVersion read outage costs the personalization, not the
+   * devotional. §9: logs the reason code only, never a highlight count.
+   */
+  private async deriveHighlightWeaving(args: {
+    params: GenerateNowParams;
+    slotType: SlotType;
+    verifiedUserId: VerifiedUserId;
+    date: string;
+    bands: BandInput;
+    steeredTheme: string | undefined;
+    prayerIntention: string | undefined;
+  }): Promise<string | undefined> {
+    const { params, slotType, verifiedUserId, date, bands } = args;
+    if (
+      !this.highlightsBridge ||
+      !params.applyFeedbackSteering ||
+      slotType !== 'standard' ||
+      params.distressSignalOverride ||
+      bands.distressSignal
+    ) {
+      return undefined;
+    }
+    try {
+      const higherPrecedenceActive =
+        params.inviteContext !== undefined ||
+        args.prayerIntention !== undefined ||
+        args.steeredTheme !== undefined;
+
+      const highlights = await this.highlightsBridge.readRecentHighlights(verifiedUserId, {
+        limit: HIGHLIGHT_READ_LIMIT,
+      });
+
+      // Derive the no-repeat set from recent devotionals' verses (no new
+      // column): every passage the user has already seen woven recently.
+      const sinceDate = previousIsoDateBy(date, HIGHLIGHT_NO_REPEAT_DAYS);
+      const recent = await this.devotionals.listForUserInRange(verifiedUserId, sinceDate, date);
+      const recentlyWovenPassageIds = recent.flatMap((d) => d.verses.map((v) => v.usfm));
+
+      const decision = decideHighlightWeaving(highlights, {
+        higherPrecedenceActive,
+        recentlyWovenPassageIds,
+      });
+
+      if (decision.reason === 'highlight_woven') {
+        // Reason + the woven passage id only — never a count of highlights (§9).
+        this.logger.info('Highlight woven into generation', {
+          userId: verifiedUserId,
+          date,
+          reason: decision.reason,
+          passageRef: decision.passageRef,
+        });
+      }
+      return decision.passageRef;
+    } catch (err) {
+      this.logger.error('Highlight weaving failed — continuing without it', {
+        userId: verifiedUserId,
+        date,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      return undefined;
+    }
+  }
+
+  /**
    * Audio pipeline (phase helper — Steps 3+4): synthesize, upload the MP3,
    * record it on the devotional row, and store the Stage timing manifest.
    * Best-effort as a whole: any failure degrades to the audio-unavailable
@@ -1064,6 +1180,18 @@ export class GenerateNowOrchestrator {
       bands,
       slotType,
     );
+    // U4 (#357): resolve the highlight weave AFTER theme/prayer/invite are
+    // known, so its precedence gate sees whether a higher signal already
+    // steers. Undefined for every non-scheduled/unconsented/no-highlight path.
+    const highlightedReference = await this.deriveHighlightWeaving({
+      params,
+      slotType,
+      verifiedUserId,
+      date,
+      bands,
+      steeredTheme,
+      prayerIntention,
+    });
     const genResult = await this.devotionalEngine.generate({
       bands,
       signalProvenance,
@@ -1081,6 +1209,9 @@ export class GenerateNowOrchestrator {
       // Spread-conditional so an unsteered generation's params object is
       // byte-identical to pre-P7 (the #326 zero-feedback regression pin).
       ...(steeredTheme !== undefined ? { theme: steeredTheme } : {}),
+      // Same spread-conditional posture (U4 #357): a generation with no woven
+      // highlight is byte-identical to pre-U4.
+      ...(highlightedReference !== undefined ? { highlightedReference } : {}),
     });
     const { devotional, source } = genResult;
 
