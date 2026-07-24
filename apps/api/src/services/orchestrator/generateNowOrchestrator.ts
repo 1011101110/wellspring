@@ -44,6 +44,7 @@ import {
   type BandInput,
   type DevotionalFormat,
   type LanguageTag,
+  type OpenMomentContext,
   type SlotType,
   type Stillness,
   type Tradition,
@@ -54,7 +55,11 @@ import {
   resolveTargetFormat,
   type SignalProvenance,
 } from '../gloo/instructionsBuilder.js';
-import { NO_STEERING, type FeedbackSteering, type SteeringDecision } from '../rhythm/feedbackSteering.js';
+import {
+  NO_STEERING,
+  type FeedbackSteering,
+  type SteeringDecision,
+} from '../rhythm/feedbackSteering.js';
 import { resolvePreferredInstant, selectGap } from '../calendar/gapSelection.js';
 import { TtsService, TtsServiceError } from '../tts/ttsService.js';
 import type { AudioStorage } from '../audio/audioStorage.js';
@@ -101,7 +106,12 @@ export const SESSION_EXPIRY_MS = 48 * 60 * 60 * 1000;
 export const EXTENDED_FORMAT_MIN_GAP_MINUTES = 15;
 
 /** The duration bands in ascending length order — the ladder the P7 duration nudge steps along. */
-export const DURATION_BANDS: readonly DevotionalFormat[] = ['micro', 'short', 'standard', 'extended'];
+export const DURATION_BANDS: readonly DevotionalFormat[] = [
+  'micro',
+  'short',
+  'standard',
+  'extended',
+];
 
 /**
  * One band shorter/longer, clamped at the ends (P7 #326): 2 of the last 3
@@ -114,8 +124,30 @@ export function nudgeDuration(
   direction: 'shorter' | 'longer',
 ): DevotionalFormat {
   const index = DURATION_BANDS.indexOf(format);
-  const next = direction === 'shorter' ? Math.max(0, index - 1) : Math.min(DURATION_BANDS.length - 1, index + 1);
+  const next =
+    direction === 'shorter'
+      ? Math.max(0, index - 1)
+      : Math.min(DURATION_BANDS.length - 1, index + 1);
   return DURATION_BANDS[next]!;
+}
+
+/**
+ * Resolves whether this generation actually gets an Open Moment (EPIC V #360
+ * / V4 #365) from the requested flag plus the two non-negotiable safety
+ * rules. Pure and exported so the golden-params tests can mutation-check the
+ * distress-NEVER rule directly:
+ *  - `distress` true → ALWAYS false, even when requested (a crisis moment
+ *    gets comfort, never a prompt to perform aloud — epic §5 / feature #361).
+ *  - otherwise → the requested flag as-is.
+ *
+ * The fixture-fallback rule (a fixture generation never gets an open moment —
+ * it has no live engine) is enforced at the persistence site instead, since
+ * whether a generation fell back to a fixture is only known AFTER the engine
+ * runs; this pure function covers the two inputs known up front.
+ */
+export function resolveOpenMomentEnabled(requested: boolean, distress: boolean): boolean {
+  if (distress) return false;
+  return requested;
 }
 
 /**
@@ -298,15 +330,25 @@ export interface GenerateNowParams {
    * same posture as the daily run's adaptive-rhythm evaluation.
    */
   applyFeedbackSteering?: boolean;
+  /**
+   * The Open Moment (EPIC V #360 / V4 #365): request that this generation's
+   * devotional open a bounded listening window after its question. Threaded
+   * like `lectio` (defaults false). v1 rule: set by the meet voice-agent
+   * delivery path (and, per V1, optionally the standalone floor). Two hard
+   * rules are enforced downstream in `resolveOpenMomentEnabled`, NOT here:
+   * a distress generation NEVER gets an open moment (a crisis moment gets
+   * comfort, not a prompt to perform), and a fixture-fallback generation
+   * never does (it has no live engine). Examen generations MAY (their
+   * reflective structure fits).
+   */
+  openMomentEnabled?: boolean;
 }
 
 export type GenerateNowAudioOutcome =
-  | { status: 'uploaded'; objectKey: string }
-  | { status: 'unavailable'; reason: string };
+  { status: 'uploaded'; objectKey: string } | { status: 'unavailable'; reason: string };
 
 export type GenerateNowCalendarOutcome =
-  | { eventId: string; gapStartAt: Date; gapEndAt: Date }
-  | { skipped: string };
+  { eventId: string; gapStartAt: Date; gapEndAt: Date } | { skipped: string };
 
 export interface GenerateNowResult {
   sessionUrl: string;
@@ -511,12 +553,15 @@ export class GenerateNowOrchestrator {
       // Same class of event as the unrecognized-voice fallback below: a
       // default was substituted, nothing broke — but a silently ignored
       // stored preference must be legible in the logs (#193).
-      this.logger.info('Stored translation_id is not in the stored language catalog — using the language default', {
-        userId,
-        language,
-        storedTranslationId,
-        fallbackVersionId: preferredVersionId,
-      });
+      this.logger.info(
+        'Stored translation_id is not in the stored language catalog — using the language default',
+        {
+          userId,
+          language,
+          storedTranslationId,
+          fallbackVersionId: preferredVersionId,
+        },
+      );
     }
     // Human-readable label for the model's prose framing ("Preferred Bible
     // translation: X."). `versionDisplayLabel` is the canonical
@@ -868,7 +913,9 @@ export class GenerateNowOrchestrator {
       return NO_STEERING;
     }
     try {
-      const steering = await this.feedbackSteering.deriveSteering(verifiedUserId, { now: this.now() });
+      const steering = await this.feedbackSteering.deriveSteering(verifiedUserId, {
+        now: this.now(),
+      });
       if (steering.reasons.length > 0) {
         this.logger.info('Feedback steering applied to generation params', {
           userId: verifiedUserId,
@@ -906,6 +953,7 @@ export class GenerateNowOrchestrator {
     lectio: boolean;
     voiceName: string;
     language: LanguageTag;
+    openMomentEnabled: boolean;
   }): Promise<GenerateNowAudioOutcome> {
     const { userId, verifiedUserId, devotionalId, devotional } = args;
     try {
@@ -920,6 +968,7 @@ export class GenerateNowOrchestrator {
         args.lectio,
         args.voiceName,
         args.language,
+        args.openMomentEnabled,
       );
       const stored = await this.audioStorage.upload(devotionalId, synthesized.audio);
       await this.devotionals.setAudioObject(verifiedUserId, devotionalId, stored.objectKey);
@@ -969,7 +1018,12 @@ export class GenerateNowOrchestrator {
     const verifiedUserId = asVerifiedUserId(userId);
     const slotType: SlotType = params.slotType ?? 'standard';
 
-    await this.ensureNotAlreadyGenerated(verifiedUserId, date, slotType, params.skipIdempotencyCheck);
+    await this.ensureNotAlreadyGenerated(
+      verifiedUserId,
+      date,
+      slotType,
+      params.skipIdempotencyCheck,
+    );
 
     const prefs = await this.resolveEffectivePreferences(params);
     const {
@@ -985,7 +1039,14 @@ export class GenerateNowOrchestrator {
     } = prefs;
     const { bands, signalProvenance } = await this.resolveBands(params, date, prefs);
 
-    this.logger.info('Starting generate-now', { userId, date, tradition, language, translation, slotType });
+    this.logger.info('Starting generate-now', {
+      userId,
+      date,
+      tradition,
+      language,
+      translation,
+      slotType,
+    });
 
     const prayerIntention = await this.loadPrayerIntention(verifiedUserId, date);
     const steering = await this.deriveFeedbackSteering(params, slotType, verifiedUserId, date);
@@ -1023,6 +1084,18 @@ export class GenerateNowOrchestrator {
     });
     const { devotional, source } = genResult;
 
+    // Open Moment (EPIC V #360 / V4 #365): resolve the flag (distress NEVER),
+    // then persist the generation context ONLY on a non-fixture generation (a
+    // fixture has no live engine). `openMomentContext` non-null is BOTH the
+    // per-devotional enable gate the respond route checks AND the exact
+    // language/voice/tradition/translation the live answer must speak in.
+    const openMomentEnabled =
+      resolveOpenMomentEnabled(params.openMomentEnabled ?? false, bands.distressSignal) &&
+      source !== 'fixture';
+    const openMomentContext: OpenMomentContext | null = openMomentEnabled
+      ? { language, tradition, translation, preferredVersionId, voiceName }
+      : null;
+
     // Fixture fallback stays English by decision (epic #311 §3) — the
     // corpus is English-only, and an honest English fallback beats a
     // machine-translated one. For a non-English user that means this
@@ -1031,12 +1104,15 @@ export class GenerateNowOrchestrator {
     // language-mismatch flag (O3 #315) so the demo/ops story never has to
     // infer it from the language column and the fixture flag separately.
     if (source === 'fixture' && language !== DEFAULT_LANGUAGE) {
-      this.logger.info('Fixture fallback served in English to a non-English user (epic #311 §3 decision)', {
-        userId,
-        date,
-        language,
-        fixtureLanguageMismatch: true,
-      });
+      this.logger.info(
+        'Fixture fallback served in English to a non-English user (epic #311 §3 decision)',
+        {
+          userId,
+          date,
+          language,
+          fixtureLanguageMismatch: true,
+        },
+      );
     }
 
     // Step 2: create the devotional row FIRST — once we have a validated
@@ -1054,6 +1130,7 @@ export class GenerateNowOrchestrator {
       isFixtureFallback: source === 'fixture',
       status: 'ready',
       slotType,
+      openMoment: openMomentContext,
     });
 
     // Step 3+4: TTS + upload — best-effort. Any failure degrades to the
@@ -1067,6 +1144,7 @@ export class GenerateNowOrchestrator {
       lectio,
       voiceName,
       language,
+      openMomentEnabled,
     });
 
     // Step 5: session row. Placeholder expiry (now + 48h) — may be
@@ -1091,7 +1169,8 @@ export class GenerateNowOrchestrator {
     // Auto-skipped for any non-'standard' slot (e.g. examen) and for the
     // distress check-in: "insert tomorrow's window" is a morning-slot-only
     // concept, and would otherwise insert a bogus duplicate event.
-    const skipCalendar = params.skipCalendar || slotType !== 'standard' || params.distressSignalOverride === true;
+    const skipCalendar =
+      params.skipCalendar || slotType !== 'standard' || params.distressSignalOverride === true;
     let calendarOutcome: GenerateNowCalendarOutcome | undefined;
     if (!calendarEnabled && !skipCalendar) {
       // Consent gate (issue #201, Foundation §8). Deliberately placed ABOVE
@@ -1181,13 +1260,16 @@ export class GenerateNowOrchestrator {
     /** P7 (#326): wall-clock slot preference (`HH:MM:SS`, already window-clamped) — orders candidate gaps by proximity when set. */
     preferredTimeLocal?: string;
   }): Promise<GenerateNowCalendarOutcome> {
-    const { userId, verifiedUserId, devotionalRow, sessionRow, sessionUrl, joinUrl, devotional } = params;
+    const { userId, verifiedUserId, devotionalRow, sessionRow, sessionUrl, joinUrl, devotional } =
+      params;
 
     try {
       // 6a. Load the user's Google Calendar connection.
       const connection = await this.connections!.findByProvider(verifiedUserId, 'google_calendar');
       if (!connection || connection.status !== 'active') {
-        this.logger.info('No active Google Calendar connection — skipping calendar step', { userId });
+        this.logger.info('No active Google Calendar connection — skipping calendar step', {
+          userId,
+        });
         return { skipped: 'no_active_connection' };
       }
 
@@ -1237,13 +1319,16 @@ export class GenerateNowOrchestrator {
       // nothing to search, and an inverted range is a 400 from freeBusy, so
       // skip before calling out rather than failing the whole devotional.
       if (windowBounds.degenerate) {
-        this.logger.info('Scheduling window does not exist on this date (DST transition) — skipping calendar event', {
-          userId,
-          date: tomorrowStr,
-          timezone: windowBounds.timeZone,
-          windowStart,
-          windowEnd,
-        });
+        this.logger.info(
+          'Scheduling window does not exist on this date (DST transition) — skipping calendar event',
+          {
+            userId,
+            date: tomorrowStr,
+            timezone: windowBounds.timeZone,
+            windowStart,
+            windowEnd,
+          },
+        );
         return { skipped: 'dst_degenerate_window' };
       }
 
@@ -1270,7 +1355,8 @@ export class GenerateNowOrchestrator {
       // An 'extended' (~15+ min) session — natural via bands or forced by
       // sabbathSession (docs/14 §5.6, issue #94) — stuffed into a 2-minute
       // gap would just get cut off; shorter formats have no such floor.
-      const requiredMinutes = devotional.format === 'extended' ? EXTENDED_FORMAT_MIN_GAP_MINUTES : 0;
+      const requiredMinutes =
+        devotional.format === 'extended' ? EXTENDED_FORMAT_MIN_GAP_MINUTES : 0;
       // Gap choice (P7 #326, gapSelection.ts): without a preferred time
       // this is exactly the old rule — the analyzer's longest gap, floor-
       // checked. With one (feedback-derived `preferred_time_local`,
@@ -1362,7 +1448,11 @@ export class GenerateNowOrchestrator {
             body: { meetingUrl: inserted.meetUri, devotionalId: devotionalRow.id },
             taskName: `meetbot-${devotionalRow.id}`,
           });
-          this.logger.info('MeetBot dispatch scheduled', { userId, devotionalId: devotionalRow.id, gapStart: bestGap.start });
+          this.logger.info('MeetBot dispatch scheduled', {
+            userId,
+            devotionalId: devotionalRow.id,
+            gapStart: bestGap.start,
+          });
         } catch (err) {
           this.logger.error('MeetBot dispatch scheduling failed — event still created', {
             userId,

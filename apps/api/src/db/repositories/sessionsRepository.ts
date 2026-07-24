@@ -1,3 +1,4 @@
+import type { OpenMomentStoredResponse } from '@kairos/shared-contracts';
 import type { Queryable, VerifiedUserId } from './types.js';
 
 /**
@@ -26,6 +27,13 @@ export interface SessionRow {
   joined_at: Date | null;
   completed_at: Date | null;
   duration_listened_sec: number | null;
+  /**
+   * The stored outcome of the ONE Open Moment response for this session
+   * (EPIC V #360), or null when the listener has not (yet) responded. Set
+   * once, guarded — see `markOpenMomentResponse`. Never contains the
+   * transcript (epic §5). jsonb column, migration 1722700000000.
+   */
+  open_moment_response: OpenMomentStoredResponse | null;
   created_at: Date;
 }
 
@@ -101,6 +109,28 @@ export class SessionsRepository {
        WHERE token = $1 AND user_id = $2 AND joined_at IS NULL
        RETURNING *`,
       [token, userId],
+    );
+    return result.rows[0] ?? null;
+  }
+
+  /**
+   * Records the ONE Open Moment response for this session (EPIC V #360),
+   * set-once — the `open_moment_response IS NULL` guard makes a concurrent or
+   * retried POST a no-op (returns `null`), exactly like `markJoined`/
+   * `markCompleted`. The caller treats a `null` return as "someone else won
+   * the race / already responded" and reads the existing row back to return
+   * the first result (idempotency, V2 #363). Never stores the transcript.
+   */
+  async markOpenMomentResponse(
+    userId: VerifiedUserId,
+    token: string,
+    response: OpenMomentStoredResponse,
+  ): Promise<SessionRow | null> {
+    const result = await this.db.query<SessionRow>(
+      `UPDATE sessions SET open_moment_response = $3::jsonb
+       WHERE token = $1 AND user_id = $2 AND open_moment_response IS NULL
+       RETURNING *`,
+      [token, userId, JSON.stringify(response)],
     );
     return result.rows[0] ?? null;
   }
@@ -238,10 +268,11 @@ export class SessionsRepository {
    * Scoped by userId to prevent cross-user expiry manipulation.
    */
   async updateExpiry(userId: VerifiedUserId, token: string, expiresAt: Date): Promise<void> {
-    await this.db.query(
-      `UPDATE sessions SET expires_at = $3 WHERE user_id = $1 AND token = $2`,
-      [userId, token, expiresAt],
-    );
+    await this.db.query(`UPDATE sessions SET expires_at = $3 WHERE user_id = $1 AND token = $2`, [
+      userId,
+      token,
+      expiresAt,
+    ]);
   }
 
   /** Retention: sessions rows purged 7 days after expiry (Privacy §retention). */

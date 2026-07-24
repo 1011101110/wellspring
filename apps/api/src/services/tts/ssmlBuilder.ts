@@ -16,7 +16,13 @@
  * not change when the words around them do.
  */
 
-import type { DevotionalOutput, LanguageTag, StageSection, Stillness } from '@kairos/shared-contracts';
+import type {
+  DevotionalOutput,
+  LanguageTag,
+  LiveResponse,
+  StageSection,
+  Stillness,
+} from '@kairos/shared-contracts';
 import { SPOKEN_PHRASES, type SpokenPhrases } from './spokenPhrases.js';
 
 /**
@@ -35,6 +41,14 @@ export interface LabeledSsmlSegment {
 
 /** Between-section pause — API spec §6: "<break time="1200ms"/> between sections". */
 export const SECTION_BREAK_MS = 1200;
+
+/**
+ * The response-lead-in breath (EPIC V #360 / V4 #365): a short still pause
+ * pre-synthesized so the live grounded response (Path A) has a held beat in
+ * front of it with ZERO live timing dependency — the orb has already shifted
+ * to stillness; this is the inhale before the answer. 1.5s per the story.
+ */
+export const OPEN_MOMENT_LEAD_IN_MS = 1500;
 /** Pause after each verse reading (before the spoken attribution) — API spec §6: "longer <break time="2s"/> after the verse reading". */
 export const VERSE_BREAK_MS = 2000;
 
@@ -306,8 +320,12 @@ export function buildDevotionalSsmlSegments(
   stillness: Stillness = 'off',
   lectio = false,
   language: LanguageTag = 'en',
+  openMomentEnabled = false,
 ): LabeledSsmlSegment[] {
   if (lectio) {
+    // v1 scopes the open moment to the standard/examen QUESTIONS beat; lectio
+    // is a distinct contemplative format and gets no invitation (the flag is
+    // simply ignored on this path).
     return buildLectioSsmlSegments(devotional, maxBytes, stillness, language);
   }
 
@@ -350,6 +368,23 @@ export function buildDevotionalSsmlSegments(
       text: chunk,
     });
   });
+
+  // The Open Moment invitation (EPIC V #360 / V4 #365) — spoken at the end
+  // of the reflection (the QUESTIONS beat) and BEFORE the closing prayer, so
+  // the bounded listening window opens right where the devotional's question
+  // was just asked and the prayer remains the resume point on both exits
+  // (feature #361). Labeled `open_moment`: the V3 Stage page TRIGGERS the
+  // window on this manifest marker. Emitted only when enabled AND the
+  // language has a confidently-phrased invitation (otherwise the beat falls
+  // back to no spoken invitation — spokenPhrases.ts drop rule).
+  const invitation = SPOKEN_PHRASES[language].openMomentInvitation;
+  if (openMomentEnabled && invitation) {
+    segments.push({
+      section: 'open_moment',
+      ssml: `<speak><p>${escapeSsml(invitation)}</p>${breakTag(SECTION_BREAK_MS)}</speak>`,
+      text: invitation,
+    });
+  }
 
   segments.push({
     section: 'prayer',
@@ -515,6 +550,90 @@ function splitTextToFit(text: string, maxBytes: number): string[] {
   }
   flush();
   return chunks;
+}
+
+// --- Open Moment live response + pre-synthesized closes (EPIC V #360) --------
+
+/**
+ * The three parts of a spoken live response (V2 #363), each its own SSML
+ * document so the TTS layer can synthesize + measure them independently and
+ * report per-part durations to the Stage page. Deliberately NOT keyed by
+ * `StageSection` (these are the live-response beat, not stored-manifest
+ * sections): `part` names the liturgy slot instead.
+ */
+export interface LiveResponseSsmlSegment {
+  part: 'acknowledgment' | 'verse' | 'framing';
+  ssml: string;
+  text: string;
+}
+
+/**
+ * Builds the spoken script for a validated `LiveResponse` (acknowledgment →
+ * verse (with lead-in + attribution) → framing). The verse text is the
+ * server-authoritative YouVersion bytes already on the response — this
+ * function only wraps it in SSML, never re-fetches or edits it.
+ */
+export function buildLiveResponseSsmlSegments(
+  response: LiveResponse,
+  language: LanguageTag = 'en',
+): LiveResponseSsmlSegment[] {
+  const phrases = SPOKEN_PHRASES[language];
+  const verse = response.verse;
+  return [
+    {
+      part: 'acknowledgment',
+      ssml: `<speak><p>${escapeSsml(response.acknowledgment)}</p>${breakTag(SECTION_BREAK_MS)}</speak>`,
+      text: response.acknowledgment,
+    },
+    {
+      part: 'verse',
+      ssml: `<speak><p>${spokenReferenceLeadIn(verse.reference, phrases)}</p><p>${escapeSsml(
+        verse.fetchedText,
+      )}</p>${breakTag(VERSE_BREAK_MS)}<p>${escapeSsml(
+        shortSpokenAttribution(verse.attribution),
+      )}.</p>${breakTag(SECTION_BREAK_MS)}</speak>`,
+      text: `${phrases.verseLeadIn(verse.reference)} ${verse.fetchedText} ${shortSpokenAttribution(verse.attribution)}.`,
+    },
+    {
+      part: 'framing',
+      ssml: `<speak><p>${escapeSsml(response.framing)}</p></speak>`,
+      text: response.framing,
+    },
+  ];
+}
+
+/**
+ * The pre-synthesized auxiliary clips for the Open Moment (V4 #365), so the
+ * SILENCE path (feature #361 Path B) and the response lead-in have ZERO live
+ * dependency:
+ *  - `leadIn`: the 1.5s held breath before a live response (always present).
+ *  - `silenceClose`: the warm silence-close (present only when the language
+ *    has a confidently-phrased close — spokenPhrases.ts drop rule; omitted
+ *    otherwise, in which case Path B falls straight into the closing prayer).
+ *
+ * These are synthesized + stored separately (V3 stage-playback owns swapping
+ * them in); this builder is the single source of their SSML.
+ */
+export interface OpenMomentAuxSegments {
+  leadIn: { ssml: string; text: string };
+  silenceClose?: { ssml: string; text: string };
+}
+
+export function buildOpenMomentAuxSsmlSegments(
+  language: LanguageTag = 'en',
+): OpenMomentAuxSegments {
+  const close = SPOKEN_PHRASES[language].openMomentSilenceClose;
+  return {
+    leadIn: { ssml: `<speak>${breakTag(OPEN_MOMENT_LEAD_IN_MS)}</speak>`, text: '' },
+    ...(close
+      ? {
+          silenceClose: {
+            ssml: `<speak><p>${escapeSsml(close)}</p>${breakTag(SECTION_BREAK_MS)}</speak>`,
+            text: close,
+          },
+        }
+      : {}),
+  };
 }
 
 /** Word-boundary fallback for a single chunk that exceeds `maxBytes` even alone. */

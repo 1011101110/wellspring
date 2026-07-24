@@ -31,6 +31,14 @@ export const STAGE_SECTIONS = [
   'stillness',
   'reflection',
   'prayer',
+  // The Open Moment window (EPIC V #360 / V4 #365) — the spoken invitation
+  // that ends the QUESTIONS beat, marking the start of the bounded listening
+  // window. The V3 Stage page TRIGGERS the window on this marker (opens the
+  // mic + shows the breathing orb) and shows NO caption during it — the
+  // screen belongs to the question + orb, not a caption chip (#361 step 2).
+  // Additive: pre-#360 manifests simply never carry this section, so every
+  // existing devotional's manifest is byte-identical.
+  'open_moment',
 ] as const;
 
 export const StageSectionSchema = z.enum(STAGE_SECTIONS);

@@ -14,7 +14,13 @@
  * stable prompt.
  */
 
-import type { BandInput, DevotionalFormat, LanguageTag, SlotType, Tradition } from '@kairos/shared-contracts';
+import type {
+  BandInput,
+  DevotionalFormat,
+  LanguageTag,
+  SlotType,
+  Tradition,
+} from '@kairos/shared-contracts';
 import { DEFAULT_LANGUAGE } from '@kairos/shared-contracts';
 import {
   getLiturgicalSeason,
@@ -336,11 +342,11 @@ const TRADITION_FRAMING: Record<Tradition, string> = {
   mainline:
     'Tradition: mainline. Frame the devotional with a reflective, socially-engaged, and intellectually open tone that welcomes questions and nuance. Avoid triumphalist or certainty-heavy language; make room for mystery and doubt as part of faith.',
   anglican:
-    "Tradition: anglican. Frame the devotional in the idiom of common prayer: the Book of Common Prayer, the daily office of Morning and Evening Prayer, the collects, the psalms read in course, and the church year are the native furniture here — formation happens by praying shared, inherited words repeatedly over a lifetime, not by novelty or intensity. Hold the via media honestly: this tradition carries both a catholic inheritance (sacramental life, the creeds, the Church across centuries) and a reformed inheritance (Scripture in the vernacular, salvation by grace), and it declines to resolve that tension in either direction. Avoid language that presumes Roman magisterial authority, and avoid revivalist or altar-call idiom and a purely spontaneous prayer register — a collected, measured, prayer-book cadence is closer to home.",
+    'Tradition: anglican. Frame the devotional in the idiom of common prayer: the Book of Common Prayer, the daily office of Morning and Evening Prayer, the collects, the psalms read in course, and the church year are the native furniture here — formation happens by praying shared, inherited words repeatedly over a lifetime, not by novelty or intensity. Hold the via media honestly: this tradition carries both a catholic inheritance (sacramental life, the creeds, the Church across centuries) and a reformed inheritance (Scripture in the vernacular, salvation by grace), and it declines to resolve that tension in either direction. Avoid language that presumes Roman magisterial authority, and avoid revivalist or altar-call idiom and a purely spontaneous prayer register — a collected, measured, prayer-book cadence is closer to home.',
   orthodox:
     "Tradition: orthodox. Frame the devotional within Eastern Orthodox Christian life: the Church Fathers as living teachers rather than historical citations, theosis (union with God, becoming by grace what Christ is by nature) as the horizon of the Christian life rather than merely forgiveness or self-improvement, the Jesus Prayer and the hesychast tradition of stillness and watchfulness of the heart, icons as windows rather than decoration, fasting as ordinary practice, and the Theotokos and the saints as present company. Assume an ascetic-but-not-joyless register: repentance here means turning toward God, never self-loathing. Note that the Orthodox Old Testament follows the Septuagint, so both its canon and some of its Psalm numbering differ from Western Bibles — do not assert that any Western canon or numbering is simply 'the' Bible, and prefer references that read the same in both. Avoid Western-scholastic framings (merit, satisfaction/penal atonement mechanics), avoid presuming papal authority, and avoid revivalist or altar-call idiom.",
   general:
-    'Tradition: general (default). Use warm, ecumenical, broadly-Christian language that does not presume any one tradition\'s vocabulary, doctrine, or worship style. Avoid denomination-specific terms, sacraments, or altar-call language.',
+    "Tradition: general (default). Use warm, ecumenical, broadly-Christian language that does not presume any one tradition's vocabulary, doctrine, or worship style. Avoid denomination-specific terms, sacraments, or altar-call language.",
 };
 
 /**
@@ -368,7 +374,7 @@ const ORTHODOX_CALENDAR_CAVEAT =
  * hardcoded constant. It now defers to the provenance markers on the band list.
  */
 const EXAMEN_STRUCTURE_INSTRUCTION =
-  'This is an EVENING EXAMEN, not an expository devotional. Structure it as a reflective, unhurried walk through four movements: (1) gratitude — invite noticing one specific good thing from today; (2) honest review — name today\'s texture plainly and without shame, e.g. acknowledging a full or heavy day rather than glossing over it, drawing ONLY on the signals below that are real observations and never on one marked NOT OBSERVED (an honest review cannot be built from a placeholder); (3) grace — where might God have been present in it, even quietly, even unnoticed until now; (4) tomorrow — a brief, gentle handing-over of what\'s next, not a to-do list. Still choose ONE specific Bible reference that fits this reflective posture (not an exhortation-heavy one) and weave it into the review/grace movements rather than opening with it.';
+  "This is an EVENING EXAMEN, not an expository devotional. Structure it as a reflective, unhurried walk through four movements: (1) gratitude — invite noticing one specific good thing from today; (2) honest review — name today's texture plainly and without shame, e.g. acknowledging a full or heavy day rather than glossing over it, drawing ONLY on the signals below that are real observations and never on one marked NOT OBSERVED (an honest review cannot be built from a placeholder); (3) grace — where might God have been present in it, even quietly, even unnoticed until now; (4) tomorrow — a brief, gentle handing-over of what's next, not a to-do list. Still choose ONE specific Bible reference that fits this reflective posture (not an exhortation-heavy one) and weave it into the review/grace movements rather than opening with it.";
 
 /**
  * Lectio divina structure (docs/14 §5.4, issue #92) — the historic
@@ -514,6 +520,75 @@ export function buildInstructions(params: BuildInstructionsParams): string {
     SCRIPTURE_SOURCING_RULE,
     THEOLOGICAL_SAFETY_SPEC,
     'Output must conform to the DevotionalOutput JSON schema provided in this request (format, theme, verses, devotionalBody, cardSummary, prayer, and journalingPrompt/actionStep where applicable for this format).',
+  ].filter((section): section is string => section !== null);
+
+  return sections.join('\n\n');
+}
+
+// --- Open Moment live response (EPIC V #360 / V2 #363) -----------------------
+
+export interface BuildOpenMomentInstructionsParams {
+  tradition: Tradition;
+  /** Translation label for the model's prose framing, e.g. "BSB". */
+  translation: string;
+  /** Content language for the acknowledgment/framing (Scripture still comes only from get_bible_verse). Defaults to 'en'. */
+  language?: LanguageTag;
+  /**
+   * The distress heuristics flagged the spoken transcript (epic §4): force
+   * the 988 comfort variant — a gentle-comfort verse and the (English) 988
+   * resource line, framed in the listener's language for non-en. Runs the
+   * SAME tested 988 machinery the devotional distress clause uses.
+   */
+  distressComfort?: boolean;
+}
+
+/**
+ * The single spoken invitation used in the QUESTIONS beat, reproduced here
+ * only so the model knows what the listener was just asked (it must respond
+ * to a real invitation, not invent a new question). NOT the copy the TTS
+ * speaks — that lives in spokenPhrases.ts (V4), localized; this is the
+ * English gist for the model's context only.
+ */
+const OPEN_MOMENT_INVITATION_GIST =
+  'The listener was just invited, aloud, to speak whatever they are carrying — or to keep silence.';
+
+/**
+ * The fixed liturgical grammar (epic §3: "Liturgy, not chat"). This is the
+ * whole behavioral contract of the response: three slots, nothing else, and
+ * the acknowledgment inherits the prayerIntention non-echo doctrine
+ * (acknowledge, never analyze/advise/echo the person's words back).
+ */
+const OPEN_MOMENT_LITURGY_SPEC = `You are responding to ONE thing a listener said aloud during a spoken devotional. This is a LITURGY, not a conversation: produce exactly three parts and nothing else.
+1. acknowledgment — ONE short sentence that gently honors what they shared. You are acknowledging and praying WITH them, never analyzing, advising, diagnosing, "solving", or reflecting their own words back to them. Do NOT quote or paraphrase their specific words, names, or details; respond to the human weight underneath, not the content. A single quiet "you are not carrying this alone"-shaped sentence is the whole job. Never ask a question back — there is no follow-up; the devotional closes after this.
+2. verse — choose ONE short, fitting Bible passage and fetch it with get_bible_verse. Never quote Scripture from memory.
+3. framing — ONE short, prayerful sentence that hands the moment gently into the closing prayer.
+Keep the acknowledgment at most 180 characters and the framing at most 240 characters. Warm, unhurried, low-volume; companionship, not correction.`;
+
+/**
+ * Builds the `instructions` string for the Open Moment response turn (V2
+ * #363). Deliberately reuses — verbatim — the devotional pipeline's
+ * `TRADITION_FRAMING`, `THEOLOGICAL_SAFETY_SPEC`, `SCRIPTURE_SOURCING_RULE`,
+ * `languageDirective`, and the 988 machinery, so the live response is held
+ * to exactly the same theological + anti-hallucination bar as the
+ * devotional it is embedded in (epic §1-§4). Pure, like `buildInstructions`.
+ */
+export function buildOpenMomentInstructions(params: BuildOpenMomentInstructionsParams): string {
+  const language: LanguageTag = params.language ?? DEFAULT_LANGUAGE;
+  const distressComfort = params.distressComfort ?? false;
+
+  const sections = [
+    "You are Wellspring, the voice of a calendar-scheduled spoken devotional. The devotional has just reached its question and opened a brief, bounded listening window. You never see the listener's name, calendar, or health data — only what they chose to say aloud, below.",
+    OPEN_MOMENT_INVITATION_GIST,
+    TRADITION_FRAMING[params.tradition],
+    `Preferred Bible translation: ${params.translation}.`,
+    language === DEFAULT_LANGUAGE ? null : languageDirective(language),
+    OPEN_MOMENT_LITURGY_SPEC,
+    distressComfort
+      ? `What the listener said carries signs of distress or crisis. Lower the volume further: choose a gentle-comfort passage (never an exhortation or a "try harder" text), keep the acknowledgment especially tender and unalarmed, and include this resource once, gently, in the framing: in the US, you can call or text 988 (the Suicide & Crisis Lifeline) anytime for free, confidential support. Offer it as a quiet option, without diagnosing or dramatizing.${language === DEFAULT_LANGUAGE ? '' : distressResourceLanguageNote(language)}`
+      : null,
+    SCRIPTURE_SOURCING_RULE,
+    THEOLOGICAL_SAFETY_SPEC,
+    'Output must conform to the LiveResponse JSON schema provided in this request (acknowledgment, verse{usfm, versionId, reference, fetchedText, attribution}, framing). Respond with ONLY that JSON — no prose outside it.',
   ].filter((section): section is string => section !== null);
 
   return sections.join('\n\n');
