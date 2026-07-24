@@ -18,11 +18,13 @@
  *  - No verse TEXT ever appears in a log line here — only the passage/bible
  *    IDENTIFIERS (passageId/bibleId), which are references, not Scripture.
  *
- * ⚠️ MUST-CONFIRM (U1 — see youVersionHighlightsClient.ts header for the full
- * list): the POST body/response shapes, whether writes upsert, whether reads
- * are all-user or app-scoped, and the color format. This bridge is written so
- * it is correct under EITHER read scope — the honesty of the copy it feeds to
- * the engine (instructionsBuilder) never claims we saw the user's wider Bible.
+ * READ signal (live-verified 2026-07-24): there is NO list-all endpoint — the
+ * only read is a per-passage lookup (`GET /v1/highlights?bible_id=&passage_id=`).
+ * So the read bridge is `isPassageHighlighted(userId, bibleId, passageId)`: the
+ * signal is "the verse we're about to weave is one they've already marked",
+ * used to acknowledge "a verse you've marked" — never to surface/rank the
+ * user's wider highlighting. The copy the engine gets (instructionsBuilder)
+ * speaks only to that one marked passage.
  */
 
 import type {
@@ -108,7 +110,7 @@ const consoleLogger: HighlightsBridgeLogger = {
 };
 
 export interface HighlightsBridgeDeps {
-  client: Pick<YouVersionHighlightsClient, 'createHighlight' | 'listHighlights'>;
+  client: Pick<YouVersionHighlightsClient, 'createHighlight' | 'getHighlight'>;
   connections: HighlightsConnectionsRepository;
   preferences: HighlightsPreferencesRepository;
   devotionals: HighlightsDevotionalsRepository;
@@ -168,17 +170,20 @@ export const NO_HIGHLIGHT_WEAVING: HighlightWeavingDecision = Object.freeze({
 });
 
 /**
- * Pure selection of ONE highlighted passage to weave in (U4 #357), mirroring
+ * Pure selection of ONE marked passage to acknowledge (U4 #357), mirroring
  * `decideSteering`/`resolveSteeredTheme`: no I/O, no clock, every branch
  * directly mutation-checkable.
+ *
+ * `highlights` here is the subset of candidate passages the orchestrator has
+ * CONFIRMED are highlighted (via `isPassageHighlighted`), newest-first.
  *
  * Rules, in order:
  *  1. A higher-precedence signal is active -> weave nothing (the highlight is
  *     the lowest rung; it never displaces invite/prayer/theme).
- *  2. No highlights at all -> nothing (only-when-real: never fabricate a mark).
- *  3. The first highlight whose passage was NOT woven within the no-repeat
- *     window is chosen (highlights arrive newest-first from the client's
- *     recency ordering); if every candidate was recently woven, nothing.
+ *  2. No confirmed-highlighted candidate -> nothing (only-when-real: never
+ *     fabricate a mark).
+ *  3. The first candidate whose passage was NOT woven within the no-repeat
+ *     window is chosen; if every candidate was recently woven, nothing.
  */
 export function decideHighlightWeaving(
   highlights: readonly NormalizedHighlight[],
@@ -201,9 +206,10 @@ export function decideHighlightWeaving(
 // --- The bridge -------------------------------------------------------------
 
 interface ReadCacheEntry {
-  /** ISO date (YYYY-MM-DD) the fetch was made on — one live fetch per user per day. */
+  /** ISO date (YYYY-MM-DD) the lookups were made on — memoized per user per day. */
   date: string;
-  highlights: NormalizedHighlight[];
+  /** Per-passage highlight status memo (key `${bibleId}:${passageId}`). */
+  passages: Map<string, boolean>;
 }
 
 export class HighlightsBridge {
@@ -273,9 +279,8 @@ export class HighlightsBridge {
       const createInput: Omit<CreateHighlightInput, 'bearer'> = {
         bibleId,
         passageId,
-        // Warm default color (⚠️ must-confirm U1) — a soft amber in the
-        // design system's terracotta family; the mark still lands if the API
-        // ignores it.
+        // Design-system terracotta, sent as the API's required 6-hex `color`
+        // (live-verified 2026-07-24).
         color: HIGHLIGHT_DEFAULT_COLOR,
       };
 
@@ -316,62 +321,60 @@ export class HighlightsBridge {
   }
 
   /**
-   * READ (U4 #357): the user's recent highlights, gated on
-   * `yv_read_highlights`, normalized and cached one fetch per user per day.
-   * Returns `[]` for: consent off, no connection, or any best-effort failure —
-   * the personalization signal simply degrades to "no highlights".
+   * READ (U4 #357): is ONE passage highlighted for the user? Gated on
+   * `yv_read_highlights`, memoized per user/passage per day. Returns `false`
+   * for: consent off, no connection, or any best-effort failure — the
+   * personalization signal simply degrades to "not highlighted".
    *
-   * §9: the return value is a plain list for the engine to USE. It is never
-   * counted or displayed as a tally, and this method emits no count in any
-   * log.
-   *
-   * HONESTY (⚠️ must-confirm U1 read scope): the copy that consumes this
-   * (instructionsBuilder highlight framing) is written to be true whether the
-   * API returns the user's whole Bible or only Wellspring-created highlights —
-   * it never implies we saw their wider activity.
+   * There is NO list-all endpoint (live-verified 2026-07-24), so the read
+   * signal is exactly "the verse we're about to weave is one they marked",
+   * never a survey of the user's wider highlighting. §9: returns a plain
+   * boolean the engine USES; it is never counted, and this method emits no
+   * tally in any log.
    */
-  async readRecentHighlights(
+  async isPassageHighlighted(
     userId: VerifiedUserId,
-    opts: { limit?: number } = {},
-  ): Promise<NormalizedHighlight[]> {
-    const limit = opts.limit ?? 20;
+    bibleId: number,
+    passageId: string,
+  ): Promise<boolean> {
     try {
       const prefs = await this.deps.preferences.get(userId);
-      if (!prefs?.yv_read_highlights) return [];
+      if (!prefs?.yv_read_highlights) return false;
 
-      const cached = this.readCache.get(userId);
       const today = this.today();
-      if (cached && cached.date === today) {
-        return cached.highlights.slice(0, limit);
+      const key = `${bibleId}:${passageId}`;
+      let cached = this.readCache.get(userId);
+      if (!cached || cached.date !== today) {
+        // Roll the memo over at the day boundary (bounds it + respects rate limits).
+        cached = { date: today, passages: new Map<string, boolean>() };
+        this.readCache.set(userId, cached);
       }
+      const memo = cached.passages.get(key);
+      if (memo !== undefined) return memo;
 
       const connection = await this.deps.connections.get(userId);
-      if (!connection) return [];
+      if (!connection) return false;
 
       const bearer = await this.decryptAccessToken(connection);
-      let result = await this.deps.client.listHighlights({ bearer, pageSize: 100 });
+      let result = await this.deps.client.getHighlight({ bearer, bibleId, passageId });
       if (!result.ok && result.status === 401) {
         const freshBearer = await this.refreshAndPersist(userId, connection);
         if (freshBearer) {
-          result = await this.deps.client.listHighlights({ bearer: freshBearer, pageSize: 100 });
+          result = await this.deps.client.getHighlight({ bearer: freshBearer, bibleId, passageId });
         }
       }
 
-      const highlights = result.ok ? sortByRecency(result.data) : [];
-      // Cache even an empty result: a consented user with genuinely no
-      // highlights should not be re-fetched all day. A failed fetch is NOT
-      // cached (result.ok false leaves `highlights` empty but we still store —
-      // acceptable: a transient failure costs at most one day's signal, and
-      // avoids hammering a struggling provider). We store the fetched-today
-      // marker regardless so rate limits are respected.
-      this.readCache.set(userId, { date: today, highlights });
-      return highlights.slice(0, limit);
+      const highlighted = result.ok ? result.data : false;
+      // Memoize a successful lookup only — a failed fetch is not cached, so a
+      // transient outage can recover on the next passage/run.
+      if (result.ok) cached.passages.set(key, highlighted);
+      return highlighted;
     } catch (err) {
-      this.logger.error('readRecentHighlights failed — no highlight signal this run', {
+      this.logger.error('isPassageHighlighted failed — no highlight signal for this passage', {
         userId,
         error: err instanceof Error ? err.message : String(err),
       });
-      return [];
+      return false;
     }
   }
 
@@ -452,16 +455,6 @@ export class HighlightsBridge {
     });
     return outcome;
   }
-}
-
-/** Newest-first by `createdAt` when present; items without a timestamp keep their arrival order after the timestamped ones. */
-function sortByRecency(highlights: NormalizedHighlight[]): NormalizedHighlight[] {
-  return [...highlights].sort((a, b) => {
-    if (a.createdAt && b.createdAt) return b.createdAt.localeCompare(a.createdAt);
-    if (a.createdAt) return -1;
-    if (b.createdAt) return 1;
-    return 0;
-  });
 }
 
 /** The narrow WRITE seam session completion depends on — keeps sessionService ignorant of the whole bridge. */

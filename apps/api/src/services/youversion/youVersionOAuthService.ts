@@ -8,38 +8,44 @@
  * endpoints on `api.youversion.com/auth` and never touches the passage API,
  * and vice-versa.
  *
- * YouVersion's sign-in flow is NON-STANDARD (per developers.youversion.com/
- * sign-in-apis, read 2026-07-24). It is NOT a plain OAuth code flow — the
- * authorize step does not hand us a `code`; it hands us the signed-in user's
- * identity, and a SECOND server call resolves that into a `code`. All three
- * API calls are on the SAME host, `https://api.youversion.com`
+ * YouVersion's sign-in flow is NON-STANDARD (LIVE-VERIFIED against
+ * api.youversion.com, 2026-07-24 — this supersedes the partially-wrong public
+ * docs). It is NOT a plain OAuth code flow — the authorize step does not hand
+ * us a `code`; after consent it redirects to our callback with ONLY `state`,
+ * and a SECOND server call resolves that state into a `code`. All three API
+ * calls are on the SAME host, `https://api.youversion.com`
  * (`login.youversion.com` is only where the user visually signs in, not an
  * API host).
  *
  *   1. Authorize  GET  https://api.youversion.com/auth/authorize
  *                      ?response_type=code&client_id=&redirect_uri=&scope=
  *                      &state=&nonce=&code_challenge=&code_challenge_method=S256
- *        The user signs in, then YouVersion 303-redirects to our redirect_uri
- *        with query params { yvp_id, state, user_name, profile_picture,
- *        user_email } — NOT a `code`.
- *   2. Resolve    GET  https://api.youversion.com/auth/callback
- *                      ?state=&yvp_id=&user_name=&user_email=&profile_picture=
- *        YouVersion responds 302 with Location:
- *        {our redirect_uri}?code=&scope=&state=. We read the `code` from the
- *        Location header WITHOUT following the redirect (it points back at our
- *        own callback and would loop). See `resolveAuthorizationCode`.
+ *        The user signs in and consents, then YouVersion redirects to our
+ *        redirect_uri with ONLY `state` (plus `error` on denial). The doc's
+ *        `yvp_id`/`user_name`/`user_email`/`profile_picture` params do NOT
+ *        arrive (live-verified 2026-07-24).
+ *   2. Resolve    GET  https://api.youversion.com/auth/callback?state=
+ *        With STATE ONLY (live-verified 2026-07-24), YouVersion responds 302
+ *        with Location: {our redirect_uri}?code=&scope=&state=. We read the
+ *        `code` from the Location header WITHOUT following the redirect (it
+ *        points back at our own callback and would loop). See
+ *        `resolveAuthorizationCode`.
  *   3. Token      POST https://api.youversion.com/auth/token (server-to-server)
  *                      grant_type=authorization_code, code, code_verifier,
  *                      redirect_uri, client_id[, client_secret]
+ *        Returns `access_token` AND `id_token` (both JWTs), plus refresh_token,
+ *        expires_in, scope.
  *
- * Identity: there is NO `/auth/me`. The connected account's identity comes
- * straight from the step-1 redirect params: `youversion_user_id` = `yvp_id`,
- * `display_name` = `user_name`. (The `access_token`/`id_token` JWTs also carry
- * `yvp_id/sub/email/name/profile_picture` claims, issuer
- * `https://api.youversion.com`, aud = app_key, jwks
- * `https://api.youversion.com/.well-known/jwks.json`. Verifying the id_token
- * signature via JWKS is a hardening follow-up, NOT done here: the token
- * reached us over TLS directly from the token endpoint.)
+ * Identity comes from the `id_token` JWT (live-verified 2026-07-24): there is
+ * NO `/auth/me`, and the step-1 redirect carries no user info. The token
+ * response's `id_token` (fall back to `access_token`) decodes to claims `sub`
+ * (= the user's yvp id), `name`, `email`, `profile_picture`, `client_id`,
+ * `iss=https://api.youversion.com/auth/token`. So `youversion_user_id` =
+ * `sub` (or a `yvp_id` claim if present), `display_name` = `name`. We decode
+ * the payload WITHOUT verifying the signature (`decodeJwtPayload`); JWKS
+ * signature verification (https://api.youversion.com/.well-known/jwks.json) is
+ * a hardening follow-up — the token reached us over TLS directly from the
+ * token endpoint.
  *
  * PKCE (S256): the flow mints a random `code_verifier`, sends only its SHA-256
  * challenge to the authorize endpoint, and replays the verifier server-side at
@@ -47,12 +53,13 @@
  * with `node:crypto` (`randomBytes`/`createHash`), the same primitive
  * `routes/connect.ts` already uses to mint opaque state tokens.
  *
- * ⚠️ MUST-CONFIRM (owner pass, U1 — kairos-devotional#354):
- *   - The exact highlights SCOPE string is UNKNOWN. `YOUVERSION_DEFAULT_SCOPES`
- *     below defaults to the ONLY documented example (`openid profile email`);
- *     U1 appends the real highlights scope as a one-line change.
- *   - No token-REVOKE endpoint is documented. Disconnect deletes our stored
- *     tokens (best-effort revoke wired only once an endpoint is confirmed).
+ * SCOPE: `YOUVERSION_DEFAULT_SCOPES` requests `highlights` alongside
+ * `openid profile email` — live-verified 2026-07-24 that `/auth/authorize`
+ * accepts the `highlights` scope and that WITHOUT it `/v1/highlights` returns
+ * 403 "User has not granted highlights permissions."
+ *
+ * ⚠️ Follow-up: no token-REVOKE endpoint is documented. Disconnect deletes our
+ * stored tokens (best-effort revoke wired only once an endpoint is confirmed).
  */
 
 import { createHash, randomBytes } from 'node:crypto';
@@ -60,15 +67,14 @@ import { createHash, randomBytes } from 'node:crypto';
 /**
  * The OAuth scope requested at authorize time.
  *
- * ⚠️ MUST-CONFIRM (U1): the exact scope that grants highlight read/write is
- * not documented anywhere we can verify. This defaults to the single scope
- * example the sign-in docs show (`openid profile email`) so the flow is
- * well-formed and the app deploys; U1's owner pass replaces/extends this one
- * constant with the real highlights scope once confirmed. Kept as a single
- * exported constant precisely so that is a one-line change with one clear
- * place to make it.
+ * Live-verified 2026-07-24: `/auth/authorize` accepts `highlights`, and a
+ * token minted WITHOUT it gets 403 "User has not granted highlights
+ * permissions." from `/v1/highlights`. So we request `highlights` alongside
+ * the OIDC identity scopes. Whether a highlights-granted token actually
+ * returns 200 from `/v1/highlights` is the coordinator's live retest after
+ * deploy — not asserted here.
  */
-export const YOUVERSION_DEFAULT_SCOPES = 'openid profile email';
+export const YOUVERSION_DEFAULT_SCOPES = 'openid profile email highlights';
 
 const AUTHORIZE_URL = 'https://api.youversion.com/auth/authorize';
 const RESOLVE_URL = 'https://api.youversion.com/auth/callback';
@@ -126,6 +132,12 @@ export interface PkcePair {
 export interface ExchangedTokens {
   accessToken: string;
   /**
+   * The OIDC `id_token` JWT — the source of the connected account's identity
+   * (`sub`/`name`/…), decoded by the route with `decodeJwtPayload`. Null when
+   * the token response omits it (fall back to decoding `accessToken`).
+   */
+  idToken: string | null;
+  /**
    * YouVersion's token endpoint DOES issue a refresh token, so this is
    * normally present. Kept nullable (stored as SQL NULL) so a response that
    * omits it is handled gracefully rather than throwing.
@@ -138,20 +150,39 @@ export interface ExchangedTokens {
 }
 
 /**
- * Params for `resolveAuthorizationCode` — exactly the identity fields
- * YouVersion hands us on the step-1 authorize redirect.
+ * Params for `resolveAuthorizationCode`. Live-verified 2026-07-24: the resolve
+ * call needs ONLY the `state` — YouVersion's authorize redirect carries no
+ * identity fields to replay.
  */
 export interface ResolveCodeParams {
   state: string;
-  yvpId: string;
-  userName: string;
-  userEmail: string;
-  profilePicture: string;
 }
 
 /** base64url-encode without padding — RFC 7636 PKCE / RFC 4648 §5. */
 function base64Url(buf: Buffer): string {
   return buf.toString('base64url');
+}
+
+/**
+ * Decodes a JWT's payload (middle segment) WITHOUT verifying its signature.
+ *
+ * Splits on '.', base64url-decodes the payload segment, and JSON-parses it.
+ * This is a plain claims read — there is NO signature verification here; JWKS
+ * signature verification (https://api.youversion.com/.well-known/jwks.json) is
+ * a hardening follow-up. It is safe as-is because the token reached us over
+ * TLS directly from `/auth/token`, not through the browser.
+ */
+export function decodeJwtPayload(jwt: string): Record<string, unknown> {
+  const parts = jwt.split('.');
+  if (parts.length < 2 || !parts[1]) {
+    throw new Error('decodeJwtPayload: not a JWT (expected header.payload.signature)');
+  }
+  const json = Buffer.from(parts[1], 'base64url').toString('utf8');
+  const parsed = JSON.parse(json) as unknown;
+  if (!parsed || typeof parsed !== 'object') {
+    throw new Error('decodeJwtPayload: JWT payload is not a JSON object');
+  }
+  return parsed as Record<string, unknown>;
 }
 
 export class YouVersionOAuthService {
@@ -207,11 +238,10 @@ export class YouVersionOAuthService {
   /**
    * Resolves the step-1 authorize redirect into an authorization `code`.
    *
-   * YouVersion's authorize redirect does NOT carry a `code` — it carries the
-   * signed-in user's identity ({ yvp_id, state, user_name, user_email,
-   * profile_picture }). This second call replays that identity to
-   * `GET api.youversion.com/auth/callback`, and YouVersion answers with a
-   * 302 whose `Location` header is `{our redirect_uri}?code=&scope=&state=`.
+   * Live-verified 2026-07-24: YouVersion's authorize redirect carries ONLY
+   * `state` (no `code`, no identity). This second call replays that state to
+   * `GET api.youversion.com/auth/callback?state=`, and YouVersion answers with
+   * a 302 whose `Location` header is `{our redirect_uri}?code=&scope=&state=`.
    *
    * We use `redirect: 'manual'` and read the `code` off the `Location` header
    * WITHOUT following it: the Location points back at our own callback and
@@ -221,10 +251,6 @@ export class YouVersionOAuthService {
   async resolveAuthorizationCode(params: ResolveCodeParams): Promise<string> {
     const url = new URL(RESOLVE_URL);
     url.searchParams.set('state', params.state);
-    url.searchParams.set('yvp_id', params.yvpId);
-    url.searchParams.set('user_name', params.userName);
-    url.searchParams.set('user_email', params.userEmail);
-    url.searchParams.set('profile_picture', params.profilePicture);
 
     const response = await this.fetchImpl(url.toString(), {
       method: 'GET',
@@ -314,6 +340,7 @@ export class YouVersionOAuthService {
 
     const data = (await response.json()) as {
       access_token?: string;
+      id_token?: string;
       refresh_token?: string;
       /** YouVersion may send this as a number OR a numeric string. */
       expires_in?: number | string;
@@ -334,6 +361,7 @@ export class YouVersionOAuthService {
 
     return {
       accessToken: data.access_token,
+      idToken: data.id_token ?? null,
       refreshToken: data.refresh_token ?? null,
       expiresAt: Number.isFinite(expiresInSec) ? Date.now() + expiresInSec * 1000 : null,
       scopes: data.scope ?? YOUVERSION_DEFAULT_SCOPES,

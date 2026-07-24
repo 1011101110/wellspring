@@ -10,42 +10,29 @@
  *   - THIS file                 read/write a specific user's highlights, keyed
  *                               by that user's OAuth **Bearer** access token.
  *
- * Live-verified ground truth (epic #353, 2026-07-24): `GET /v1/highlights`
- * with ONLY our `X-YVP-App-Key` and no Bearer returns 401 "Missing or invalid
- * Bearer token" — the endpoint exists and requires the user's OAuth token. So
- * every call here sends BOTH headers: the app key (identifies the app) and the
- * user's Bearer (identifies + authorizes the person).
+ * Live-verified ground truth (epic #353, 2026-07-24): every `/v1/highlights`
+ * call needs BOTH headers — `Authorization: Bearer <user access token>` AND
+ * `X-YVP-App-Key: <app key>`. Bearer alone returns 401 "Failed to resolve API
+ * Key"; the app key identifies the app, the Bearer identifies + authorizes the
+ * person.
  *
- * ======================================================================
- * ⚠️ MUST-CONFIRM SCHEMA ASSUMPTIONS (owner pass, U1 — #354)
- * These are built against the SDK's URLBuilder paths + the VOTD probe, but the
- * exact request/response bodies are NOT publicly documented. Each is isolated
- * to one spot so U1 pins it as a one-line change:
+ * LIVE-VERIFIED shapes (2026-07-24 — these supersede the old public-doc
+ * guesses):
  *
- *  1. WRITE body shape — `POST /v1/highlights` with a JSON body of
- *     `{ bible_id, passage_id, color? }`. `bible_id`/`passage_id` are our
- *     `versionId`/`usfm` (same identifier space — VOTD returned
- *     passage_id "1CO.10.13", plain USFM). `color` is a guess (see COLOR).
- *  2. WRITE idempotency — whether a repeat POST upserts or duplicates is
- *     UNKNOWN. We do not rely on it either way: the bridge guards with its own
- *     `yv_highlight_written_at` stamp before ever calling create.
- *  3. READ list shape — `GET /v1/highlights?bible_id=&page_size=` returns a
- *     paginated envelope `{ data: [...] }` (assumed to mirror `/v1/bibles`,
- *     which the passage client already treats as `{ data }`). Each item is
- *     assumed to carry `passage_id` / `bible_id` (+ an optional created
- *     timestamp). `normalizeHighlight` is the ONE place that reads those field
- *     names, tolerant of the common alternates.
- *  4. READ scope — whether `GET /v1/highlights` returns the user's ENTIRE
- *     highlight set or only highlights our app created is a CRITICAL U1
- *     finding (#357). This client does not assume either way; the honesty of
- *     the copy that consumes the result is handled in the bridge/instructions.
- *  5. DELETE — `DELETE /v1/highlights/{passage_id}?bible_id=` (unused by U3/U4
- *     but included for completeness / future disconnect cleanup).
- *  6. COLOR — the warm default `HIGHLIGHT_DEFAULT_COLOR` ("ffd27f", a soft
- *     amber matching the design system's terracotta family) is a guess for
- *     whatever `color` format the API takes (hex? name?). If the API rejects
- *     or ignores it, the mark still lands; U1 pins the real format/value.
- * ======================================================================
+ *  1. WRITE — `POST /v1/highlights` body is
+ *     `{ request_id: <uuid v4>, highlight: { bible_id, passage_id, color } }`.
+ *     `color` is a REQUIRED 6-hex-char string (no `#`), e.g. `b4795a`.
+ *     `bible_id`/`passage_id` are our `versionId`/`usfm`. `request_id` is a
+ *     fresh uuid per write — the provider's idempotent-retry key. Response 201
+ *     `{ bible_id, passage_id, color }`.
+ *  2. READ — `GET /v1/highlights?bible_id=<int>&passage_id=<usfm>`, BOTH query
+ *     params REQUIRED. Response `{ data: [{ bible_id, passage_id, color }] }`.
+ *     There is NO "list all highlights" endpoint — the only read is this
+ *     per-passage lookup, so the client exposes `getHighlight` returning a
+ *     boolean "is this passage highlighted?" (200 with non-empty data → true,
+ *     204/empty → false).
+ *  3. DELETE — `DELETE /v1/highlights/{passage_id}?bible_id=<int>` (unused by
+ *     U3/U4 but kept for future disconnect cleanup).
  *
  * Best-effort by contract: NONE of these methods throw for a transport error,
  * a timeout, or a non-2xx status. They return a small discriminated result
@@ -55,17 +42,17 @@
  * misuse (an empty bearer) is the only throw.
  */
 
+import { randomUUID } from 'node:crypto';
+
 const YOUVERSION_BASE_URL = 'https://api.youversion.com';
 const REQUEST_TIMEOUT_MS = 10_000;
 
 /**
- * Warm default highlight color (⚠️ must-confirm U1 — see the header). A soft
- * amber in the Wellspring design-system's terracotta family, chosen so the
- * mark a devotional leaves in the user's Bible feels of-a-piece with the app
- * rather than a jarring primary. Sent only when the write path opts to color;
- * an API that ignores/rejects it still records the highlight.
+ * Default highlight color — the Wellspring design-system terracotta, as the
+ * REQUIRED 6-hex-char `color` the API takes (live-verified 2026-07-24). The
+ * mark a devotional leaves in the user's Bible feels of-a-piece with the app.
  */
-export const HIGHLIGHT_DEFAULT_COLOR = 'ffd27f';
+export const HIGHLIGHT_DEFAULT_COLOR = 'b4795a';
 
 /** Minimal fetch-like contract so tests inject a fake without touching the network. */
 export type FetchLike = (
@@ -83,14 +70,17 @@ export type FetchLike = (
   text(): Promise<string>;
 }>;
 
-/** A single highlight, normalized to the identifier space our verses already use. */
+/**
+ * A highlighted passage in the identifier space our verses already use. The
+ * READ surface is a per-passage boolean (`getHighlight`), so this type now
+ * describes a candidate passage the bridge/orchestrator asks about, not a row
+ * from a (nonexistent) list endpoint.
+ */
 export interface NormalizedHighlight {
   /** USFM passage reference, e.g. "JHN.3.16" — the API's `passage_id`. */
   passageId: string;
   /** Numeric bible version id — the API's `bible_id` (our `versionId`). */
   bibleId: number;
-  /** Creation time if the API reports one; omitted otherwise (§9: never a count, just recency ordering). */
-  createdAt?: string;
 }
 
 /** Result of a highlights call — never throws; the bridge branches on `ok`/`status`. */
@@ -109,54 +99,21 @@ export interface CreateHighlightInput {
   bearer: string;
   bibleId: number;
   passageId: string;
-  /** Optional highlight color (⚠️ must-confirm U1). Omitted -> no color field sent. */
-  color?: string;
+  /** REQUIRED 6-hex-char color (live-verified 2026-07-24), e.g. `b4795a`. */
+  color: string;
 }
 
-export interface ListHighlightsInput {
+export interface GetHighlightInput {
   bearer: string;
-  /** Narrow the list to one version when set (the API's `bible_id` query param). */
-  bibleId?: number;
-  /** Page size cap — mirrors the passage client's `page_size` usage. */
-  pageSize?: number;
+  /** BOTH query params are REQUIRED by `GET /v1/highlights` (live-verified). */
+  bibleId: number;
+  passageId: string;
 }
 
 export interface DeleteHighlightInput {
   bearer: string;
   bibleId: number;
   passageId: string;
-}
-
-/**
- * Reads the assumed `{ passage_id, bible_id, created_at }` shape (⚠️
- * must-confirm U1) tolerantly: this is the ONE place field names are read, so
- * pinning the real names is a single-spot edit. An item missing a usable
- * passage id or bible id is dropped (returns null) rather than surfaced as a
- * malformed highlight — a best-effort personalization signal must never
- * fabricate a reference.
- */
-export function normalizeHighlight(raw: unknown): NormalizedHighlight | null {
-  if (!raw || typeof raw !== 'object') return null;
-  const obj = raw as Record<string, unknown>;
-
-  const passageId = obj.passage_id ?? obj.passageId ?? obj.usfm;
-  const bibleIdRaw = obj.bible_id ?? obj.bibleId ?? obj.version_id ?? obj.versionId;
-  const createdAt = obj.created_at ?? obj.createdAt ?? obj.updated_at;
-
-  if (typeof passageId !== 'string' || passageId.trim().length === 0) return null;
-  const bibleId =
-    typeof bibleIdRaw === 'number'
-      ? bibleIdRaw
-      : typeof bibleIdRaw === 'string' && bibleIdRaw.trim().length > 0
-        ? Number(bibleIdRaw)
-        : NaN;
-  if (!Number.isInteger(bibleId) || bibleId <= 0) return null;
-
-  return {
-    passageId,
-    bibleId,
-    ...(typeof createdAt === 'string' && createdAt.length > 0 ? { createdAt } : {}),
-  };
 }
 
 export class YouVersionHighlightsClient {
@@ -179,18 +136,23 @@ export class YouVersionHighlightsClient {
   }
 
   /**
-   * Creates (or upserts — ⚠️ must-confirm U1) a highlight for one passage.
-   * Body shape `{ bible_id, passage_id, color? }` (⚠️ must-confirm U1). Never
-   * throws for a network/HTTP failure — returns `{ ok: false, status }` so the
-   * bridge treats it as a best-effort no-op.
+   * Creates a highlight for one passage. Body is the live-verified wrapper
+   * `{ request_id: <uuid v4>, highlight: { bible_id, passage_id, color } }` —
+   * `request_id` is a fresh uuid per write (the provider's idempotent-retry
+   * key) and `color` is a required 6-hex string. Never throws for a
+   * network/HTTP failure — returns `{ ok: false, status }` so the bridge treats
+   * it as a best-effort no-op.
    */
   async createHighlight(input: CreateHighlightInput): Promise<HighlightsResult<void>> {
     if (!input.bearer) throw new Error('createHighlight requires a Bearer access token');
-    const body: Record<string, unknown> = {
-      bible_id: input.bibleId,
-      passage_id: input.passageId,
+    const body = {
+      request_id: randomUUID(),
+      highlight: {
+        bible_id: input.bibleId,
+        passage_id: input.passageId,
+        color: input.color,
+      },
     };
-    if (input.color) body.color = input.color;
 
     return this.send(`${this.baseUrl}/v1/highlights`, input.bearer, {
       method: 'POST',
@@ -201,17 +163,19 @@ export class YouVersionHighlightsClient {
   }
 
   /**
-   * Lists the user's highlights (⚠️ must-confirm U1 on both the envelope shape
-   * and whether the set is all-user or app-scoped). Normalizes to
-   * `NormalizedHighlight[]`; a malformed/empty envelope yields an empty list
-   * rather than an error, so the read signal degrades to "no highlights" — the
-   * fail-quiet posture the personalization path wants.
+   * Checks whether ONE passage is highlighted for the user.
+   * `GET /v1/highlights?bible_id=&passage_id=` (BOTH params required,
+   * live-verified). Returns `true` when the `{ data: [...] }` envelope carries
+   * a highlight for that passage, `false` on a 204/empty body. There is NO
+   * list-all endpoint, so this per-passage lookup is the whole read surface. A
+   * malformed body degrades to `false` (fail-quiet).
    */
-  async listHighlights(input: ListHighlightsInput): Promise<HighlightsResult<NormalizedHighlight[]>> {
-    if (!input.bearer) throw new Error('listHighlights requires a Bearer access token');
-    const params = new URLSearchParams();
-    if (input.bibleId !== undefined) params.set('bible_id', String(input.bibleId));
-    params.set('page_size', String(input.pageSize ?? 100));
+  async getHighlight(input: GetHighlightInput): Promise<HighlightsResult<boolean>> {
+    if (!input.bearer) throw new Error('getHighlight requires a Bearer access token');
+    const params = new URLSearchParams({
+      bible_id: String(input.bibleId),
+      passage_id: input.passageId,
+    });
     const url = `${this.baseUrl}/v1/highlights?${params.toString()}`;
 
     return this.send(url, input.bearer, {
@@ -223,9 +187,7 @@ export class YouVersionHighlightsClient {
           : Array.isArray(envelope?.data)
             ? envelope.data
             : [];
-        return items
-          .map((item) => normalizeHighlight(item))
-          .filter((h): h is NormalizedHighlight => h !== null);
+        return items.length > 0;
       },
     });
   }
