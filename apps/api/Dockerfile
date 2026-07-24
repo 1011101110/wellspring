@@ -53,6 +53,15 @@ COPY --from=build /repo/apps/api/dist apps/api/dist
 # to fixture content (issue #68, docs/14 §1.3).
 COPY fixtures/snapshots fixtures/snapshots
 
+# assets/fonts/ carries the self-hosted Spectral/Hanken woff2 subsets the
+# /stage/assets/fonts route serves (Epic T #347/#350 — session CSP is
+# font-src 'self', so a CDN can never substitute). The route resolves
+# ../../assets/fonts from its compiled location, i.e. apps/api/assets/
+# fonts under WORKDIR. Without this COPY the route 404s and every page
+# silently renders on the Georgia/system fallback stacks (live-caught
+# 2026-07-23: deployed pages had fontsLoaded=false).
+COPY apps/api/assets apps/api/assets
+
 # docs/14_IMPROVEMENT_REVIEW.md §2.6 / issue #73: run as the non-root
 # `node` user the base image already provides (not root, which is the
 # node:20-slim default) — Cloud Run scale-down/redeploy sends SIGTERM to
