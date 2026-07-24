@@ -93,7 +93,13 @@ describe('wsTokens — derives every value from the shared designTokens literal'
 });
 
 describe('rendered pages — every emitted --ws-* variable matches the shared literal', () => {
-  const stageHtml = renderStagePage({ page: PAGE, manifest: null, muted: false, slotType: 'standard' });
+  const stageHtml = renderStagePage({
+    page: PAGE,
+    token: '00000000-0000-4000-8000-000000000001',
+    manifest: null,
+    muted: false,
+    slotType: 'standard',
+  });
   const sessionHtml = renderSessionPage(PAGE);
   const shared = new Map(wellspringCssVariables());
 

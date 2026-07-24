@@ -114,6 +114,7 @@ export function registerStageRoutes(app: FastifyInstance, deps: StageRoutesDeps)
         .send(
           renderStagePage({
             page: result.page,
+            token,
             manifest: result.manifest,
             muted,
             slotType: result.slotType,
