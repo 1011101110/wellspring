@@ -28,6 +28,9 @@ import {
  * field added to `PreferencesResponseDataSchema` breaks this file — the
  * whole point of #195's "preference drift across clients" warning is that
  * a new preference must not be able to land on one surface silently.
+ * (The contracts package keeps its own hand-built row for the same
+ * schema — `BASE` in packages/shared-contracts/tests/rhythm.test.ts; see
+ * the drift note there when touching either.)
  */
 function serverRow(overrides: Partial<PreferencesResponseData> = {}): PreferencesResponseData {
   return {

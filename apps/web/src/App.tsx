@@ -24,7 +24,7 @@ import {
 import { SettingsView } from './views/Settings';
 import { DashboardView } from './views/Dashboard';
 import { DevotionalDetailView } from './views/DevotionalDetail';
-import type { PreferencesResponseData } from '@kairos/shared-contracts';
+import type { PreferencesResponseData, PreferencesUpdateRequest } from '@kairos/shared-contracts';
 
 /**
  * The whole client, in one place, because the interesting decisions are
@@ -139,8 +139,7 @@ export function App() {
       // `inviteAddress` (L3). `WebPreferences` is deliberately the small
       // editable record — see lib/preferences.ts — so it is not the right
       // thing to widen.
-      setServerPrefs(data);
-      setCalendarReadingEnabled(data.calendarEnabled);
+      adoptServerSlices(data);
       // The OAuth connection is a separate read (#299). Best-effort: a
       // failure here must not take down a load that already has the
       // preferences it needs — Settings falls back to "not connected", the
@@ -193,15 +192,54 @@ export function App() {
       // Apply the response rather than keeping what was typed: the server
       // normalizes (cadence is recomputed from the days, an inverted
       // window is repaired), and showing anything other than what was
-      // actually stored is how two clients start to disagree.
+      // actually stored is how two clients start to disagree. Adopting
+      // the response into the form is safe *here only*, because the body
+      // just sent WAS the form — see `adoptServerSlices` for why the
+      // sparse paths must not do this.
       setPrefs(fromServer(data));
-      setServerPrefs(data);
-      setCalendarReadingEnabled(data.calendarEnabled);
+      adoptServerSlices(data);
       setSaved(true);
       return data;
     } catch (err) {
       setError(err instanceof Error ? err.message : 'We could not save your settings.');
       return null;
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /**
+   * Applies the server-authoritative slices of a `/v1/preferences`
+   * response WITHOUT touching the staged form. Every save path runs
+   * this; only `save()` may *also* adopt the response into `prefs`,
+   * because the body it just sent WAS the form. A sparse save's response
+   * echoes the *stored* values of the form fields, so adopting it into
+   * `prefs` would silently revert edits the user has staged but not
+   * saved (#344) — the inverse of the bug `sparseSave`'s doc describes.
+   */
+  function adoptServerSlices(data: PreferencesResponseData) {
+    setServerPrefs(data);
+    setCalendarReadingEnabled(data.calendarEnabled);
+  }
+
+  /**
+   * A PUT of exactly the fields named, immediately — the path for
+   * controls that persist on interaction (the calendar reading toggle,
+   * the rhythm card) rather than behind the "Save changes" button.
+   * Deliberately NOT `save()`: that would re-send the whole staged form,
+   * silently committing edits the user hasn't saved (#344). The schema
+   * accepts partial bodies (absent means "leave the stored value alone"),
+   * so the one changed field travels alone, and the response updates only
+   * the server-authoritative slices — staged edits are neither committed
+   * nor lost.
+   */
+  async function sparseSave(fields: PreferencesUpdateRequest) {
+    setBusy(true);
+    setError(null);
+    try {
+      adoptServerSlices(await putPreferences(fields));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'We could not save your settings.');
     } finally {
       setBusy(false);
     }
@@ -217,32 +255,18 @@ export function App() {
    */
   async function setCalendarReading(next: boolean) {
     setCalendarConsent(next);
-    await save({ calendarEnabled: next });
+    await sparseSave({ calendarEnabled: next });
   }
 
   /**
-   * The "Your rhythm" controls (P8 #327). A sparse PUT of exactly the
-   * field that changed, immediately — same reasoning as the calendar
+   * The "Your rhythm" controls (P8 #327). Same reasoning as the calendar
    * reading toggle above (#299): "keep my schedule fixed" is a decision,
    * not a staged edit. The response re-populates `serverPrefs` (whose
    * `rhythm` object the card renders from) so the card shows what the
    * server now believes, never what was clicked (Epic L rule #1 / #225).
-   * Deliberately NOT routed through `save()`: that would re-send the
-   * whole staged form, silently committing edits the user hasn't saved.
    */
   async function saveRhythm(fields: { adaptiveEnabled?: boolean; minPerWeek?: number }) {
-    setBusy(true);
-    setError(null);
-    try {
-      const data = await putPreferences(fields);
-      setPrefs(fromServer(data));
-      setServerPrefs(data);
-      setCalendarReadingEnabled(data.calendarEnabled);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'We could not save your settings.');
-    } finally {
-      setBusy(false);
-    }
+    await sparseSave(fields);
   }
 
   async function startCalendarConnect() {

@@ -4,19 +4,21 @@
  *
  * ## There is no local source of truth here (issue #225, #195)
  *
- * This module deliberately exposes only two pure functions —
- * `fromServer` and `toUpdateRequest` — and no store. Every value the UI
- * renders came from a `GET /v1/preferences` in this page load, and every
- * edit goes back through `PUT /v1/preferences`. A user who onboarded on
- * iOS sees their real window, days, and voice here because those are
- * literally the server's values, not a cache that agrees with them most
- * of the time. That is the whole point of #195: two clients that disagree
- * are worse than one client.
+ * This module deliberately exposes only pure functions and constants
+ * derived from the shared contract — choice lists, labels, and the two
+ * seam functions `fromServer` and `toUpdateRequest` where the lossy
+ * mapping lives — and no store. Every value the UI renders came from a
+ * `GET /v1/preferences` in this page load, and every edit goes back
+ * through `PUT /v1/preferences`. A user who onboarded on iOS sees their
+ * real window, days, and voice here because those are literally the
+ * server's values, not a cache that agrees with them most of the time.
+ * That is the whole point of #195: two clients that disagree are worse
+ * than one client.
  *
  * ## Why a `WebPreferences` shape at all, rather than editing the wire type
  *
- * `PreferencesResponseData` is the full stored row (18 fields, including
- * several the onboarding UI does not surface) and
+ * `PreferencesResponseData` is the full stored row (27 fields at P8
+ * (#327), including many the form does not surface) and
  * `PreferencesUpdateRequest` is a sparse patch where "absent" and "null"
  * mean different things. Neither is a good thing to bind form controls
  * to. `WebPreferences` is the small total record the form edits; the two
@@ -81,10 +83,12 @@ import {
   cadenceForActiveDays,
   DEFAULT_LANGUAGE,
   defaultVersionIdFor,
+  DevotionalFormatSchema,
   isVersionInLanguage,
   LANGUAGE_CATALOG,
   LANGUAGE_TAGS,
   LanguageTagSchema,
+  StillnessSchema,
   TraditionSchema,
   versionDisplayLabel,
   versionIdsForLanguage,
@@ -283,8 +287,12 @@ export const DEFAULT_PREFERENCES: WebPreferences = {
   translationId: defaultVersionIdFor(DEFAULT_LANGUAGE),
 };
 
-const DURATION_VALUES = new Set<string>(['micro', 'short', 'standard', 'extended']);
-const STILLNESS_VALUES = new Set<string>(['off', 'brief', 'full']);
+// Derived from the shared schemas rather than hand-listed — the same
+// no-drift rule as `TRADITION_CHOICES`/`LANGUAGE_CHOICES` below: a
+// variant added to the contract is recognized here without this file
+// having heard of it, instead of being silently snapped to the default.
+const DURATION_VALUES = new Set<string>(DevotionalFormatSchema.options);
+const STILLNESS_VALUES = new Set<string>(StillnessSchema.options);
 
 /** `'09:00:00'` / `'09:00'` -> `9`; anything unparseable -> `undefined`. */
 export function hourFromLocalTime(value: string): number | undefined {

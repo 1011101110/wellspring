@@ -14,7 +14,12 @@ import {
   type WebPreferences,
 } from '../lib/preferences';
 import { WeekdayRow } from './WeekdayRow';
-import type { LanguageTag, Stillness } from '@kairos/shared-contracts';
+import {
+  activeDaysForCadence,
+  type Cadence,
+  type LanguageTag,
+  type Stillness,
+} from '@kairos/shared-contracts';
 
 const HOURS = Array.from({ length: 24 }, (_, hour) => hour);
 
@@ -106,10 +111,13 @@ export function PreferencesForm({
           value={cadence}
           aria-describedby={id('cadence-hint')}
           onChange={(e) => {
-            const next = e.target.value;
-            if (next === 'daily') set('activeDays', [0, 1, 2, 3, 4, 5, 6]);
-            else if (next === 'weekdays') set('activeDays', [1, 2, 3, 4, 5]);
-            // 'custom' names the days you already picked — nothing to apply.
+            // The shared expansion, not a hand-listed day set, so the
+            // presets here cannot drift from what the server (and iOS)
+            // mean by the same words. `activeDaysForCadence` returns
+            // `undefined` for 'custom' — it names the days you already
+            // picked, so there is nothing to apply.
+            const days = activeDaysForCadence(e.target.value as Cadence);
+            if (days) set('activeDays', days);
           }}
         >
           {CADENCE_PRESETS.map((option) => (

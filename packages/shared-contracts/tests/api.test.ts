@@ -98,20 +98,46 @@ describe('api/preferences — PreferencesUpdateRequestSchema', () => {
     expect(result.success).toBe(true);
   });
 
-  it('accepts the full documented field set', () => {
-    const result = PreferencesUpdateRequestSchema.safeParse({
+  it('round-trips the full documented field set — every field, verbatim', () => {
+    // Every key the schema documents, with a valid non-default value.
+    // Two guards below keep this fixture honest:
+    //  - `toEqual(fullBody)` proves each field *survives* parsing (a
+    //    field dropped from the schema would be stripped, not rejected —
+    //    a bare `success` check cannot see that), and
+    //  - the key-set comparison against the schema's own shape fails
+    //    this test when a NEW field is added until it is named here, so
+    //    a new preference cannot silently skip the round-trip.
+    const fullBody = {
       windowStartLocal: '07:00',
       windowEndLocal: '09:00:00',
       activeDays: [1, 2, 3, 4, 5],
       cadence: 'weekdays',
       durationPreference: 'short',
       voice: 'en-US-Chirp3-HD-Kore',
+      stillness: 'brief',
+      lectio: true,
       calendarEnabled: true,
       healthEnabled: false,
       communicationEnabled: false,
       notifyOnSkip: true,
-    });
+      examenEnabled: true,
+      sabbathDay: 6,
+      sabbathEnabled: true,
+      sabbathSession: true,
+      liturgicalSeasonsEnabled: true,
+      minPerWeek: 3,
+      adaptiveEnabled: false,
+      timezone: 'America/Chicago',
+      onboardingCompleted: true,
+      language: 'es',
+      translationId: 147,
+    };
+    expect(Object.keys(fullBody).sort()).toEqual(
+      Object.keys(PreferencesUpdateRequestSchema.shape).sort(),
+    );
+    const result = PreferencesUpdateRequestSchema.safeParse(fullBody);
     expect(result.success).toBe(true);
+    expect(result.data).toEqual(fullBody);
   });
 
   it('rejects free text into the cadence enum column (docs/14 §2.9 regression)', () => {
