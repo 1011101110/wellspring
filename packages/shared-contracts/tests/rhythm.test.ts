@@ -42,12 +42,28 @@ describe('RhythmSchema (closed shape, §9)', () => {
 
   it('carries every P5 reason code', () => {
     expect([...RhythmReasonSchema.options].sort()).toEqual(
-      ['at_ceiling', 'at_floor', 'easing_back', 'fixed_by_user', 'hold', 'no_data', 'welcoming_back'].sort(),
+      [
+        'at_ceiling',
+        'at_floor',
+        'easing_back',
+        'fixed_by_user',
+        'hold',
+        'no_data',
+        'welcoming_back',
+      ].sort(),
     );
   });
 });
 
 describe('PreferencesResponseDataSchema.rhythm', () => {
+  // A hand-built full response row, like `serverRow()` in the web
+  // workspace's apps/web/test/preferences.test.ts. The two fixtures live
+  // in different packages with no shared value, so they CAN drift: a new
+  // *required* field breaks both (this one at parse time, that one at
+  // type-check), but an *optional* field can land in one and be forgotten
+  // by the other with no failure anywhere. When touching either, check
+  // the other — and when they disagree about what a plausible row looks
+  // like, trust the schema, not either fixture.
   const BASE = {
     userId: 'u1',
     windowStartLocal: '09:00:00',
