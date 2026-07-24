@@ -18,11 +18,25 @@
  * exact same body. Rate limiting (token+IP) and the JS-enabled CSP come
  * from the stage scope in app.ts.
  */
+import { readFile } from 'node:fs/promises';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import type { FastifyInstance } from 'fastify';
 import { UuidParamSchema } from '@kairos/shared-contracts';
+import { WS_FONT_FACES } from '../services/design/wsTokens.js';
 import type { StageLookupResult } from '../services/session/sessionService.js';
 import { renderStageGonePage, renderStagePage } from '../services/stage/renderStagePage.js';
 import { buildStageClientJs } from '../services/stage/stageClient.js';
+
+/**
+ * Self-hosted font directory (epic #347 ground rule 1 — no font CDN; the
+ * session scope's CSP only allows `font-src 'self'`). T1 (#348) commits
+ * the woff2 files here; until they exist every request 404s and the
+ * @font-face fallback stacks (wsTokens.ts) keep the pages correct.
+ * Resolves the same from src/ (tsx) and dist/ (tsc output): both live two
+ * levels below apps/api/.
+ */
+const FONTS_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../assets/fonts');
 
 export interface StageRoutesDeps {
   /** Only the READ-ONLY `getStageView` — a minimal shape (not the full `SessionService`) keeps the route independently testable AND makes the no-write rule structural. */
@@ -38,6 +52,28 @@ export function registerStageRoutes(app: FastifyInstance, deps: StageRoutesDeps)
 
   app.get('/stage/assets/stage.js', async (_request, reply) => {
     return reply.status(200).type('application/javascript; charset=utf-8').send(stageJs);
+  });
+
+  // Wellspring fonts (T3 #350): serves ONLY the exact basenames the
+  // @font-face rules reference (allowlist — never a path echo, so no
+  // traversal surface). Missing file → plain 404 and the browser falls
+  // back to the Georgia/system-ui stacks; nothing user-visible breaks.
+  const fontAllowlist = new Set(WS_FONT_FACES.map((f) => f.file));
+  app.get<{ Params: { file: string } }>('/stage/assets/fonts/:file', async (request, reply) => {
+    const { file } = request.params;
+    if (!fontAllowlist.has(file)) {
+      return reply.status(404).send();
+    }
+    try {
+      const bytes = await readFile(path.join(FONTS_DIR, file));
+      return reply
+        .status(200)
+        .type('font/woff2')
+        .header('cache-control', 'public, max-age=31536000, immutable')
+        .send(bytes);
+    } catch {
+      return reply.status(404).send();
+    }
   });
 
   app.get<{ Params: { token: string }; Querystring: { mute?: string } }>(

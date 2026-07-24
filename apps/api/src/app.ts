@@ -541,6 +541,10 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
             scriptSrc: ["'none'"],
             styleSrc: ["'self'", "'unsafe-inline'"],
             imgSrc: ["'self'"],
+            // Self-hosted Wellspring woff2 files only (epic #347 ground
+            // rule 1) — served same-origin by the stage assets route;
+            // never a fonts CDN.
+            fontSrc: ["'self'"],
             // 'self' covers this same-origin GET /audio/:token route
             // (local-file mode); storage.googleapis.com covers GCS-mode
             // V4 signed URLs, which are cross-origin from the browser's
@@ -685,6 +689,9 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
             scriptSrc: ["'self'"],
             styleSrc: ["'self'", "'unsafe-inline'"],
             imgSrc: ["'self'"],
+            // Self-hosted Wellspring woff2 files only (epic #347 ground
+            // rule 1) — same-origin /stage/assets/fonts, never a CDN.
+            fontSrc: ["'self'"],
             // Same signed-URL rationale as the session scope above:
             // 'self' covers local-file mode's /audio/:token, and
             // storage.googleapis.com covers GCS-mode V4 signed URLs

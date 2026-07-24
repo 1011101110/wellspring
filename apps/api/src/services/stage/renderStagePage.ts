@@ -20,6 +20,7 @@
  * decision as O's "app UI stays English").
  */
 import type { TimingManifest } from '@kairos/shared-contracts';
+import { WS, WS_SANS, WS_SERIF, wsFontFaceCss } from '../design/wsTokens.js';
 import { escapeHtml } from '../session/html.js';
 import type { SessionPageData } from '../session/renderSessionPage.js';
 
@@ -38,10 +39,14 @@ export interface StagePageData {
 }
 
 /**
- * Shared Stage chrome. Palette per the mockup: cream #f4efe7 ground,
- * deep brown-black #2a2118 text, Iowan/Palatino/Georgia serif stack for
- * verse/prose, small-caps sans tab pills, progress bar at the bottom.
- * `prefers-reduced-motion` disables the fades/transitions.
+ * Shared Stage chrome, styled per the Wellspring Design System (T3 #350,
+ * epic #347): canvas→mist→dawn gradient ground, Spectral 300 scripture at
+ * 26–36px (lh 1.4, text-wrap: pretty), Hanken Grotesk chrome, terracotta
+ * as the ONLY accent (active tab pill, progress fill, caption-chip dot,
+ * Begin CTA, brand circle), warm-tinted shadows, brand mark small in the
+ * top-left corner. Fonts are self-hosted @font-face with Georgia/Iowan +
+ * system-ui fallbacks (wsTokens.ts) — the page is correct with or without
+ * the woff2 files. `prefers-reduced-motion` disables fades/transitions.
  */
 function stageShell(title: string, bodyHtml: string, options: { withScript: boolean }): string {
   const script = options.withScript
@@ -54,25 +59,28 @@ function stageShell(title: string, bodyHtml: string, options: { withScript: bool
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>${escapeHtml(title)}</title>
 <style>
+  ${wsFontFaceCss()}
   :root {
     color-scheme: light;
-    --cream: #f4efe7;
-    --cream-deep: #ece5d8;
-    --ink: #2a2118;
-    --ink-soft: #6b5f4e;
-    --ink-faint: #93876f;
-    --chip-bg: #322921;
-    --chip-text: #f6f1e7;
-    --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, "Times New Roman", serif;
-    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+    --ws-canvas: ${WS.canvas};
+    --ws-mist: ${WS.mist};
+    --ws-dawn: ${WS.dawn};
+    --ws-terracotta: ${WS.terracotta};
+    --ws-clay: ${WS.clay};
+    --ws-ink: ${WS.ink};
+    --ws-muted: ${WS.muted};
+    --ws-ease: ${WS.ease};
+    --ws-dur: ${WS.dur};
+    --serif: ${WS_SERIF};
+    --sans: ${WS_SANS};
   }
   * { box-sizing: border-box; }
   html, body { height: 100%; }
   body {
     margin: 0;
-    background: var(--cream);
-    background-image: radial-gradient(ellipse 90% 70% at 50% 20%, #f8f4ec 0%, var(--cream) 62%, #efe8da 100%);
-    color: var(--ink);
+    background: var(--ws-canvas);
+    background-image: linear-gradient(180deg, var(--ws-canvas) 0%, var(--ws-mist) 68%, var(--ws-dawn) 100%);
+    color: var(--ws-ink);
     font-family: var(--serif);
     overflow: hidden;
   }
@@ -83,34 +91,52 @@ function stageShell(title: string, bodyHtml: string, options: { withScript: bool
     align-items: center;
     padding: 0 4rem;
   }
+  /* Brand mark (§ header brand), scaled small for a corner: terracotta-
+     gradient circle + "Wellspring" in Spectral. Fixed so it sits quietly
+     top-left on every stage state, including the gone card. */
   .wordmark {
-    margin-top: 2.1rem;
-    font-family: var(--sans);
-    font-size: 0.68rem;
-    letter-spacing: 0.42em;
-    text-transform: uppercase;
-    color: var(--ink-faint);
+    position: fixed;
+    top: 1.5rem;
+    left: 1.75rem;
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+    font-family: var(--serif);
+    font-size: 1rem;
+    font-weight: 400;
+    color: var(--ws-ink);
+    z-index: 5;
+  }
+  .brand-circle {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: ${WS.gradientTerracotta};
+    box-shadow: ${WS.shadow};
   }
   .tabs {
-    margin-top: 1.4rem;
+    margin-top: 2.4rem;
     display: flex;
     gap: 0.6rem;
     font-family: var(--sans);
   }
   .tab-pill {
     font-size: 0.72rem;
+    font-weight: 600;
     letter-spacing: 0.18em;
     text-transform: uppercase;
-    color: var(--ink-soft);
+    color: var(--ws-clay);
     padding: 0.5rem 1.15rem;
     border: 1px solid transparent;
-    border-radius: 999px;
-    transition: color 0.4s ease, border-color 0.4s ease, background-color 0.4s ease;
+    border-radius: ${WS.radiusPill};
+    transition: color 0.4s var(--ws-ease), border-color 0.4s var(--ws-ease), background-color 0.4s var(--ws-ease);
   }
   .tab-pill.active {
-    color: var(--ink);
-    border-color: #cfc4ae;
-    background: rgba(255, 253, 248, 0.65);
+    color: var(--ws-ink);
+    border-color: var(--ws-terracotta);
+    background: rgba(255, 255, 255, 0.55);
+    box-shadow: ${WS.shadow};
   }
   .panels {
     flex: 1;
@@ -131,32 +157,46 @@ function stageShell(title: string, bodyHtml: string, options: { withScript: bool
     text-align: center;
     opacity: 0;
     visibility: hidden;
-    transition: opacity 0.7s ease, visibility 0.7s ease;
+    transition: opacity var(--ws-dur) var(--ws-ease), visibility var(--ws-dur) var(--ws-ease);
   }
   .panel.active { opacity: 1; visibility: visible; }
+  /* Eyebrow role (§03): Hanken 600 · 12px · uppercase · .22em · terracotta.
+     The stage is a 1280×720 display surface (not axe-gated); the /session
+     page darkens this role to clay for WCAG AA — see renderSessionPage. */
   .eyebrow {
     font-family: var(--sans);
-    font-size: 0.72rem;
-    letter-spacing: 0.3em;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.22em;
     text-transform: uppercase;
-    color: var(--ink-faint);
+    color: var(--ws-terracotta);
     margin: 0 0 1.4rem;
   }
+  /* Scripture role (§03): Spectral 300 · 26–36px · lh 1.4 · text-wrap: pretty. */
   .verse-text {
-    font-size: clamp(1.6rem, 3.4vw, 2.75rem);
+    font-weight: 300;
+    font-size: clamp(1.625rem, 2.6vw, 2.25rem);
     line-height: 1.4;
+    text-wrap: pretty;
     margin: 0;
-    max-width: 56rem;
+    max-width: 52rem;
   }
+  /* Reference role (§03): Hanken 500 · 13px — clay rather than the
+     design's #A2937F (2.8:1 on canvas fails AA small; a11y wins per epic
+     ground rule 2). NOTE: no " mut*d" substring may appear in this CSS —
+     the ?mute route test strips the audio attribute by first-occurrence
+     string replace. */
   .verse-attribution {
     font-family: var(--sans);
-    font-size: 0.78rem;
+    font-size: 13px;
+    font-weight: 500;
     letter-spacing: 0.08em;
-    color: var(--ink-soft);
+    color: var(--ws-clay);
     margin: 1.9rem 0 0;
   }
   .prose {
-    font-size: clamp(1.05rem, 1.9vw, 1.45rem);
+    font-weight: 300;
+    font-size: clamp(1.05rem, 1.9vw, 1.4rem);
     line-height: 1.75;
     margin: 0;
     max-width: 46rem;
@@ -165,16 +205,18 @@ function stageShell(title: string, bodyHtml: string, options: { withScript: bool
     -webkit-mask-image: linear-gradient(to bottom, black 82%, transparent 100%);
     mask-image: linear-gradient(to bottom, black 82%, transparent 100%);
   }
+  /* Prayer role (§03): Spectral 300 italic · 22–26px. */
   .prayer-text {
     font-style: italic;
-    font-size: clamp(1.3rem, 2.6vw, 2.05rem);
+    font-weight: 300;
+    font-size: clamp(1.375rem, 2.2vw, 1.625rem);
     line-height: 1.6;
     margin: 0;
-    max-width: 48rem;
+    max-width: 44rem;
   }
   .question-block { max-width: 44rem; margin: 0 0 2.2rem; }
   .question-block:last-child { margin-bottom: 0; }
-  .question-text { font-size: clamp(1.15rem, 2.1vw, 1.6rem); line-height: 1.6; margin: 0; }
+  .question-text { font-weight: 300; font-size: clamp(1.15rem, 2.1vw, 1.6rem); line-height: 1.6; margin: 0; }
   .caption-zone {
     min-height: 5.6rem;
     display: flex;
@@ -182,18 +224,30 @@ function stageShell(title: string, bodyHtml: string, options: { withScript: bool
     justify-content: center;
     padding-bottom: 1.7rem;
   }
+  /* Caption chip: ink ground, canvas text (11.7:1), warm shadow, and a
+     small terracotta dot as its only accent. */
   .caption-chip {
     font-size: 1.02rem;
     line-height: 1.5;
-    color: var(--chip-text);
-    background: var(--chip-bg);
-    border-radius: 999px;
+    color: var(--ws-canvas);
+    background: var(--ws-ink);
+    border-radius: ${WS.radiusPill};
     padding: 0.62rem 1.5rem;
     max-width: 54rem;
-    box-shadow: 0 10px 28px rgba(42, 33, 24, 0.18);
+    box-shadow: ${WS.shadowHero};
     opacity: 0;
     transform: translateY(6px);
-    transition: opacity 0.45s ease, transform 0.45s ease;
+    transition: opacity 0.45s var(--ws-ease), transform 0.45s var(--ws-ease);
+  }
+  .caption-chip::before {
+    content: '';
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--ws-terracotta);
+    margin-right: 0.7rem;
+    vertical-align: 0.14em;
   }
   .caption-chip.visible { opacity: 1; transform: translateY(0); }
   .progress-track {
@@ -202,18 +256,19 @@ function stageShell(title: string, bodyHtml: string, options: { withScript: bool
     right: 0;
     bottom: 0;
     height: 4px;
-    background: rgba(42, 33, 24, 0.12);
+    background: rgba(180, 121, 90, 0.16);
   }
   .progress-fill {
     height: 100%;
     width: 0%;
-    background: var(--ink);
+    background: linear-gradient(90deg, #c98a63, #b4795a);
     transition: width 0.25s linear;
   }
   .begin-overlay {
     position: fixed;
     inset: 0;
-    background: var(--cream);
+    background: var(--ws-canvas);
+    background-image: linear-gradient(180deg, var(--ws-canvas) 0%, var(--ws-mist) 68%, var(--ws-dawn) 100%);
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -221,31 +276,50 @@ function stageShell(title: string, bodyHtml: string, options: { withScript: bool
     gap: 1.6rem;
     opacity: 0;
     visibility: hidden;
-    transition: opacity 0.4s ease, visibility 0.4s ease;
+    transition: opacity 0.4s var(--ws-ease), visibility 0.4s var(--ws-ease);
     cursor: pointer;
     z-index: 10;
   }
   .begin-overlay.visible { opacity: 1; visibility: visible; }
+  /* Primary CTA (§05): terracotta-gradient pill, white 15px/600 Hanken,
+     play glyph, warm CTA shadow. */
   .begin-button {
-    font-family: var(--serif);
-    font-size: 1.3rem;
-    color: var(--chip-text);
-    background: var(--chip-bg);
+    display: inline-flex;
+    align-items: center;
+    gap: 0.6rem;
+    font-family: var(--sans);
+    font-size: 15px;
+    font-weight: 600;
+    color: #fff;
+    background: ${WS.gradientTerracotta};
     border: none;
-    border-radius: 999px;
-    padding: 1.1rem 3.2rem;
+    border-radius: ${WS.radiusPill};
+    padding: 1.05rem 2.6rem;
+    box-shadow: ${WS.shadowCta};
     cursor: pointer;
   }
+  .begin-button::before { content: '\\25B8'; font-size: 0.9em; }
   .begin-hint {
     font-family: var(--sans);
     font-size: 0.8rem;
+    font-weight: 500;
     letter-spacing: 0.12em;
     text-transform: uppercase;
-    color: var(--ink-faint);
+    color: var(--ws-clay);
   }
-  .gone-card { text-align: center; max-width: 34rem; }
-  .gone-title { font-size: 1.9rem; margin: 0 0 1rem; }
-  .gone-line { font-family: var(--sans); font-size: 0.95rem; color: var(--ink-soft); margin: 0; line-height: 1.7; }
+  /* Gone card: glass card per §08 (white .55 + soft border, radius 24,
+     warm shadow) — calm and neutral if it ever lands on camera. */
+  .gone-card {
+    text-align: center;
+    max-width: 34rem;
+    background: rgba(255, 255, 255, 0.55);
+    border: 1px solid rgba(255, 255, 255, 0.7);
+    border-radius: ${WS.radiusCard};
+    box-shadow: ${WS.shadow};
+    padding: 3rem 3.25rem 2.75rem;
+  }
+  .gone-title { font-size: 1.9rem; font-weight: 400; letter-spacing: -0.01em; margin: 0 0 1rem; }
+  .gone-line { font-family: var(--sans); font-size: 0.95rem; color: var(--ws-clay); margin: 0; line-height: 1.7; }
   @media (prefers-reduced-motion: reduce) {
     .tab-pill, .panel, .caption-chip, .progress-fill, .begin-overlay { transition: none; }
   }
@@ -276,9 +350,9 @@ export function renderStageGonePage(): string {
   return stageShell(
     "This link isn't active — Wellspring",
     `<main class="stage" style="justify-content:center">
+  <p class="wordmark"><span class="brand-circle" aria-hidden="true"></span>Wellspring</p>
   <div class="gone-card">
-    <p class="wordmark">Wellspring</p>
-    <h1 class="gone-title" style="margin-top:1.6rem">This link isn&#39;t active.</h1>
+    <h1 class="gone-title">This link isn&#39;t active.</h1>
     <p class="gone-line">The devotional this link pointed to has ended or moved on.<br />There will be another moment of rest tomorrow.</p>
   </div>
 </main>`,
@@ -336,7 +410,7 @@ export function renderStagePage(data: StagePageData): string {
     : '';
 
   const body = `<main class="stage">
-  <p class="wordmark">Wellspring</p>
+  <p class="wordmark"><span class="brand-circle" aria-hidden="true"></span>Wellspring</p>
   <nav class="tabs" aria-label="Devotional sections">
     <span class="tab-pill active" id="tab-scripture">Scripture</span>
     <span class="tab-pill" id="tab-reflection">Reflection</span>
