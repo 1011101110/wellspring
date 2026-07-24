@@ -31,7 +31,7 @@
  */
 import { RhythmReasonSchema, type Rhythm, type RhythmReason } from '@kairos/shared-contracts';
 import type { PreferencesRow } from '../../db/repositories/preferencesRepository.js';
-import type { CadenceReason } from './cadencePolicy.js';
+import { resolveCadenceBounds, type CadenceReason } from './cadencePolicy.js';
 
 /**
  * Compile-time lockstep between the wire enum (shared-contracts) and the
@@ -58,12 +58,13 @@ export type RhythmSummaryRow = Pick<
  * (tests/services/rhythm/rhythmSummary.test.ts).
  */
 export function composeRhythm(row: RhythmSummaryRow): Rhythm {
-  // Same normalization as decideCadence: de-duplicated day set, and a
-  // floor never above the ceiling. Math.max(1, …) guards a legacy or
-  // corrupt row (the contract requires ≥1 active day) so the wire schema's
-  // `min(1)` can never be violated by a summary of bad storage.
-  const ceiling = Math.max(1, new Set(row.active_days).size);
-  const floor = Math.min(Math.max(1, row.min_per_week), ceiling);
+  // THE SAME clamp rule as decideCadence — literally the same helper
+  // (resolveCadenceBounds, S1 #342), so the card can never describe bounds
+  // the engine doesn't enforce. It also guards the wire schema's `min(1)`
+  // against a legacy or corrupt row (the contract requires ≥1 active day).
+  const { ceiling, floor } = resolveCadenceBounds(row.active_days, row.min_per_week);
+  // The wire field, not a clamp input: what the user asked for, capped to
+  // the 1..7 range the schema promises.
   const minPerWeek = Math.min(Math.max(1, row.min_per_week), 7);
 
   // The opt-out beats everything, exactly as in the policy: fixed users

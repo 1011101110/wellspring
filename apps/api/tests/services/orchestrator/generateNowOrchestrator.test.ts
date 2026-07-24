@@ -204,7 +204,9 @@ describe('GenerateNowOrchestrator', () => {
         bands: expect.objectContaining({ recovery: 'low', sleepQuality: 'poor', busyness: 'heavy' }),
         tradition: 'catholic',
         preferredVersionId: 3034,
-        translation: 'BSB',
+        // Canonical shared-contracts label (S1 #342): loadPreferences now
+        // derives this via versionDisplayLabel.
+        translation: 'Berean Standard Bible (BSB)',
       }),
     );
   });
@@ -257,7 +259,11 @@ describe('GenerateNowOrchestrator', () => {
 
     expect(result.sessionUrl).toContain('/session/');
     expect(engine.generate).toHaveBeenCalledWith(
-      expect.objectContaining({ tradition: 'general', preferredVersionId: 3034, translation: 'BSB' }),
+      expect.objectContaining({
+        tradition: 'general',
+        preferredVersionId: 3034,
+        translation: 'Berean Standard Bible (BSB)',
+      }),
     );
   });
 
@@ -1393,7 +1399,7 @@ describe('GenerateNowOrchestrator — content language resolution (O3 #315)', ()
       expect.objectContaining({
         language: 'es',
         preferredVersionId: 3365,
-        translation: 'Palabra de Dios para ti',
+        translation: 'Palabra de Dios para ti (PDDPT)',
       }),
     );
   });
@@ -1407,7 +1413,11 @@ describe('GenerateNowOrchestrator — content language resolution (O3 #315)', ()
     await orchestrator.generateNow({ userId: user.id, date: '2026-07-02' });
 
     expect(engine.generate).toHaveBeenCalledWith(
-      expect.objectContaining({ language: 'es', preferredVersionId: 147, translation: 'Reina-Valera Antigua' }),
+      expect.objectContaining({
+        language: 'es',
+        preferredVersionId: 147,
+        translation: 'Reina-Valera Antigua (RVES)',
+      }),
     );
   });
 
@@ -1441,7 +1451,11 @@ describe('GenerateNowOrchestrator — content language resolution (O3 #315)', ()
     await orchestrator.generateNow({ userId: user.id, date: '2026-07-02' });
 
     expect(engine.generate).toHaveBeenCalledWith(
-      expect.objectContaining({ language: 'en', preferredVersionId: 3034, translation: 'BSB' }),
+      expect.objectContaining({
+        language: 'en',
+        preferredVersionId: 3034,
+        translation: 'Berean Standard Bible (BSB)',
+      }),
     );
     expect(logger.info).not.toHaveBeenCalledWith(
       'Stored translation_id is not in the stored language catalog — using the language default',

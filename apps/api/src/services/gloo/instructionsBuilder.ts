@@ -435,31 +435,21 @@ function describeBandContext(bands: BandInput, provenance: SignalProvenance): st
  * a calendar is a complete user, not a degraded one".
  */
 function signalHonestyInstruction(provenance: SignalProvenance): string | null {
-  const unobserved = (
-    [
-      ['recovery', provenance.recovery],
-      ['sleepQuality', provenance.sleepQuality],
-      ['activity', provenance.activity],
-      ['busyness', provenance.busyness],
-    ] as const
-  )
-    .filter(([, observed]) => !observed)
-    .map(([label]) => label);
+  // One 4-tuple, partitioned once — the observed and unobserved lists must
+  // come from the same enumeration or they could drift apart.
+  const signals = [
+    ['recovery', provenance.recovery],
+    ['sleepQuality', provenance.sleepQuality],
+    ['activity', provenance.activity],
+    ['busyness', provenance.busyness],
+  ] as const;
+  const unobserved = signals.filter(([, isObserved]) => !isObserved).map(([label]) => label);
 
   if (unobserved.length === 0) {
     return null;
   }
 
-  const observed = (
-    [
-      ['recovery', provenance.recovery],
-      ['sleepQuality', provenance.sleepQuality],
-      ['activity', provenance.activity],
-      ['busyness', provenance.busyness],
-    ] as const
-  )
-    .filter(([, isObserved]) => isObserved)
-    .map(([label]) => label);
+  const observed = signals.filter(([, isObserved]) => isObserved).map(([label]) => label);
 
   const observedClause =
     observed.length > 0
