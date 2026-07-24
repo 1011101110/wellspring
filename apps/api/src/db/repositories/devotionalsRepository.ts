@@ -28,7 +28,7 @@ export interface DevotionalRow {
   /**
    * The Open Moment generation context (EPIC V #360) — non-null ONLY when
    * the open moment was enabled for this devotional; null otherwise (the gate
-   * the respond route checks). jsonb column, migration 1722700000000.
+   * the respond route checks). jsonb column, migration 1722800000000.
    */
   open_moment: OpenMomentContext | null;
   /**

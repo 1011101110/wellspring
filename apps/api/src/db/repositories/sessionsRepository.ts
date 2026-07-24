@@ -31,7 +31,7 @@ export interface SessionRow {
    * The stored outcome of the ONE Open Moment response for this session
    * (EPIC V #360), or null when the listener has not (yet) responded. Set
    * once, guarded — see `markOpenMomentResponse`. Never contains the
-   * transcript (epic §5). jsonb column, migration 1722700000000.
+   * transcript (epic §5). jsonb column, migration 1722800000000.
    */
   open_moment_response: OpenMomentStoredResponse | null;
   created_at: Date;
