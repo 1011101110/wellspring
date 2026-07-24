@@ -2,19 +2,28 @@
  * Unit tests for the YouVersion account-connection OAuth routes (U2,
  * kairos-devotional#355).
  *
- * Fakes only — no live YouVersion (that is owner-gated, U1). The token and
- * profile HTTP endpoints are faked via an injected `fetchImpl`; the real
- * `YouVersionOAuthService` is used so the authorize-URL / PKCE / exchange
- * behavior under test is the production code, not a stub of it.
+ * Fakes only — no live YouVersion (that is owner-gated, U1). The step-2
+ * code-resolution (/auth/callback) and step-3 token (/auth/token) HTTP
+ * endpoints are faked via an injected `fetchImpl`; the real
+ * `YouVersionOAuthService` is used so the authorize-URL / PKCE / resolve /
+ * exchange behavior under test is the production code, not a stub of it.
+ *
+ * YouVersion's flow is NON-STANDARD: the authorize redirect carries the
+ * signed-in identity ({ yvp_id, user_name, … }), NOT a code. A second server
+ * call (/auth/callback) resolves that into a code via a 302 Location header,
+ * then /auth/token exchanges the code for tokens.
  *
  * Covers:
- *   - connect returns a login.youversion.com authorize URL carrying state +
+ *   - connect returns an api.youversion.com authorize URL carrying state +
  *     code_challenge (mutation-check: the URL MUST include code_challenge, so
  *     removing it from getAuthorizationUrl fails this test)
  *   - connect stores the state + PKCE verifier server-side keyed to the user
+ *   - callback resolves the code (reads it off the 302 Location without
+ *     following), exchanges it, and validates the returned state matches
  *   - callback rejects missing / unknown / expired / replayed state
  *   - tokens persist ENCRYPTED (stored ciphertext != plaintext; the encrypt
  *     call is asserted invoked)
+ *   - identity (yvp_id + user_name) is captured from the redirect, no profile fetch
  *   - a null refresh token is stored as null, not thrown
  *   - disconnect deletes the row
  *   - the not-configured 503 path (no OAuth service / no KMS)
@@ -40,14 +49,52 @@ import { asVerifiedUserId } from '../../src/db/repositories/types.js';
 const FAKE_USER_ID = asVerifiedUserId('00000000-0000-0000-0000-000000000001');
 const WEB_BASE = 'https://app.kairos.test';
 
-/** A fake fetch that answers the token + profile endpoints. Overridable per-test. */
+const REDIRECT_URI = 'https://api.kairos.test/v1/youversion/oauth/callback';
+
+/**
+ * Small header bag matching the FetchLike contract's
+ * `headers.get(name): string | null`.
+ */
+function headers(map: Record<string, string> = {}) {
+  const lower = new Map(Object.entries(map).map(([k, v]) => [k.toLowerCase(), v]));
+  return { get: (name: string) => lower.get(name.toLowerCase()) ?? null };
+}
+
+/**
+ * A fake fetch answering the step-2 resolve (/auth/callback) and step-3 token
+ * (/auth/token) endpoints. Overridable per-test.
+ *
+ * `resolve.location` (default: a Location echoing the state back with a code)
+ * lets a test forge a mismatched/absent code or state.
+ */
 function fakeFetch(
   overrides: {
+    resolve?: { status?: number; location?: string | null };
     token?: { status?: number; body?: unknown };
-    profile?: { status?: number; body?: unknown };
   } = {},
 ): FetchLike {
   return vi.fn(async (input: string) => {
+    // Step 2: /auth/callback resolves identity → 302 with a code in Location.
+    // (Checked before /auth/token because both live under /auth/.)
+    if (input.includes('/auth/callback')) {
+      const status = overrides.resolve?.status ?? 302;
+      // Default Location: our redirect_uri with a code and the SAME state the
+      // caller sent (parsed off the input query so state-match holds).
+      let location: string | null;
+      if ('location' in (overrides.resolve ?? {})) {
+        location = overrides.resolve!.location ?? null;
+      } else {
+        const inState = new URL(input).searchParams.get('state') ?? '';
+        location = `${REDIRECT_URI}?code=resolved-code&scope=openid+profile+email&state=${inState}`;
+      }
+      return {
+        ok: status < 400,
+        status,
+        headers: headers(location ? { location } : {}),
+        json: async () => ({}),
+        text: async () => '',
+      };
+    }
     if (input.includes('/auth/token')) {
       const status = overrides.token?.status ?? 200;
       const body = overrides.token?.body ?? {
@@ -56,12 +103,13 @@ function fakeFetch(
         expires_in: 3600,
         scope: 'openid profile email',
       };
-      return { ok: status < 400, status, json: async () => body, text: async () => JSON.stringify(body) };
-    }
-    if (input.includes('/auth/me')) {
-      const status = overrides.profile?.status ?? 200;
-      const body = overrides.profile?.body ?? { id: 'yv-42', name: 'Test Person' };
-      return { ok: status < 400, status, json: async () => body, text: async () => JSON.stringify(body) };
+      return {
+        ok: status < 400,
+        status,
+        headers: headers(),
+        json: async () => body,
+        text: async () => JSON.stringify(body),
+      };
     }
     throw new Error(`unexpected fetch to ${input}`);
   }) as unknown as FetchLike;
@@ -71,7 +119,7 @@ function realOAuthService(fetchImpl: FetchLike): YouVersionOAuthService {
   return new YouVersionOAuthService({
     clientId: 'test-client-id',
     clientSecret: 'test-secret',
-    redirectUri: 'https://api.kairos.test/v1/youversion/oauth/callback',
+    redirectUri: REDIRECT_URI,
     fetchImpl,
   });
 }
@@ -166,7 +214,7 @@ function buildTestApp(deps: Partial<YouVersionConnectRoutesDeps> = {}): FastifyI
 // ---------------------------------------------------------------------------
 
 describe('POST /v1/youversion/connect', () => {
-  it('returns a login.youversion.com authorize URL carrying state and code_challenge (S256)', async () => {
+  it('returns an api.youversion.com authorize URL carrying state and code_challenge (S256)', async () => {
     const oauthStates = new FakeOAuthStatesRepository();
     const app = buildTestApp({ oauthStates: oauthStates as unknown as OAuthStatesRepository });
 
@@ -176,7 +224,7 @@ describe('POST /v1/youversion/connect', () => {
     expect(body.ok).toBe(true);
 
     const url = new URL(body.authUrl);
-    expect(url.origin + url.pathname).toBe('https://login.youversion.com/auth/authorize');
+    expect(url.origin + url.pathname).toBe('https://api.youversion.com/auth/authorize');
     expect(url.searchParams.get('response_type')).toBe('code');
     // Mutation-check: the flow is not a valid PKCE flow without these. Removing
     // code_challenge / code_challenge_method from getAuthorizationUrl fails here.
@@ -219,24 +267,38 @@ describe('POST /v1/youversion/connect', () => {
 // ---------------------------------------------------------------------------
 
 describe('GET /v1/youversion/oauth/callback', () => {
-  it('exchanges the code, stores ENCRYPTED tokens, and redirects to the web settings page', async () => {
+  it('resolves the code, exchanges it, stores ENCRYPTED tokens, and redirects to the web settings page', async () => {
     const oauthStates = new FakeOAuthStatesRepository();
     oauthStates.seed('valid-state', FAKE_USER_ID, { codeVerifier: 'the-verifier' });
     const kmsService = fakeKms();
     const connections = fakeConnections();
+    const fetchImpl = fakeFetch();
     const app = buildTestApp({
       oauthStates: oauthStates as unknown as OAuthStatesRepository,
+      oauthService: realOAuthService(fetchImpl),
       kmsService,
       connections,
     });
 
     const res = await app.inject({
       method: 'GET',
-      url: '/v1/youversion/oauth/callback?code=auth-code-xyz&state=valid-state',
+      url:
+        '/v1/youversion/oauth/callback?state=valid-state&yvp_id=yv-42&user_name=Test+Person' +
+        '&user_email=test%40example.com&profile_picture=https%3A%2F%2Fimg.test%2Fp.png',
     });
 
     expect([301, 302]).toContain(res.statusCode);
     expect(res.headers.location).toBe('https://app.kairos.test/settings?youversion=success');
+
+    // Step 2: the resolve call hit /auth/callback WITHOUT following the
+    // redirect (redirect: 'manual'), and step 3 posted the RESOLVED code.
+    const calls = (fetchImpl as unknown as ReturnType<typeof vi.fn>).mock.calls;
+    const resolveCall = calls.find((c) => String(c[0]).includes('/auth/callback'));
+    expect(resolveCall).toBeTruthy();
+    expect(resolveCall![1]).toMatchObject({ redirect: 'manual' });
+    const tokenCall = calls.find((c) => String(c[0]).includes('/auth/token'));
+    expect(tokenCall).toBeTruthy();
+    expect(String(tokenCall![1]?.body)).toContain('code=resolved-code');
 
     // Both tokens were encrypted (plaintext passed to KMS), never stored raw.
     expect(kmsService.encryptToken).toHaveBeenCalledWith('yv-access-token');
@@ -245,7 +307,12 @@ describe('GET /v1/youversion/oauth/callback', () => {
     expect(connections.upsert).toHaveBeenCalledOnce();
     const [calledUserId, input] = (connections.upsert as ReturnType<typeof vi.fn>).mock.calls[0] as [
       string,
-      { accessTokenEncrypted: Buffer; refreshTokenEncrypted: Buffer | null; displayName: string | null },
+      {
+        accessTokenEncrypted: Buffer;
+        refreshTokenEncrypted: Buffer | null;
+        displayName: string | null;
+        youVersionUserId: string | null;
+      },
     ];
     expect(calledUserId).toBe(FAKE_USER_ID);
     // Stored bytes are the CIPHERTEXT returned by KMS, never the plaintext
@@ -253,12 +320,13 @@ describe('GET /v1/youversion/oauth/callback', () => {
     expect(input.accessTokenEncrypted).toEqual(Buffer.from('enc:yv-access-token'));
     expect(input.accessTokenEncrypted).not.toEqual(Buffer.from('yv-access-token'));
     expect(input.refreshTokenEncrypted).toEqual(Buffer.from('enc:yv-refresh-token'));
-    // §9-safe identity captured from the profile.
+    // §9-safe identity captured straight from the authorize redirect (no /auth/me).
     expect(input.displayName).toBe('Test Person');
+    expect(input.youVersionUserId).toBe('yv-42');
     await app.close();
   });
 
-  it('stores a null refresh token when the provider issues none (⚠️ must-confirm U1) rather than throwing', async () => {
+  it('stores a null refresh token when the provider issues none rather than throwing', async () => {
     const oauthStates = new FakeOAuthStatesRepository();
     oauthStates.seed('valid-state', FAKE_USER_ID);
     const connections = fakeConnections();
@@ -272,7 +340,7 @@ describe('GET /v1/youversion/oauth/callback', () => {
 
     const res = await app.inject({
       method: 'GET',
-      url: '/v1/youversion/oauth/callback?code=c&state=valid-state',
+      url: '/v1/youversion/oauth/callback?state=valid-state&yvp_id=yv-1&user_name=A',
     });
 
     expect([301, 302]).toContain(res.statusCode);
@@ -284,19 +352,44 @@ describe('GET /v1/youversion/oauth/callback', () => {
     await app.close();
   });
 
-  it('still stores the connection when the profile fetch fails (best-effort display name)', async () => {
+  it('fails the resolve step when the returned Location state does not match (forged redirect)', async () => {
     const oauthStates = new FakeOAuthStatesRepository();
     oauthStates.seed('valid-state', FAKE_USER_ID);
     const connections = fakeConnections();
     const app = buildTestApp({
       oauthStates: oauthStates as unknown as OAuthStatesRepository,
-      oauthService: realOAuthService(fakeFetch({ profile: { status: 500, body: {} } })),
+      // Resolve returns a code but echoes a DIFFERENT state — must be rejected.
+      oauthService: realOAuthService(
+        fakeFetch({
+          resolve: { status: 302, location: `${REDIRECT_URI}?code=x&state=some-other-state` },
+        }),
+      ),
       connections,
     });
 
     const res = await app.inject({
       method: 'GET',
-      url: '/v1/youversion/oauth/callback?code=c&state=valid-state',
+      url: '/v1/youversion/oauth/callback?state=valid-state&yvp_id=yv-1&user_name=A',
+    });
+
+    expect(res.statusCode).toBe(500);
+    expect(connections.upsert).not.toHaveBeenCalled();
+    await app.close();
+  });
+
+  it('stores no display name when the redirect omits user_name', async () => {
+    const oauthStates = new FakeOAuthStatesRepository();
+    oauthStates.seed('valid-state', FAKE_USER_ID);
+    const connections = fakeConnections();
+    const app = buildTestApp({
+      oauthStates: oauthStates as unknown as OAuthStatesRepository,
+      oauthService: realOAuthService(fakeFetch()),
+      connections,
+    });
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/v1/youversion/oauth/callback?state=valid-state&yvp_id=yv-1',
     });
 
     expect([301, 302]).toContain(res.statusCode);
@@ -306,13 +399,13 @@ describe('GET /v1/youversion/oauth/callback', () => {
       { displayName: string | null; youVersionUserId: string | null },
     ];
     expect(input.displayName).toBeNull();
-    expect(input.youVersionUserId).toBeNull();
+    expect(input.youVersionUserId).toBe('yv-1');
     await app.close();
   });
 
   it('400s on missing state', async () => {
     const app = buildTestApp();
-    const res = await app.inject({ method: 'GET', url: '/v1/youversion/oauth/callback?code=c' });
+    const res = await app.inject({ method: 'GET', url: '/v1/youversion/oauth/callback?yvp_id=yv-1' });
     expect(res.statusCode).toBe(400);
     await app.close();
   });
@@ -321,7 +414,7 @@ describe('GET /v1/youversion/oauth/callback', () => {
     const app = buildTestApp();
     const res = await app.inject({
       method: 'GET',
-      url: '/v1/youversion/oauth/callback?code=c&state=never-issued',
+      url: '/v1/youversion/oauth/callback?yvp_id=yv-1&state=never-issued',
     });
     expect(res.statusCode).toBe(400);
     await app.close();
@@ -333,7 +426,7 @@ describe('GET /v1/youversion/oauth/callback', () => {
     const app = buildTestApp({ oauthStates: oauthStates as unknown as OAuthStatesRepository });
     const res = await app.inject({
       method: 'GET',
-      url: '/v1/youversion/oauth/callback?code=c&state=expired',
+      url: '/v1/youversion/oauth/callback?yvp_id=yv-1&state=expired',
     });
     expect(res.statusCode).toBe(400);
     await app.close();
@@ -345,7 +438,7 @@ describe('GET /v1/youversion/oauth/callback', () => {
     const app = buildTestApp({ oauthStates: oauthStates as unknown as OAuthStatesRepository });
     const res = await app.inject({
       method: 'GET',
-      url: '/v1/youversion/oauth/callback?code=c&state=used',
+      url: '/v1/youversion/oauth/callback?yvp_id=yv-1&state=used',
     });
     expect(res.statusCode).toBe(400);
     await app.close();
@@ -357,13 +450,13 @@ describe('GET /v1/youversion/oauth/callback', () => {
     const app = buildTestApp({ oauthStates: oauthStates as unknown as OAuthStatesRepository });
     const res = await app.inject({
       method: 'GET',
-      url: '/v1/youversion/oauth/callback?code=c&state=no-verifier',
+      url: '/v1/youversion/oauth/callback?yvp_id=yv-1&state=no-verifier',
     });
     expect(res.statusCode).toBe(400);
     await app.close();
   });
 
-  it('400s on missing code with a valid state', async () => {
+  it('400s on missing yvp_id with a valid state (no identity to resolve)', async () => {
     const oauthStates = new FakeOAuthStatesRepository();
     oauthStates.seed('valid-state', FAKE_USER_ID);
     const app = buildTestApp({ oauthStates: oauthStates as unknown as OAuthStatesRepository });

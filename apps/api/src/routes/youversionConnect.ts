@@ -10,8 +10,11 @@
  *      → mint PKCE verifier+challenge + opaque state, store state+verifier
  *        server-side keyed to the user, return the authorize URL.
  *   2. GET  /v1/youversion/oauth/callback     (NO auth — provider redirect)
- *      → validate state, exchange code+verifier, encrypt tokens, upsert,
- *        redirect to the web settings page (single-origin redirect base).
+ *      → YouVersion redirects here with the signed-in identity (yvp_id,
+ *        user_name, …), NOT a code. Validate state, resolve the identity into
+ *        a code (a 2nd server call — YouVersion's non-standard flow), exchange
+ *        code+verifier for tokens, encrypt, upsert, redirect to the web
+ *        settings page (single-origin redirect base).
  *   3. DELETE /v1/youversion/connection       (auth-required)
  *      → delete stored tokens (best-effort revoke once an endpoint exists).
  *
@@ -135,12 +138,29 @@ export function registerYouVersionConnectRoutes(
   // Registered first, outside any requireAuth preHandler.
   // -------------------------------------------------------------------------
   app.get<{
-    Querystring: { code?: string; state?: string; error?: string };
+    Querystring: {
+      yvp_id?: string;
+      state?: string;
+      user_name?: string;
+      user_email?: string;
+      profile_picture?: string;
+      error?: string;
+    };
   }>('/v1/youversion/oauth/callback', async (request, reply) => {
     const { oauthService, kmsService } = deps;
     if (!oauthService || !kmsService) return notConfigured(reply);
 
-    const { code, state, error } = request.query;
+    // YouVersion's authorize redirect carries the signed-in user's identity,
+    // NOT a `code` (see the service module doc). The `code` is resolved from
+    // this identity in a second server call below.
+    const {
+      yvp_id: yvpId,
+      state,
+      user_name: userName,
+      user_email: userEmail,
+      profile_picture: profilePicture,
+      error,
+    } = request.query;
 
     // User denied — no state is consumed (nothing to authorize).
     if (error) {
@@ -156,7 +176,9 @@ export function registerYouVersionConnectRoutes(
     const claimed = await oauthStates.consume(state);
     if (!claimed) return badRequest(reply, 'Invalid or expired state parameter');
 
-    if (!code) return badRequest(reply, 'Missing authorization code');
+    // The authorize redirect must carry the signed-in user's yvp_id — without
+    // it there is no identity to resolve into a code.
+    if (!yvpId) return badRequest(reply, 'Missing yvp_id from authorization redirect');
 
     // PKCE is mandatory for this flow — a state row minted by
     // POST /v1/youversion/connect always carries a verifier. Its absence means
@@ -170,7 +192,24 @@ export function registerYouVersionConnectRoutes(
     const user = await users.findById(userId);
     if (!user) return badRequest(reply, 'User not found');
 
-    // Exchange the authorization code + PKCE verifier for tokens.
+    // Step 2: resolve the signed-in identity into an authorization code
+    // (YouVersion's non-standard flow — see the service). This reads the code
+    // off a 302 Location header without following the redirect.
+    let code: string;
+    try {
+      code = await oauthService.resolveAuthorizationCode({
+        state,
+        yvpId,
+        userName: userName ?? '',
+        userEmail: userEmail ?? '',
+        profilePicture: profilePicture ?? '',
+      });
+    } catch (err) {
+      request.log.error({ err }, 'YouVersion OAuth code resolution failed');
+      return internalError(reply, 'OAuth code resolution failed');
+    }
+
+    // Step 3: exchange the authorization code + PKCE verifier for tokens.
     let tokens: Awaited<ReturnType<YouVersionOAuthService['exchangeCode']>>;
     try {
       tokens = await oauthService.exchangeCode({ code, codeVerifier: claimed.codeVerifier });
@@ -179,18 +218,11 @@ export function registerYouVersionConnectRoutes(
       return internalError(reply, 'OAuth code exchange failed');
     }
 
-    // Fetch the profile for the §9-safe display identity. Best-effort: a
-    // connect the user has already approved must not fail because the profile
-    // call did — the connection is still stored, just without a display name.
-    let youVersionUserId: string | null = null;
-    let displayName: string | null = null;
-    try {
-      const profile = await oauthService.fetchProfile(tokens.accessToken);
-      youVersionUserId = profile.id;
-      displayName = profile.displayName;
-    } catch (err) {
-      request.log.warn({ err, userId }, 'youversion: profile fetch failed — storing connection without a display name');
-    }
+    // §9-safe display identity comes straight from the authorize redirect —
+    // there is NO /auth/me profile endpoint. `youversion_user_id` = yvp_id,
+    // `display_name` = user_name.
+    const youVersionUserId: string | null = yvpId;
+    const displayName: string | null = userName && userName.length > 0 ? userName : null;
 
     // Encrypt both tokens BEFORE any DB write — this layer never persists
     // plaintext (Foundation §10). The refresh token is encrypted only when

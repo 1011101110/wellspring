@@ -5,18 +5,41 @@
  * This is the account-login half of the YouVersion integration and is
  * entirely separate from `youVersionClient.ts`, which is the passage-fetch
  * API keyed by an app key (`X-YVP-App-Key`). This service speaks the OAuth
- * endpoints on `login.youversion.com` / `api.youversion.com/auth` and never
- * touches the passage API, and vice-versa.
+ * endpoints on `api.youversion.com/auth` and never touches the passage API,
+ * and vice-versa.
  *
- * Endpoints (SDK-verified 2026-07-24 — youversion/platform-sdk-swift
- * URLBuilder + developers.youversion.com/sign-in-apis):
- *   Authorize     GET  https://login.youversion.com/auth/authorize
+ * YouVersion's sign-in flow is NON-STANDARD (per developers.youversion.com/
+ * sign-in-apis, read 2026-07-24). It is NOT a plain OAuth code flow — the
+ * authorize step does not hand us a `code`; it hands us the signed-in user's
+ * identity, and a SECOND server call resolves that into a `code`. All three
+ * API calls are on the SAME host, `https://api.youversion.com`
+ * (`login.youversion.com` is only where the user visually signs in, not an
+ * API host).
+ *
+ *   1. Authorize  GET  https://api.youversion.com/auth/authorize
  *                      ?response_type=code&client_id=&redirect_uri=&scope=
  *                      &state=&nonce=&code_challenge=&code_challenge_method=S256
- *   Token         POST https://login.youversion.com/auth/token   (server-to-server)
+ *        The user signs in, then YouVersion 303-redirects to our redirect_uri
+ *        with query params { yvp_id, state, user_name, profile_picture,
+ *        user_email } — NOT a `code`.
+ *   2. Resolve    GET  https://api.youversion.com/auth/callback
+ *                      ?state=&yvp_id=&user_name=&user_email=&profile_picture=
+ *        YouVersion responds 302 with Location:
+ *        {our redirect_uri}?code=&scope=&state=. We read the `code` from the
+ *        Location header WITHOUT following the redirect (it points back at our
+ *        own callback and would loop). See `resolveAuthorizationCode`.
+ *   3. Token      POST https://api.youversion.com/auth/token (server-to-server)
  *                      grant_type=authorization_code, code, code_verifier,
  *                      redirect_uri, client_id[, client_secret]
- *   Profile       GET  https://api.youversion.com/auth/me        (Bearer access token)
+ *
+ * Identity: there is NO `/auth/me`. The connected account's identity comes
+ * straight from the step-1 redirect params: `youversion_user_id` = `yvp_id`,
+ * `display_name` = `user_name`. (The `access_token`/`id_token` JWTs also carry
+ * `yvp_id/sub/email/name/profile_picture` claims, issuer
+ * `https://api.youversion.com`, aud = app_key, jwks
+ * `https://api.youversion.com/.well-known/jwks.json`. Verifying the id_token
+ * signature via JWKS is a hardening follow-up, NOT done here: the token
+ * reached us over TLS directly from the token endpoint.)
  *
  * PKCE (S256): the flow mints a random `code_verifier`, sends only its SHA-256
  * challenge to the authorize endpoint, and replays the verifier server-side at
@@ -28,9 +51,6 @@
  *   - The exact highlights SCOPE string is UNKNOWN. `YOUVERSION_DEFAULT_SCOPES`
  *     below defaults to the ONLY documented example (`openid profile email`);
  *     U1 appends the real highlights scope as a one-line change.
- *   - Whether the token endpoint returns a REFRESH TOKEN is UNCONFIRMED.
- *     `exchangeCode`/`refreshTokens` treat a missing refresh token as a
- *     supported (non-fatal) state, unlike the Google service which throws.
  *   - No token-REVOKE endpoint is documented. Disconnect deletes our stored
  *     tokens (best-effort revoke wired only once an endpoint is confirmed).
  */
@@ -50,9 +70,9 @@ import { createHash, randomBytes } from 'node:crypto';
  */
 export const YOUVERSION_DEFAULT_SCOPES = 'openid profile email';
 
-const AUTHORIZE_URL = 'https://login.youversion.com/auth/authorize';
-const TOKEN_URL = 'https://login.youversion.com/auth/token';
-const PROFILE_URL = 'https://api.youversion.com/auth/me';
+const AUTHORIZE_URL = 'https://api.youversion.com/auth/authorize';
+const RESOLVE_URL = 'https://api.youversion.com/auth/callback';
+const TOKEN_URL = 'https://api.youversion.com/auth/token';
 
 const REQUEST_TIMEOUT_MS = 10_000;
 
@@ -72,10 +92,18 @@ export type FetchLike = (
     headers?: Record<string, string>;
     body?: string;
     signal?: AbortSignal;
+    /**
+     * `'manual'` so `resolveAuthorizationCode` can READ the redirect's
+     * `Location` header rather than follow it (the redirect points back at our
+     * own callback and would loop). Omitted elsewhere (default follow).
+     */
+    redirect?: 'manual' | 'follow';
   },
 ) => Promise<{
   ok: boolean;
   status: number;
+  /** Response headers — `resolveAuthorizationCode` reads `Location` off a 3xx. */
+  headers: { get(name: string): string | null };
   json(): Promise<unknown>;
   text(): Promise<string>;
 }>;
@@ -97,7 +125,11 @@ export interface PkcePair {
 
 export interface ExchangedTokens {
   accessToken: string;
-  /** NULL when YouVersion issues no refresh token (⚠️ must-confirm U1) — handled, not thrown. */
+  /**
+   * YouVersion's token endpoint DOES issue a refresh token, so this is
+   * normally present. Kept nullable (stored as SQL NULL) so a response that
+   * omits it is handled gracefully rather than throwing.
+   */
   refreshToken: string | null;
   /** Epoch ms when the access token expires, or null if the provider reported no `expires_in`. */
   expiresAt: number | null;
@@ -105,11 +137,16 @@ export interface ExchangedTokens {
   scopes: string;
 }
 
-export interface YouVersionProfile {
-  /** Provider-side account id — §9-safe identity, never activity. */
-  id: string | null;
-  /** Human-facing name for "Connected as …", if the profile carries one. */
-  displayName: string | null;
+/**
+ * Params for `resolveAuthorizationCode` — exactly the identity fields
+ * YouVersion hands us on the step-1 authorize redirect.
+ */
+export interface ResolveCodeParams {
+  state: string;
+  yvpId: string;
+  userName: string;
+  userEmail: string;
+  profilePicture: string;
 }
 
 /** base64url-encode without padding — RFC 7636 PKCE / RFC 4648 §5. */
@@ -168,12 +205,64 @@ export class YouVersionOAuthService {
   }
 
   /**
+   * Resolves the step-1 authorize redirect into an authorization `code`.
+   *
+   * YouVersion's authorize redirect does NOT carry a `code` — it carries the
+   * signed-in user's identity ({ yvp_id, state, user_name, user_email,
+   * profile_picture }). This second call replays that identity to
+   * `GET api.youversion.com/auth/callback`, and YouVersion answers with a
+   * 302 whose `Location` header is `{our redirect_uri}?code=&scope=&state=`.
+   *
+   * We use `redirect: 'manual'` and read the `code` off the `Location` header
+   * WITHOUT following it: the Location points back at our own callback and
+   * following it would loop. The `state` echoed in the Location MUST match the
+   * input state (defense against a swapped/forged redirect); a mismatch throws.
+   */
+  async resolveAuthorizationCode(params: ResolveCodeParams): Promise<string> {
+    const url = new URL(RESOLVE_URL);
+    url.searchParams.set('state', params.state);
+    url.searchParams.set('yvp_id', params.yvpId);
+    url.searchParams.set('user_name', params.userName);
+    url.searchParams.set('user_email', params.userEmail);
+    url.searchParams.set('profile_picture', params.profilePicture);
+
+    const response = await this.fetchImpl(url.toString(), {
+      method: 'GET',
+      headers: { Accept: 'application/json' },
+      redirect: 'manual',
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    });
+
+    const location = response.headers.get('location') ?? response.headers.get('Location');
+    if (response.status < 300 || response.status >= 400 || !location) {
+      const text = await response.text().catch(() => '<unreadable>');
+      throw new Error(
+        `YouVersion code resolution failed: expected a 3xx redirect with a Location header, ` +
+          `got HTTP ${response.status} — ${text}`,
+      );
+    }
+
+    // The Location is `{our redirect_uri}?code=&scope=&state=`. Parse it
+    // relative to the resolve host so a relative Location still parses.
+    const redirected = new URL(location, RESOLVE_URL);
+    const code = redirected.searchParams.get('code');
+    const returnedState = redirected.searchParams.get('state');
+
+    if (returnedState !== params.state) {
+      throw new Error('YouVersion code resolution: state mismatch in redirect Location');
+    }
+    if (!code) {
+      throw new Error('YouVersion code resolution: no code in redirect Location');
+    }
+    return code;
+  }
+
+  /**
    * Exchanges an authorization code + PKCE verifier for tokens
    * (server-to-server; the verifier proves this is the same client that
-   * started the flow). Unlike the Google service, a MISSING refresh token is
-   * NOT an error — YouVersion's refresh-token behavior is unconfirmed
-   * (⚠️ must-confirm U1), so a null refresh token is returned and stored as
-   * SQL NULL rather than throwing.
+   * started the flow). A MISSING refresh token is tolerated (returned as null,
+   * stored as SQL NULL) rather than throwing, though YouVersion normally
+   * issues one.
    */
   async exchangeCode(params: { code: string; codeVerifier: string }): Promise<ExchangedTokens> {
     const body: Record<string, string> = {
@@ -193,9 +282,9 @@ export class YouVersionOAuthService {
    * caller's existing one (the caller decides — this returns null for
    * "the provider sent none this time").
    *
-   * NOTE (⚠️ must-confirm U1): reachable only once we know YouVersion issues
-   * refresh tokens at all. Callers must guard on a non-null stored refresh
-   * token before calling this.
+   * YouVersion issues refresh tokens, so this grant is expected to work;
+   * callers must still guard on a non-null stored refresh token before calling
+   * it (a connection stored before a token was issued would have none).
    */
   async refreshTokens(refreshToken: string): Promise<ExchangedTokens> {
     const body: Record<string, string> = {
@@ -226,7 +315,8 @@ export class YouVersionOAuthService {
     const data = (await response.json()) as {
       access_token?: string;
       refresh_token?: string;
-      expires_in?: number;
+      /** YouVersion may send this as a number OR a numeric string. */
+      expires_in?: number | string;
       scope?: string;
     };
 
@@ -234,59 +324,22 @@ export class YouVersionOAuthService {
       throw new Error('YouVersion token exchange: no access_token in response');
     }
 
+    // `expires_in` is seconds, and may arrive as a number or a numeric string.
+    const expiresInSec =
+      typeof data.expires_in === 'number'
+        ? data.expires_in
+        : typeof data.expires_in === 'string' && data.expires_in.trim() !== ''
+          ? Number(data.expires_in)
+          : NaN;
+
     return {
       accessToken: data.access_token,
       refreshToken: data.refresh_token ?? null,
-      expiresAt:
-        typeof data.expires_in === 'number' ? Date.now() + data.expires_in * 1000 : null,
+      expiresAt: Number.isFinite(expiresInSec) ? Date.now() + expiresInSec * 1000 : null,
       scopes: data.scope ?? YOUVERSION_DEFAULT_SCOPES,
     };
   }
 
-  /**
-   * Fetches the connected account's profile (Bearer access token). Returns
-   * §9-safe identity only (id + display name); this service never reads
-   * highlights or any activity. A profile fetch failure is surfaced to the
-   * caller, which treats it as best-effort (a connect still succeeds without
-   * a display name).
-   */
-  async fetchProfile(accessToken: string): Promise<YouVersionProfile> {
-    const response = await this.fetchImpl(PROFILE_URL, {
-      method: 'GET',
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        Accept: 'application/json',
-      },
-      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-    });
-
-    if (!response.ok) {
-      const text = await response.text().catch(() => '<unreadable>');
-      throw new Error(`YouVersion profile fetch failed: HTTP ${response.status} — ${text}`);
-    }
-
-    const data = (await response.json()) as {
-      id?: string | number;
-      user_id?: string | number;
-      sub?: string | number;
-      name?: string;
-      display_name?: string;
-      first_name?: string;
-      last_name?: string;
-    };
-
-    const id = data.id ?? data.user_id ?? data.sub;
-    const displayName =
-      data.display_name ??
-      data.name ??
-      [data.first_name, data.last_name].filter(Boolean).join(' ') ??
-      null;
-
-    return {
-      id: id != null ? String(id) : null,
-      displayName: displayName && displayName.length > 0 ? displayName : null,
-    };
-  }
 }
 
 /**
