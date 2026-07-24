@@ -240,6 +240,8 @@ export interface GenerateDevotionalParams {
   theme?: string;
   /** The user's own words from an event they invited Wellspring to (Epic I / I2, #62) — deliberate disclosure, elevated safety. Passed straight through to buildInstructions; see BuildInstructionsParams. */
   inviteContext?: string;
+  /** A USFM passage the user marked in their YouVersion highlights (U4, #357) — passed straight through to buildInstructions's honesty-locked highlight framing. Absent = no line. */
+  highlightedReference?: string;
 }
 
 export type DevotionalSource = 'gloo' | 'gloo_repaired' | 'fixture';
@@ -797,6 +799,7 @@ export class DevotionalEngine {
       prayerIntention: params.prayerIntention,
       theme: params.theme,
       inviteContext: params.inviteContext,
+      highlightedReference: params.highlightedReference,
       language,
     });
     const format = resolveTargetFormat(bands, durationPreference, slotType);
