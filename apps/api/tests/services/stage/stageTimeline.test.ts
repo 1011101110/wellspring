@@ -204,7 +204,11 @@ describe('stage client script embedding (stageClient.ts)', () => {
       expect(js).toContain(`function ${name}(`);
     }
     expect(js).toContain('stage-data');
-    expect(js).toContain('getUserMedia');
+    // Q7 rehearsal finding (2026-07-23): a getUserMedia call makes Attendee's
+    // container open its meeting-audio-to-page WebRTC path and inject a red
+    // "Failed to receive remote audio stream" banner into the presented DOM
+    // when it times out. This playback-only page must never request the mic.
+    expect(js).not.toContain('getUserMedia');
     expect(js).toContain('pointerdown'); // autoplay retry on first pointer event
     expect(js).not.toContain('import ');
     expect(js).not.toContain('require(');

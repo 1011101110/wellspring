@@ -243,6 +243,13 @@ function stageShell(title: string, bodyHtml: string, options: { withScript: bool
   @media (prefers-reduced-motion: reduce) {
     .tab-pill, .panel, .caption-chip, .progress-fill, .begin-overlay { transition: none; }
   }
+  /* Attendee's container injects diagnostic banners into this DOM under this
+     id (webpage_streamer_payload.js) — seen live on the Q7 rehearsal
+     2026-07-23 ("Failed to receive remote audio stream"). The trigger (our
+     mic request) is removed in stageClient.ts; this rule is defense-in-depth
+     so no container-side diagnostic can ever appear on the screen every
+     participant sees. */
+  #attendee-audio-error { display: none !important; }
 </style>
 </head>
 <body>

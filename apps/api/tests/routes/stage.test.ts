@@ -91,6 +91,17 @@ describe('GET /stage/:token', () => {
     expect(res.body).toContain('"hasQuestions":false');
   });
 
+  it("suppresses Attendee's injected diagnostic banner (#attendee-audio-error) — nothing container-side may appear on the presented screen", async () => {
+    // Q7 rehearsal, 2026-07-23: the container's webpage_streamer_payload.js
+    // appends error banners into our DOM under this id; without this rule a
+    // red "Failed to receive remote audio stream" box showed on the Meet
+    // main stage for every participant.
+    const app = buildTestApp(async () => OK_VIEW);
+    const res = await app.inject({ method: 'GET', url: `/stage/${TOKEN}` });
+
+    expect(res.body).toContain('#attendee-audio-error { display: none !important; }');
+  });
+
   it('?mute=1 renders the muted screenshare variant; nothing else differs', async () => {
     const app = buildTestApp(async () => OK_VIEW);
     const unmuted = await app.inject({ method: 'GET', url: `/stage/${TOKEN}` });
