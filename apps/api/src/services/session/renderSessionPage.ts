@@ -15,6 +15,7 @@
  * output is untrusted input (docs/04 §5.4). Do not add a new
  * interpolation site without escaping it.
  */
+import { WS, WS_SANS, WS_SERIF, wsFontFaceCss } from '../design/wsTokens.js';
 import { escapeHtml } from './html.js';
 
 export interface SessionPageVerse {
@@ -42,7 +43,21 @@ export interface SessionPageData {
   token: string;
 }
 
-/** Shared page chrome: calm, minimal styling per 05_UX_FLOWS §1 (P1 "Calm, unhurried"). WCAG AA contrast (dark text #1a1a1a on off-white #faf8f5; buttons meet 4.5:1). */
+/**
+ * Shared page chrome, styled per the Wellspring Design System (T3 #350,
+ * epic #347): canvas→mist ground, Hanken Grotesk UI chrome, Spectral for
+ * scripture (the hero), prayer, and the title. Zero JS as ever (docs/04
+ * §5.3 CSP) — fonts are self-hosted @font-face (`font-src 'self'`) with
+ * Georgia/system-ui fallbacks, so the page is correct with or without the
+ * woff2 files.
+ *
+ * WCAG AA (the session-a11y e2e suite is a hard gate): every small-text
+ * role that the design pins to muted #A2937F (2.8:1 on canvas) or
+ * terracotta #B4795A (3.4:1) is darkened to clay #8A5F43 (≥4.5:1 on every
+ * ground used here); the CTA gradient uses darkened terracotta ends
+ * (#96684a→#8A5F43, white text ≥4.5:1 on both). Roles are otherwise kept
+ * verbatim (sizes, weights, tracking, families).
+ */
 function pageShell(title: string, bodyHtml: string): string {
   return `<!doctype html>
 <html lang="en">
@@ -51,14 +66,26 @@ function pageShell(title: string, bodyHtml: string): string {
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>${escapeHtml(title)}</title>
 <style>
-  :root { color-scheme: light; }
+  ${wsFontFaceCss()}
+  :root {
+    color-scheme: light;
+    --ws-canvas: ${WS.canvas};
+    --ws-mist: ${WS.mist};
+    --ws-terracotta: ${WS.terracotta};
+    --ws-clay: ${WS.clay};
+    --ws-ink: ${WS.ink};
+    --serif: ${WS_SERIF};
+    --sans: ${WS_SANS};
+  }
   * { box-sizing: border-box; }
   body {
     margin: 0;
     padding: 0;
-    background: #faf8f5;
-    color: #1a1a1a;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Georgia, serif;
+    background: var(--ws-canvas);
+    background-image: linear-gradient(180deg, var(--ws-canvas) 0%, var(--ws-mist) 100%);
+    background-attachment: fixed;
+    color: var(--ws-ink);
+    font-family: var(--sans);
     line-height: 1.6;
   }
   main {
@@ -66,70 +93,135 @@ function pageShell(title: string, bodyHtml: string): string {
     margin: 0 auto;
     padding: 2.5rem 1.5rem 4rem;
   }
-  h1 { font-size: 1.5rem; font-weight: 600; margin: 0 0 0.25rem; }
-  .theme { color: #4a4a4a; font-size: 1rem; margin: 0 0 2rem; }
-  .verse-ref { font-weight: 600; margin: 0 0 0.5rem; }
-  .verse-text { font-size: 1.15rem; margin: 0 0 0.5rem; }
-  .attribution { color: #5a5a5a; font-size: 0.85rem; margin: 0 0 2rem; }
+  /* Title role (§03): Spectral 400, slight negative tracking. */
+  h1 { font-family: var(--serif); font-size: 1.75rem; font-weight: 400; letter-spacing: -0.01em; margin: 0 0 0.25rem; }
+  .theme { color: var(--ws-clay); font-size: 0.95rem; margin: 0 0 2rem; }
+  /* Verse block (§05 signature component): scripture is the hero — a
+     soft-gradient card, eyebrow-styled reference, Spectral 300 quote at
+     26px (lh 1.4, text-wrap: pretty), reference-role attribution line. */
+  .verse {
+    background: ${WS.gradientVerse};
+    border-radius: ${WS.radiusCard};
+    box-shadow: ${WS.shadow};
+    padding: 1.75rem 1.75rem 1.5rem;
+    margin: 0 0 1.75rem;
+  }
+  .verse-ref {
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--ws-clay);
+    margin: 0 0 0.9rem;
+  }
+  .verse-text {
+    font-family: var(--serif);
+    font-weight: 300;
+    font-size: clamp(1.5rem, 5.5vw, 1.625rem);
+    line-height: 1.4;
+    text-wrap: pretty;
+    margin: 0 0 1rem;
+  }
+  .attribution { color: var(--ws-clay); font-size: 13px; font-weight: 500; letter-spacing: 0.04em; margin: 0; }
   audio { width: 100%; margin: 1.5rem 0; }
-  .transcript { white-space: pre-wrap; margin: 1.5rem 0; }
-  .prayer { font-style: italic; margin: 1.5rem 0; padding: 1rem; background: #f1ede6; border-radius: 8px; }
-  .action-step, .journaling-prompt { margin: 1.5rem 0; }
+  .transcript { font-family: var(--serif); font-size: 1.05rem; line-height: 1.7; white-space: pre-wrap; margin: 1.5rem 0; }
+  /* Prayer role (§03): Spectral 300 italic on a mist card. */
+  .prayer {
+    font-family: var(--serif);
+    font-style: italic;
+    font-weight: 300;
+    font-size: 1.375rem;
+    line-height: 1.5;
+    margin: 1.5rem 0;
+    padding: 1.5rem 1.75rem;
+    background: var(--ws-mist);
+    border-radius: ${WS.radiusCard};
+  }
+  .action-step, .journaling-prompt { margin: 1.75rem 0; }
+  .action-step h2, .journaling-prompt h2 {
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--ws-clay);
+    margin: 0 0 0.4rem;
+  }
   .complete-form { margin-top: 2rem; }
-  .prayer-intention-label { display: block; font-size: 0.95rem; color: #4a4a4a; margin-bottom: 0.5rem; }
+  .prayer-intention-label { display: block; font-size: 0.95rem; color: var(--ws-clay); margin-bottom: 0.5rem; }
   .prayer-intention-input {
     display: block;
     width: 100%;
-    padding: 0.65rem 0.85rem;
+    min-height: 44px;
+    padding: 0.65rem 1.1rem;
     margin-bottom: 1rem;
     font-size: 1rem;
     font-family: inherit;
-    color: #1a1a1a;
+    color: var(--ws-ink);
     background: #fff;
-    border: 1px solid #cfc8bb;
-    border-radius: 8px;
+    border: 1px solid #d4bfae;
+    border-radius: ${WS.radiusPill};
   }
+  .prayer-intention-input:focus { outline: 2px solid var(--ws-terracotta); outline-offset: 1px; }
+  /* Primary CTA (§05): pill, terracotta-family gradient, white 15px/600
+     Hanken, warm CTA shadow. Gradient ends darkened from the token pair
+     (#c98a63→#b4795a) to #96684a→#8A5F43 so white text meets AA 4.5:1. */
   button.complete {
-    display: inline-block;
-    padding: 0.85rem 1.75rem;
-    font-size: 1rem;
-    color: #faf8f5;
-    background: #3a3226;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 44px;
+    padding: 0.7rem 1.75rem;
+    font-family: inherit;
+    font-size: 15px;
+    font-weight: 600;
+    color: #fff;
+    background: #8A5F43 linear-gradient(145deg, #96684a, #8A5F43);
     border: none;
-    border-radius: 999px;
+    border-radius: ${WS.radiusPill};
+    box-shadow: ${WS.shadowCta};
     cursor: pointer;
   }
-  /* #6b6459 (not the original #8a8375) — the original only contrasted
-     3.55:1 against the button's #faf8f5 text, failing WCAG AA's 4.5:1
-     floor for normal-size text (caught by the axe-core pass in
-     e2e/sessionPage.a11y.spec.ts, issue #67). */
+  button.complete:focus-visible { outline: 2px solid var(--ws-terracotta); outline-offset: 2px; }
+  /* #6b6459: 4.7:1 against the white label — keeps the AA floor the
+     original #8a8375 failed (axe pass in e2e/sessionPage.a11y.spec.ts, #67). */
   button.complete:disabled { background: #6b6459; cursor: default; }
-  .completed-badge { color: #2f5d3a; font-weight: 600; }
+  .completed-badge { color: var(--ws-clay); font-weight: 600; }
   /* Post-Amen feedback form (P2 #321) — zero-JS radio groups styled as
      tap targets. min-height 44px per the mobile tap-target floor (#264's
      accessibility bar); label wraps the input so the whole row is the
-     target. Same palette as the rest of the page — this is part of the
-     Amen moment, not a survey. */
+     target. Pills per the design system: glass rest state, clay-terracotta
+     selected state via :has() (older engines still show the native radio
+     dot, so selection stays legible without it). This is part of the Amen
+     moment, not a survey. */
   .feedback-form { margin-top: 2.5rem; }
   .feedback-form fieldset { border: none; margin: 0 0 1.25rem; padding: 0; }
-  .feedback-form legend { font-size: 0.95rem; color: #4a4a4a; margin-bottom: 0.4rem; padding: 0; }
+  .feedback-form legend { font-size: 0.95rem; color: var(--ws-clay); margin-bottom: 0.4rem; padding: 0; }
   .feedback-option {
     display: inline-flex;
     align-items: center;
     gap: 0.45rem;
     min-height: 44px;
-    padding: 0 1rem;
+    padding: 0 1.1rem;
     margin: 0 0.5rem 0.5rem 0;
-    background: #f1ede6;
-    border: 1px solid #cfc8bb;
-    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.55);
+    border: 1px solid #d4bfae;
+    border-radius: ${WS.radiusPill};
     cursor: pointer;
     font-size: 0.95rem;
   }
-  .feedback-note-label { display: block; font-size: 0.95rem; color: #4a4a4a; margin: 0.5rem 0; }
-  .audio-unavailable { color: #5a5a5a; font-size: 0.95rem; margin: 1rem 0 1.5rem; }
-  .gentle-message { font-size: 1.1rem; margin: 3rem 0; }
-  a { color: #3a3226; }
+  .feedback-option input { accent-color: var(--ws-clay); }
+  .feedback-option:has(input:checked) {
+    background: #8A5F43 linear-gradient(145deg, #96684a, #8A5F43);
+    border-color: transparent;
+    color: #fff;
+    box-shadow: ${WS.shadowCta};
+  }
+  .feedback-option:has(input:checked) input { accent-color: #fff; }
+  .feedback-option:focus-within { outline: 2px solid var(--ws-terracotta); outline-offset: 2px; }
+  .feedback-note-label { display: block; font-size: 0.95rem; color: var(--ws-clay); margin: 0.5rem 0; }
+  .audio-unavailable { color: var(--ws-clay); font-size: 0.95rem; margin: 1rem 0 1.5rem; }
+  .gentle-message { font-family: var(--serif); font-size: 1.15rem; margin: 3rem 0; }
+  a { color: var(--ws-clay); }
 </style>
 </head>
 <body>

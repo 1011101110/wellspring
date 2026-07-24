@@ -682,6 +682,15 @@ describe('GenerateNowOrchestrator', () => {
       }),
     );
 
+    // T4 #351 (§06 body): exact scripture first, one "Begin your moment ↗"
+    // link, no legacy "Join:" copy — and with the default provider the
+    // begin link IS the session page, so no fallback line appears.
+    const insertedDescription = insertEventMock.mock.calls[0]![0].description as string;
+    expect(insertedDescription.startsWith('“')).toBe(true);
+    expect(insertedDescription).toContain(`Begin your moment ↗ ${result.sessionUrl}`);
+    expect(insertedDescription).not.toContain('Join your devotional:');
+    expect(insertedDescription).not.toContain('Prefer plain audio?');
+
     // Calendar outcome is returned in the result.
     expect(result.calendar).toBeDefined();
     expect(result.calendar).not.toHaveProperty('skipped');
@@ -744,7 +753,10 @@ describe('GenerateNowOrchestrator', () => {
     expect(result.sessionUrl).toBe(`http://localhost:8080/session/${result.sessionToken}`);
 
     const description = insertEventMock.mock.calls[0]![0].description as string;
-    expect(description).toContain(`Join your devotional: http://localhost:8080/room/${result.sessionToken}`);
+    // T4 #351: the §06 body — the ONE action link carries the provider's
+    // joinUrl; the plain session page stays as the explicit DEC-K3
+    // fallback line because it differs from joinUrl here.
+    expect(description).toContain(`Begin your moment ↗ http://localhost:8080/room/${result.sessionToken}`);
     expect(description).toContain(`Prefer plain audio? http://localhost:8080/session/${result.sessionToken}`);
   });
 

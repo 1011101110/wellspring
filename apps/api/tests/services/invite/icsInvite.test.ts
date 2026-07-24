@@ -23,7 +23,13 @@ const baseInput: BuildInviteInput = {
   content: {
     cardSummary: 'Come to me, weary one. Your body needs rest, not more hustle. Matthew 11:28–30',
     sessionUrl: 'https://kairos.app/session/f47ac10b-58cc-4372-a567-0e02b2c3d479',
-    verses: [{ attribution: 'Berean Standard Bible (BSB). Public domain.' }],
+    verses: [
+      {
+        reference: 'Matthew 11:28-30',
+        fetchedText: 'Come to Me, all you who are weary and burdened, and I will give you rest.',
+        attribution: 'Berean Standard Bible (BSB). Public domain.',
+      },
+    ],
   },
   organizer: { email: 'invites@kairos.app', name: 'Wellspring' },
   attendee: { email: 'jane@example.com', name: 'Jane' },
@@ -48,10 +54,12 @@ const GOLDEN_REQUEST =
   'DTSTART:20260703T164000Z\r\n' +
   'DTEND:20260703T165000Z\r\n' +
   'SUMMARY:Wellspring — a moment of rest\r\n' +
-  'DESCRIPTION:Come to me\\, weary one. Your body needs rest\\, not more hustle\r\n' +
-  ' . Matthew 11:28–30\\n\\nJoin: https://kairos.app/session/f47ac10b-58cc-437\r\n' +
-  ' 2-a567-0e02b2c3d479\\n\\nBerean Standard Bible (BSB). Public domain.\\n\\nSche\r\n' +
-  ' duled by Wellspring around your meetings — kairos.app\r\n' +
+  'DESCRIPTION:“Come to Me\\, all you who are weary and burdened\\, and I wil\r\n' +
+  ' l give you rest.”\\nMatthew 11:28-30 · Berean Standard Bible (BSB). Publ\r\n' +
+  ' ic domain.\\n\\nCome to me\\, weary one. Your body needs rest\\, not more hust\r\n' +
+  ' le. Matthew 11:28–30\\n\\nBegin your moment ↗ https://kairos.app/session\r\n' +
+  ' /f47ac10b-58cc-4372-a567-0e02b2c3d479\\n\\nScheduled by Wellspring around yo\r\n' +
+  ' ur meetings — kairos.app\r\n' +
   'ORGANIZER;CN="Wellspring":mailto:invites@kairos.app\r\n' +
   'ATTENDEE;ROLE=REQ-PARTICIPANT;RSVP=FALSE;CN="Jane":MAILTO:jane@example.com\r\n' +
   'URL;VALUE=URI:https://kairos.app/session/f47ac10b-58cc-4372-a567-0e02b2c3d\r\n' +
@@ -72,20 +80,33 @@ describe('icsUidFor', () => {
 });
 
 describe('buildInviteDescription', () => {
-  it('follows the UX Flows §5 template: cardSummary, blank, Join line, blank, attribution, blank, footer', () => {
+  it('follows the Wellspring §06 template (T4 #351): exact verse first, reference · version, reflection, ONE Begin-your-moment link, footer', () => {
     const description = buildInviteDescription(baseInput.content);
     expect(description.split('\n')).toEqual([
+      '“Come to Me, all you who are weary and burdened, and I will give you rest.”',
+      'Matthew 11:28-30 · Berean Standard Bible (BSB). Public domain.',
+      '',
       'Come to me, weary one. Your body needs rest, not more hustle. Matthew 11:28–30',
       '',
-      'Join: https://kairos.app/session/f47ac10b-58cc-4372-a567-0e02b2c3d479',
-      '',
-      'Berean Standard Bible (BSB). Public domain.',
+      'Begin your moment ↗ https://kairos.app/session/f47ac10b-58cc-4372-a567-0e02b2c3d479',
       '',
       'Scheduled by Wellspring around your meetings — kairos.app',
     ]);
   });
 
-  it('omits the attribution line (but keeps structure) when there are no verses', () => {
+  it('carries exactly ONE link (§06) — the session URL appears once and no other URL exists', () => {
+    const description = buildInviteDescription(baseInput.content);
+    const urls = description.match(/https?:\/\/\S+/g) ?? [];
+    expect(urls).toEqual(['https://kairos.app/session/f47ac10b-58cc-4372-a567-0e02b2c3d479']);
+  });
+
+  it('speaks in §07 voice — no urgency, commands, or streak language', () => {
+    const description = buildInviteDescription(baseInput.content);
+    expect(description).not.toMatch(/!|hurry|now!|don&#39;t miss|missed|streak/i);
+    expect(description).toContain('Begin your moment ↗');
+  });
+
+  it('opens with the reflection (no verse block) when there are no verses', () => {
     const description = buildInviteDescription({
       cardSummary: 'Summary only.',
       sessionUrl: 'https://kairos.app/session/tok',
@@ -94,7 +115,24 @@ describe('buildInviteDescription', () => {
     expect(description.split('\n')).toEqual([
       'Summary only.',
       '',
-      'Join: https://kairos.app/session/tok',
+      'Begin your moment ↗ https://kairos.app/session/tok',
+      '',
+      'Scheduled by Wellspring around your meetings — kairos.app',
+    ]);
+  });
+
+  it('keeps the YouVersion credit as a trailing line for attribution-only verses (legacy callers)', () => {
+    const description = buildInviteDescription({
+      cardSummary: 'Summary only.',
+      sessionUrl: 'https://kairos.app/session/tok',
+      verses: [{ attribution: 'Berean Standard Bible (BSB). Public domain.' }],
+    });
+    expect(description.split('\n')).toEqual([
+      'Summary only.',
+      '',
+      'Begin your moment ↗ https://kairos.app/session/tok',
+      '',
+      'Berean Standard Bible (BSB). Public domain.',
       '',
       'Scheduled by Wellspring around your meetings — kairos.app',
     ]);

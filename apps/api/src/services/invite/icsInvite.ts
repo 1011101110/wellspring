@@ -42,15 +42,13 @@
  */
 
 import ical, { ICalCalendarMethod, ICalEventStatus, type ICalCalendar } from 'ical-generator';
+import { buildEventBody } from './eventBody.js';
 
-/** Wellspring's own domain — UID suffix and the "Scheduled by Wellspring" footer link. API spec §5. */
+/** Wellspring's own domain — UID suffix and the "Scheduled by Wellspring" footer line. API spec §5. */
 const KAIROS_DOMAIN = 'kairos.app';
 
 /** Default event title — UX Flows §5 (user-customizable *prefix* in Preferences; this is the base default). */
 export const DEFAULT_EVENT_TITLE = 'Wellspring — a moment of rest';
-
-/** Footer line appended to every description — UX Flows §5 description template, final line. */
-const SCHEDULED_BY_FOOTER = `Scheduled by Wellspring around your meetings — ${KAIROS_DOMAIN}`;
 
 /**
  * Stable UID for a devotional's calendar event — API spec §5: "identical
@@ -63,9 +61,19 @@ export function icsUidFor(devotionalId: string): string {
   return `kairos-${devotionalId}@${KAIROS_DOMAIN}`;
 }
 
-/** One verse's attribution, as carried in `DevotionalOutput.verses[]` (shared-contracts `VerseSchema`). */
+/**
+ * One verse, as carried in `DevotionalOutput.verses[]` (shared-contracts
+ * `VerseSchema`). `reference` + `fetchedText` are optional here because
+ * pre-§06 callers passed attribution only — when the first verse carries
+ * both, the description leads with the exact scripture (§06); otherwise
+ * it degrades to the reflection-first layout.
+ */
 export interface InviteVerseAttribution {
   attribution: string;
+  /** Human-readable reference, e.g. "Matthew 11:28-30" — enables the §06 scripture-first block. */
+  reference?: string;
+  /** Exact fetched translation text — rendered verbatim, never paraphrased (§08). */
+  fetchedText?: string;
 }
 
 /** Minimal input this module needs from a full `DevotionalOutput` — kept narrow so callers don't have to construct a whole devotional just to build an invite (e.g. tests). */
@@ -74,7 +82,7 @@ export interface InviteContent {
   cardSummary: string;
   /** Full URL to the hosted session page (`GET /session/:token`, API spec §8.2). */
   sessionUrl: string;
-  /** At least one verse's attribution string; the first is used as the description's short attribution line (matches the session-page/SSML convention of "first verse leads"). */
+  /** At least one verse; the first leads the description (matches the session-page/SSML convention of "first verse leads"). */
   verses: InviteVerseAttribution[];
 }
 
@@ -139,14 +147,30 @@ export interface BuildCancelInput {
   now?: () => Date;
 }
 
-/** Builds the DESCRIPTION body — UX Flows §5 template: cardSummary, blank line, "Join: {url}", blank line, attribution, blank line, footer. */
+/**
+ * Builds the DESCRIPTION body — Wellspring Design System §06 (T4 #351,
+ * superseding the older UX Flows §5 layout): exact verse text first
+ * (reference + version line), one short reflection line (cardSummary),
+ * ONE "Begin your moment ↗" link, sign-off footer. When the first verse
+ * carries no text/reference (legacy attribution-only callers) the body
+ * opens with the reflection and, if present, keeps the attribution as a
+ * trailing line so YouVersion credit is never dropped.
+ */
 export function buildInviteDescription(content: InviteContent): string {
-  const attributionLine = content.verses[0]?.attribution;
-  const lines = [content.cardSummary, '', `Join: ${content.sessionUrl}`];
-  if (attributionLine) {
-    lines.push('', attributionLine);
+  const first = content.verses[0];
+  if (first?.fetchedText && first.reference) {
+    return buildEventBody({
+      verse: { reference: first.reference, fetchedText: first.fetchedText, attribution: first.attribution },
+      reflection: content.cardSummary,
+      beginUrl: content.sessionUrl,
+    });
   }
-  lines.push('', SCHEDULED_BY_FOOTER);
+  const body = buildEventBody({ reflection: content.cardSummary, beginUrl: content.sessionUrl });
+  if (!first?.attribution) return body;
+  // Attribution-only degraded layout: credit line rides between the
+  // reflection/link block and the footer.
+  const lines = body.split('\n');
+  lines.splice(lines.length - 1, 0, first.attribution, '');
   return lines.join('\n');
 }
 

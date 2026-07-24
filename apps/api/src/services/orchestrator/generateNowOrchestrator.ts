@@ -62,6 +62,7 @@ import type { GoogleCalendarClient } from '../calendar/googleCalendarClient.js';
 import type { GoogleKmsService } from '../calendar/googleKmsService.js';
 import { resolveSchedulingWindow } from '../calendar/schedulingWindow.js';
 import type { DeliveryProvider } from '../delivery/deliveryProvider.js';
+import { buildEventBody } from '../invite/eventBody.js';
 import type { TaskScheduler } from '../tasks/taskScheduler.js';
 import { HostedSessionProvider } from '../delivery/hostedSessionProvider.js';
 import {
@@ -1288,18 +1289,25 @@ export class GenerateNowOrchestrator {
         return { skipped: 'no_gap_found' };
       }
 
-      // 6g. Insert the calendar event. When the delivery provider's joinUrl
-      // differs from the plain session page (D4/#32 — e.g. LiveKit), the
-      // richer link goes first and the session page stays as an explicit,
-      // always-present fallback line (DEC-K3) rather than disappearing.
-      const eventDescription = [
-        devotional.cardSummary,
-        '',
-        'Join your devotional: ' + joinUrl,
-        ...(joinUrl !== sessionUrl ? ['Prefer plain audio? ' + sessionUrl] : []),
-        '',
-        devotional.verses.map((v) => v.attribution).join('; '),
-      ].join('\n');
+      // 6g. Insert the calendar event. Body per the Wellspring Design
+      // System §06 (T4 #351, eventBody.ts): exact verse text first, one
+      // short reflection line, ONE "Begin your moment ↗" link. When the
+      // delivery provider's joinUrl differs from the plain session page
+      // (D4/#32 — e.g. LiveKit), the session page stays as an explicit
+      // fallback line (DEC-K3) rather than disappearing.
+      const firstVerse = devotional.verses[0];
+      const eventDescription = buildEventBody({
+        verse: firstVerse
+          ? {
+              reference: firstVerse.reference,
+              fetchedText: firstVerse.fetchedText,
+              attribution: firstVerse.attribution,
+            }
+          : null,
+        reflection: devotional.cardSummary,
+        beginUrl: joinUrl,
+        fallbackUrl: sessionUrl,
+      });
 
       // H1c (#131): MeetBotProvider requests a real Meet link. Google
       // Calendar renders conferenceData as its own distinct "Join with

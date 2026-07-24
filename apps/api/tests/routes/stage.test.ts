@@ -203,6 +203,46 @@ describe('GET /stage/assets/stage.js', () => {
   });
 });
 
+describe('GET /stage/assets/fonts/:file (T3 #350 — self-hosted fonts seam for T1 #348)', () => {
+  it('404s any file outside the @font-face allowlist (no path echo, no traversal)', async () => {
+    const app = buildTestApp(async () => OK_VIEW);
+    for (const bad of ['evil.woff2', '..%2F..%2Fpackage.json', 'stage.js']) {
+      const res = await app.inject({ method: 'GET', url: `/stage/assets/fonts/${bad}` });
+      expect(res.statusCode).toBe(404);
+      expect(res.body).not.toContain('/');
+    }
+  });
+
+  it('404s gracefully for an allowlisted name whose woff2 is not committed yet — the pages fall back to system stacks', async () => {
+    const app = buildTestApp(async () => OK_VIEW);
+    const res = await app.inject({ method: 'GET', url: '/stage/assets/fonts/Spectral-Light.woff2' });
+    // T1 (#348) commits the binaries; until then (and in any checkout
+    // without them) this must be a plain 404, never a 500.
+    expect([200, 404]).toContain(res.statusCode);
+    if (res.statusCode === 200) {
+      expect(res.headers['content-type']).toContain('font/woff2');
+    }
+  });
+});
+
+describe('Wellspring Design System style pins (T3 #350) — deliberate, adjust with the design', () => {
+  it('the stage carries the exact §08 tokens: canvas ground, terracotta accent, Spectral scripture role', async () => {
+    const app = buildTestApp(async () => OK_VIEW);
+    const res = await app.inject({ method: 'GET', url: `/stage/${TOKEN}` });
+
+    expect(res.body).toContain('--ws-canvas: #FCF7F2');
+    expect(res.body).toContain('--ws-terracotta: #B4795A');
+    // Scripture role (§03): Spectral 300, lh 1.4, text-wrap: pretty.
+    expect(res.body).toContain("'Spectral'");
+    expect(res.body).toContain('text-wrap: pretty');
+    // Self-hosted @font-face only — never an external fonts host.
+    expect(res.body).toContain("src: url('/stage/assets/fonts/");
+    expect(res.body).not.toMatch(/fonts\.googleapis|fonts\.gstatic|use\.typekit/);
+    // Warm-tinted shadows only (§08) — the warm rgb base must be present.
+    expect(res.body).toContain('rgba(146,104,73');
+  });
+});
+
 describe('stage scope CSP + rate limiting (buildApp wiring)', () => {
   function buildFullApp() {
     const stageService = { getStageView: vi.fn().mockResolvedValue(OK_VIEW) };
@@ -233,9 +273,13 @@ describe('stage scope CSP + rate limiting (buildApp wiring)', () => {
         'media-src \'self\' https://storage.googleapis.com',
       );
       expect(stageRes.headers['content-security-policy']).toContain("frame-ancestors 'none'");
+      // Self-hosted Wellspring fonts (T3 #350, epic #347 rule 1): both
+      // scopes allow same-origin fonts and nothing else.
+      expect(stageRes.headers['content-security-policy']).toContain("font-src 'self'");
 
       expect(sessionRes.statusCode).toBe(200);
       expect(sessionRes.headers['content-security-policy']).toContain("script-src 'none'");
+      expect(sessionRes.headers['content-security-policy']).toContain("font-src 'self'");
     } finally {
       await app.close();
     }
