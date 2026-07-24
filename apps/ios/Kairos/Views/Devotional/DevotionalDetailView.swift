@@ -26,14 +26,22 @@ struct DevotionalReaderContent: Equatable {
 /// fed directly from a fixture in demo mode (#41).
 struct DevotionalDetailView: View {
     let content: DevotionalReaderContent
+    /// Runs the real "mark complete" mutation (POST /v1/devotionals/:id/
+    /// complete). Defaults to a no-op so the fixture/preview `init(content:)`
+    /// path stays offline (#3).
+    private let onComplete: () async throws -> Void
     @State private var isPlaying = false
-    @State private var isCompleted = false
+    @State private var isCompleted: Bool
+    @State private var isCompleting = false
+    @State private var completeError: String?
 
     init(content: DevotionalReaderContent) {
         self.content = content
+        self.onComplete = {}
+        _isCompleted = State(initialValue: false)
     }
 
-    init(detail: DevotionalDetail) {
+    init(detail: DevotionalDetail, onComplete: @escaping () async throws -> Void = {}) {
         self.content = DevotionalReaderContent(
             theme: detail.theme,
             verses: detail.verses.map {
@@ -43,6 +51,10 @@ struct DevotionalDetailView: View {
             prayer: detail.prayer,
             actionStep: detail.actionStep
         )
+        self.onComplete = onComplete
+        // A re-opened, already-completed devotional shows "Completed" straight
+        // away rather than inviting a second Amen.
+        _isCompleted = State(initialValue: detail.completedAt != nil)
     }
 
     var body: some View {
@@ -146,18 +158,51 @@ struct DevotionalDetailView: View {
         .accessibilityIdentifier("devotionalDetail.playButton")
     }
 
-    /// docs/05_UX_FLOWS.md §4 "Amen — mark complete"; becomes a quiet
-    /// "Completed check" once tapped, zero-guilt (P2).
+    /// docs/05_UX_FLOWS.md §4 "Amen — mark complete"; posts to the server
+    /// (which writes the YouVersion highlight) and becomes a quiet "Completed
+    /// check" once done, zero-guilt (P2, #3). A failed post leaves the button
+    /// tappable again and shows a quiet retryable line — it never lies that
+    /// the session was saved.
     private var completeButton: some View {
-        Button {
-            isCompleted = true
-        } label: {
-            Text(isCompleted ? "Completed \u{2713}" : "Amen \u{2014} mark complete")
-                .frame(maxWidth: .infinity)
+        VStack(spacing: 8) {
+            Button {
+                Task { await runComplete() }
+            } label: {
+                Text(completeLabel)
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(WSQuietPillButtonStyle())
+            .disabled(isCompleted || isCompleting)
+            .accessibilityIdentifier("devotionalDetail.completeButton")
+
+            if let completeError {
+                Text(completeError)
+                    .font(WSTheme.ui(size: 13))
+                    .foregroundStyle(WSTheme.mutedInk)
+                    .multilineTextAlignment(.center)
+                    .accessibilityIdentifier("devotionalDetail.completeError")
+            }
         }
-        .buttonStyle(WSQuietPillButtonStyle())
-        .disabled(isCompleted)
-        .accessibilityIdentifier("devotionalDetail.completeButton")
+    }
+
+    private var completeLabel: String {
+        if isCompleted { return "Completed \u{2713}" }
+        if isCompleting { return "Marking\u{2026}" }
+        return "Amen \u{2014} mark complete"
+    }
+
+    private func runComplete() async {
+        guard !isCompleted, !isCompleting else { return }
+        isCompleting = true
+        completeError = nil
+        defer { isCompleting = false }
+        do {
+            try await onComplete()
+            isCompleted = true
+        } catch {
+            // Don't flip isCompleted — the tap can be retried.
+            completeError = (error as? DashboardError)?.errorDescription ?? "Couldn't mark complete. Tap to try again."
+        }
     }
 }
 

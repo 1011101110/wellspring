@@ -271,6 +271,12 @@ public final class HomeViewModel: ObservableObject {
         try await devotionals.detail(id: id)
     }
 
+    /// Mark a devotional complete from the reader's Amen button (#3) — the
+    /// server records the session and writes the YouVersion highlight.
+    public func completeDevotional(id: String) async throws {
+        try await devotionals.complete(id: id)
+    }
+
     public func addJournalEntry() async {
         let text = journalDraft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty, !isSavingJournal else { return }
