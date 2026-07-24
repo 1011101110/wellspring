@@ -451,6 +451,11 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
         // U2 (kairos-devotional#355) — YouVersion connect flow. Undefined
         // until the OAuth secret is provisioned (U1); the routes 503 until then.
         youVersion: options.youVersionConnect,
+        // POST /v1/devotionals/:id/complete (#3) — the authenticated "Amen" the
+        // dashboard readers post to. Shares SessionService's completion +
+        // highlight-write path; absent for tests that don't wire a session
+        // service (the route simply isn't registered then).
+        sessionService: options.sessionService,
       });
 
       // GET /v1/devotionals/:id/audio (EPIC L, issues #236/#241) — the

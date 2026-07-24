@@ -53,6 +53,7 @@ import {
 } from '../services/gloo/liturgicalCalendar.js';
 import { DEFAULT_TRADITION } from '../services/orchestrator/generateNowOrchestrator.js';
 import type { RevokeGoogleConnectionDeps } from '../services/calendar/revokeGoogleConnection.js';
+import type { SessionService } from '../services/session/sessionService.js';
 import {
   AlreadyExistsError,
   type GenerateNowOrchestrator,
@@ -234,6 +235,16 @@ export interface UserScopedRoutesDeps {
    * rather than the behavior.
    */
   generateNowRateLimit?: { max: number; timeWindowMs: number };
+  /**
+   * Powers the authenticated "Amen" — `POST /v1/devotionals/:id/complete` (#3).
+   * Optional like the other feature deps: when omitted the route is simply not
+   * registered (tests that don't wire a session service never depend on it),
+   * exactly as the public session routes are gated on it in app.ts. When
+   * present, it reuses `SessionService.completeByDevotionalId`, which shares the
+   * completion + YouVersion highlight-write path with the capability-token
+   * session page — so an Amen from web or iOS writes the highlight too.
+   */
+  sessionService?: SessionService;
   /**
    * YouVersion connect flow wiring (U2, kairos-devotional#355). Optional: the
    * routes register regardless (so the not-configured 503 is a real response),
@@ -858,6 +869,34 @@ export function registerUserScopedRoutes(app: FastifyInstance, deps: UserScopedR
       return { ok: true, data: row };
     },
   );
+
+  // POST /v1/devotionals/:id/complete (#3) — the authenticated "Amen" the web +
+  // iOS dashboard readers post to. Before this, those readers only flipped a
+  // local "Completed ✓" and nothing reached the server, so the session was
+  // never marked complete and — the reason this matters — the YouVersion
+  // highlight (U3) was never written from them. Delegates to
+  // `SessionService.completeByDevotionalId`, which is idempotent and shares the
+  // exact completion + highlight-write path with the capability-token session
+  // page. Registered only when a session service is wired. Authenticated, so it
+  // passes the #80 default-deny audit via `requireAuth` — never allowlisted.
+  if (deps.sessionService) {
+    const sessionService = deps.sessionService;
+    app.post<{ Params: { id: string } }>(
+      '/v1/devotionals/:id/complete',
+      { preHandler: requireAuth },
+      async (request, reply) => {
+        if (!UuidParamSchema.safeParse(request.params.id).success) return invalidParam(reply);
+        const result = await sessionService.completeByDevotionalId(
+          request.auth!.userId,
+          request.params.id,
+        );
+        // 404 (never 403) for a devotional the user has no session for — the
+        // same enumeration-safe posture as GET above.
+        if (result.kind === 'not_found') return notFound(reply);
+        return { ok: true, completedAt: result.completedAt.toISOString() };
+      },
+    );
+  }
 
   // --- journal (N9, #268) -------------------------------------------------
   // Extracted to routes/journal.ts (#343); registered here so the journal

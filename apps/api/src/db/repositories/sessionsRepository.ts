@@ -103,6 +103,30 @@ export class SessionsRepository {
     return result.rows[0] ?? null;
   }
 
+  /**
+   * User-scoped "newest session for this devotional" — the authenticated
+   * counterpart to `findByDevotionalId` above (which is deliberately unscoped
+   * and reserved for the internal meetbot dispatcher). Powers the dashboard
+   * "Amen" (`POST /v1/devotionals/:id/complete`), so it MUST carry `user_id`:
+   * a signed-in user may only complete a session that is their own. Unlike the
+   * capability-token flow there is NO `expires_at` filter — the authed reader
+   * is not the session URL, so an aged-out session (an old devotional reopened
+   * from History) can still be marked complete. Newest row wins on the
+   * off-chance a devotional has more than one (the FK is not unique — see
+   * `findByDevotionalId`).
+   */
+  async findByDevotionalIdForUser(
+    userId: VerifiedUserId,
+    devotionalId: string,
+  ): Promise<SessionRow | null> {
+    const result = await this.db.query<SessionRow>(
+      `SELECT * FROM sessions WHERE devotional_id = $1 AND user_id = $2
+       ORDER BY created_at DESC LIMIT 1`,
+      [devotionalId, userId],
+    );
+    return result.rows[0] ?? null;
+  }
+
   async markJoined(userId: VerifiedUserId, token: string): Promise<SessionRow | null> {
     const result = await this.db.query<SessionRow>(
       `UPDATE sessions SET joined_at = now()
