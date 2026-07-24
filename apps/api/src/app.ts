@@ -165,13 +165,15 @@ export interface BuildAppOptions {
    */
   liveKitWebhookRoutes?: LiveKitWebhookRoutesDeps;
   /**
-   * H1a (#129) live spike only — the real websocket audio server Attendee
-   * connects out to. Not the permanent H1c wiring (routes/meetBotAudio.ts
-   * file header). Auth is a per-devotional capability token in the URL
-   * path, derived from a dedicated MEETBOT_AUDIO_TOKEN root secret (#221)
-   * — deliberately NOT INTERNAL_API_TOKEN, since this URL is sent to a
-   * third party (Attendee). Gated on live consent at connect time and on
-   * a durable play-once ledger (#221). Omitted by default.
+   * The websocket audio server Attendee connects out to — the permanent
+   * `websocket` dispatch mode of meet-bot delivery (one of two modes since
+   * Epic Q #335; `voice-agent` mode uses the Stage page instead — see
+   * routes/meetBotAudio.ts file header). Auth is a per-devotional
+   * capability token in the URL path, derived from a dedicated
+   * MEETBOT_AUDIO_TOKEN root secret (#221) — deliberately NOT
+   * INTERNAL_API_TOKEN, since this URL is sent to a third party
+   * (Attendee). Gated on live consent at connect time and on a durable
+   * play-once ledger (#221). Omitted by default.
    */
   meetBotAudioRoutes?: MeetBotAudioRoutesDeps;
   /**
@@ -728,7 +730,7 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
   }
 
   if (options.meetBotAudioRoutes) {
-    // H1a (#129) live spike only — see BuildAppOptions.meetBotAudioRoutes
+    // Websocket-PCM dispatch mode — see BuildAppOptions.meetBotAudioRoutes
     // and routes/meetBotAudio.ts. A websocket server-to-server callback
     // from Attendee, not a browser page — no CSP/rate-limit scope needed.
     app.register(fastifyWebsocket);

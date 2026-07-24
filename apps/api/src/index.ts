@@ -33,6 +33,22 @@ const port = Number(process.env.PORT) || 8080;
 const host = '0.0.0.0';
 
 /**
+ * The ONE resolved public origin (#343). `PUBLIC_BASE_URL ?? localhost`
+ * used to be recomputed at seven call sites in this file, each deciding
+ * for itself whether (and how) to trim a trailing slash — routes/internal.ts
+ * trimmed, the session providers trimmed in their constructors, the
+ * orchestrator and the voice-agent wiring did not. One normalized const
+ * means every URL minted from this origin (session links, stage links,
+ * dispatch callbacks, the websocket base, the OAuth redirect) agrees on
+ * the base, and a PUBLIC_BASE_URL set with a trailing `/` cannot produce
+ * `https://host//session/...` anywhere.
+ */
+const publicBaseUrl = (process.env.PUBLIC_BASE_URL ?? `http://localhost:${port}`).replace(
+  /\/+$/,
+  '',
+);
+
+/**
  * SessionService wiring: real Postgres pool (src/db/pool.ts) + AudioStorage.
  * AudioStorage selection (env var name, fail-closed signing-secret checks)
  * lives in services/audio/audioStorageConfig.ts (issue #68, docs/14
@@ -92,7 +108,26 @@ const forceFixture = process.env.PROVIDERS === 'fixture';
 const devotionalEngine = new DevotionalEngine({ glooResponsesClient, youVersionClient, forceFixture });
 const ttsService = new TtsService();
 
-const { sender: emailSender, description: emailSenderDescription } = buildEmailSenderFromEnv();
+/**
+ * EmailSender — constructed and boot-logged, but not yet consumed (#343).
+ *
+ * This is the `EmailSender` seam for the .ics invite email path (EPIC C
+ * #26, docs/03 §5): the generation half (icsInvite.ts) is built and
+ * tested, and `buildEmailSenderFromEnv` selects Resend vs. the console
+ * fallback — but the sending half was never wired to a caller, because
+ * the .ics path's trigger (the calendar-insert fallback in the
+ * orchestrator) hasn't been built and no Resend sending domain exists
+ * yet (docs/12 §1.4; RESEND_API_KEY gates the *inbound* webhook above,
+ * which uses its own HttpResendInboundEmailProvider, not this).
+ *
+ * Kept (as `_emailSender`) rather than deleted: constructing it here
+ * preserves the boot-time fail-fast + "which sender is this deploy
+ * running" log line below — the same posture as every other selected-at-
+ * boot dependency in this file — and deleting the construction would
+ * silently drop a tested capability the .ics fallback story still needs.
+ * When that story lands, drop the underscore and pass it to the caller.
+ */
+const { sender: _emailSender, description: emailSenderDescription } = buildEmailSenderFromEnv();
 
 // Google Calendar OAuth + KMS (issue #22). Both services throw at construction
 // if required env vars are absent — fail-closed. When GOOGLE_OAUTH_CLIENT_ID /
@@ -113,8 +148,7 @@ try {
   const { GoogleCalendarClient } = await import('./services/calendar/googleCalendarClient.js');
   const clientId = process.env.GOOGLE_OAUTH_CLIENT_ID ?? '';
   const clientSecret = process.env.GOOGLE_OAUTH_CLIENT_SECRET ?? '';
-  const publicBaseUrl = process.env.PUBLIC_BASE_URL ?? `http://localhost:${port}`;
-  const redirectUri = `${publicBaseUrl.replace(/\/$/, '')}/v1/connect/google/callback`;
+  const redirectUri = `${publicBaseUrl}/v1/connect/google/callback`;
 
   const calendarClient = new GoogleCalendarClient({
     // The per-user refresh token is injected per-call via withRefreshToken()
@@ -184,16 +218,30 @@ try {
 }
 
 /**
+ * ONE Attendee client per process (#343): this same secret used to
+ * construct three separate `HttpAttendeeClient` instances (the audio
+ * route's leave calls, the voice-agent dispatch wiring, and the websocket
+ * dispatch wiring). The client is stateless, so three instances were not
+ * a bug — but they were three places for construction to drift, and one
+ * const makes "is Attendee configured?" a single narrowed check instead
+ * of three env reads. Undefined when ATTENDEE_API_KEY is absent, same
+ * fail-closed-by-omission pattern as the LiveKit block above.
+ */
+const attendeeClient = process.env.ATTENDEE_API_KEY
+  ? new HttpAttendeeClient(process.env.ATTENDEE_API_KEY)
+  : undefined;
+
+/**
  * routes/meetBotAudio.ts — the audio websocket Attendee connects to, and
  * the place that makes the bot LEAVE once the devotional has played once
- * (via attendeeClient). Gated on ATTENDEE_API_KEY, same fail-closed-by-
- * omission pattern as the LiveKit block above.
+ * (via attendeeClient). Gated on ATTENDEE_API_KEY (via `attendeeClient`
+ * above), same fail-closed-by-omission pattern as the LiveKit block.
  */
 let meetBotAudioRoutes: import('./app.js').BuildAppOptions['meetBotAudioRoutes'] | undefined;
-if (process.env.ATTENDEE_API_KEY) {
+if (attendeeClient) {
   meetBotAudioRoutes = {
     audioStorage,
-    attendeeClient: new HttpAttendeeClient(process.env.ATTENDEE_API_KEY),
+    attendeeClient,
     // Connect-time consent gate (#221). Same repositories, and the same
     // reasoning, as the dispatch gate wired below: this only READS
     // connection status out of our own database, so unlike
@@ -257,23 +305,24 @@ const meetBotImmediateDispatch = process.env.MEETBOT_IMMEDIATE_DISPATCH === '1';
 assertMeetBotDispatchConfigExclusive(process.env);
 
 let meetBotDispatchDeps: import('./services/orchestrator/generateNowOrchestrator.js').GenerateNowOrchestratorDeps['meetBotDispatch'];
-if (process.env.MEETBOT_TASKS_PROJECT_ID && process.env.MEETBOT_TASKS_LOCATION && process.env.MEETBOT_TASKS_QUEUE && process.env.ATTENDEE_API_KEY && process.env.INTERNAL_API_TOKEN) {
-  deliveryProvider = new MeetBotProvider(process.env.PUBLIC_BASE_URL ?? `http://localhost:${port}`);
+const meetBotDispatchUrl = `${publicBaseUrl}/internal/dispatch-meetbot`;
+if (process.env.MEETBOT_TASKS_PROJECT_ID && process.env.MEETBOT_TASKS_LOCATION && process.env.MEETBOT_TASKS_QUEUE && attendeeClient && process.env.INTERNAL_API_TOKEN) {
+  deliveryProvider = new MeetBotProvider(publicBaseUrl);
   meetBotDispatchDeps = {
     taskScheduler: new GcpTaskScheduler({
       projectId: process.env.MEETBOT_TASKS_PROJECT_ID,
       location: process.env.MEETBOT_TASKS_LOCATION,
       queue: process.env.MEETBOT_TASKS_QUEUE,
     }),
-    dispatchUrl: `${(process.env.PUBLIC_BASE_URL ?? `http://localhost:${port}`).replace(/\/+$/, '')}/internal/dispatch-meetbot`,
+    dispatchUrl: meetBotDispatchUrl,
     internalApiToken: process.env.INTERNAL_API_TOKEN,
   };
-} else if (meetBotImmediateDispatch && process.env.ATTENDEE_API_KEY && process.env.INTERNAL_API_TOKEN) {
+} else if (meetBotImmediateDispatch && attendeeClient && process.env.INTERNAL_API_TOKEN) {
   // (The else-if is belt-and-braces: the assert above already refuses to
   // boot when both configs are set.) MeetBotProvider is still what makes
   // the calendar step request a real Meet link (conferenceData) — without
   // it `inserted.meetUri` is never set and nothing would ever dispatch.
-  deliveryProvider = new MeetBotProvider(process.env.PUBLIC_BASE_URL ?? `http://localhost:${port}`);
+  deliveryProvider = new MeetBotProvider(publicBaseUrl);
   meetBotDispatchDeps = {
     taskScheduler: new ImmediateTaskScheduler({
       logger: {
@@ -284,7 +333,7 @@ if (process.env.MEETBOT_TASKS_PROJECT_ID && process.env.MEETBOT_TASKS_LOCATION &
         error: (obj, msg) => console.error(msg, obj),
       },
     }),
-    dispatchUrl: `${(process.env.PUBLIC_BASE_URL ?? `http://localhost:${port}`).replace(/\/+$/, '')}/internal/dispatch-meetbot`,
+    dispatchUrl: meetBotDispatchUrl,
     internalApiToken: process.env.INTERNAL_API_TOKEN,
   };
 }
@@ -298,7 +347,7 @@ const generateNowOrchestrator = new GenerateNowOrchestrator({
   devotionalEngine,
   ttsService,
   audioStorage,
-  publicBaseUrl: process.env.PUBLIC_BASE_URL ?? `http://localhost:${port}`,
+  publicBaseUrl,
   prayerIntentions: repositories.prayerIntentions,
   // P7 (#326): feedback → generation params. Only the daily run opts in
   // (`applyFeedbackSteering` in routes/internal.ts), so wiring it here
@@ -464,13 +513,13 @@ const app = buildApp({
     // Without the flag, the websocket wiring below is byte-identical to
     // before #335/#336.
     meetBotDispatch: meetBotImmediateDispatch
-      ? process.env.ATTENDEE_API_KEY
+      ? attendeeClient
         ? {
             mode: 'voice-agent' as const,
-            attendeeClient: new HttpAttendeeClient(process.env.ATTENDEE_API_KEY),
+            attendeeClient,
             sessions: repositories.sessions,
             // Same origin sessionUrl is derived from in the orchestrator.
-            publicBaseUrl: process.env.PUBLIC_BASE_URL ?? `http://localhost:${port}`,
+            publicBaseUrl,
             // Fire-time consent gate (#217) — identical wiring and
             // rationale as the websocket branch below; the gate is
             // mode-independent by design.
@@ -481,13 +530,13 @@ const app = buildApp({
             },
           }
         : undefined
-      : process.env.ATTENDEE_API_KEY && process.env.MEETBOT_AUDIO_TOKEN
+      : attendeeClient && process.env.MEETBOT_AUDIO_TOKEN
         ? {
-            attendeeClient: new HttpAttendeeClient(process.env.ATTENDEE_API_KEY),
+            attendeeClient,
             // No secret in this base URL any more (#221): the capability
             // token is derived per devotional at dispatch time from
             // `audioTokenSecret` below, and appended along with the id.
-            audioWebsocketBaseUrl: `${(process.env.PUBLIC_BASE_URL ?? `http://localhost:${port}`).replace(/^http/, 'ws')}/meetbot/audio`,
+            audioWebsocketBaseUrl: `${publicBaseUrl.replace(/^http/, 'ws')}/meetbot/audio`,
             audioTokenSecret: process.env.MEETBOT_AUDIO_TOKEN,
             // Fire-time consent gate (#217). Note these are the plain
             // repositories, NOT gated on `orchestratorCalendarDeps.calendarClient`

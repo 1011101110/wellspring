@@ -27,7 +27,13 @@ export interface StagePageData {
   page: SessionPageData;
   /** Q1 timing manifest, or null → the page renders without captions/tab sync. */
   manifest: TimingManifest | null;
-  /** `?mute=1` — the screenshare instance (Q5): muted audio, timeline still runs. */
+  /**
+   * `?mute=1` — a manual/testing affordance (silent visual check of the
+   * timeline in a normal browser tab). Dispatch never sets it: the Q5
+   * design sketch had a second, muted "screenshare instance", but the Q4
+   * spike (#334) proved Attendee accepts `url` XOR `screenshare_url` —
+   * one instance, one audio source, nothing to mute.
+   */
   muted: boolean;
 }
 
@@ -321,8 +327,10 @@ export function renderStagePage(data: StagePageData): string {
     </section>`
     : '';
 
-  // `muted` also lets a strict browser start the screenshare instance
-  // without a gesture (muted autoplay is universally permitted).
+  // `muted` (manual/testing only — see StagePageData) also lets a strict
+  // browser start the page without a gesture, since muted autoplay is
+  // universally permitted. Dispatched bots never pass it (#334: single
+  // voice-agent instance); Attendee's container autoplays unmuted anyway.
   const audioHtml = page.audioUrl
     ? `<audio id="stage-audio" autoplay preload="auto"${muted ? ' muted' : ''} src="${escapeHtml(page.audioUrl)}"></audio>`
     : '';

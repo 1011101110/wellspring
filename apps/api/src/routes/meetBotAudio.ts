@@ -1,10 +1,14 @@
 /**
- * H1a (#129) live spike endpoint — the real websocket server Attendee's
- * service connects out to for bidirectional audio (docs/22 §3's
- * "explicitly NOT built yet" item). Built minimally to run the live
- * spike against a real Google Meet; not the permanent H1c wiring (no
- * per-session dynamic dispatch yet — that's for the real DeliveryProvider
- * integration once H1a's findings land).
+ * The websocket-PCM half of meet-bot delivery — the websocket server
+ * Attendee's service connects out to for bot audio (docs/22 §3). Born as
+ * the H1a (#129) live spike, but long since permanent: #221 hardened it
+ * (per-devotional capability tokens, connect-time consent gate, durable
+ * play-once ledger) and routes/internal.ts's dispatch-meetbot dispatches
+ * to it per devotional. Since Epic Q (#335) it is one of TWO dispatch
+ * modes: `websocket` (this route — Attendee connects here and we stream
+ * decoded PCM) vs `voice-agent` (no websocket at all — the bot's browser
+ * container loads the Stage page, which plays its own audio). Deployment
+ * config picks the mode; see `InternalRoutesDeps.meetBotDispatch`.
  *
  * ## This is the door the bot actually walks through (#221)
  *
