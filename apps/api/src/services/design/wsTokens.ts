@@ -1,57 +1,69 @@
 /**
- * Wellspring Design System tokens — INTERIM local constants for the
- * server-rendered surfaces (T3 #350 / T4 #351, epic #347).
+ * Wellspring Design System tokens — the server-rendered surfaces' view of
+ * the SHARED token literal (T3 #350 / T4 #351, epic #347; collapsed from
+ * the interim local constants per the #347 close-out residual).
  *
- * NOTE: interim — collapse into shared designTokens.ts when #348 merges
- * (the cross-package drift test lives there). Do NOT add new consumers of
- * this module outside apps/api's server-rendered pages; import the shared
- * package once it exists.
- *
- * Values are verbatim from the owner's design ("Wellspring Design
- * System.dc.html", §08 handoff): canvas/mist/dawn grounds, terracotta as
- * the ONLY accent, warm-tinted shadows (never gray), Spectral for
- * scripture/prayer/titles and Hanken Grotesk for UI chrome.
+ * Every color/radius/shadow/easing/gradient value here DERIVES from
+ * `@kairos/shared-contracts` `designTokens` — the single source of truth
+ * (T1, #348). This module adds only what is genuinely a server concern:
+ * the flat `WS` shape the page renderers interpolate, and the self-hosted
+ * @font-face plumbing (file allowlist + CSS) that has no meaning outside
+ * apps/api. Do NOT re-introduce literal values here; if a surface needs a
+ * value the shared literal lacks, add it THERE (with its rationale) and
+ * derive it here. The drift test
+ * (apps/api/tests/services/design/wsTokens.test.ts) fails on any key that
+ * stops matching the shared literal, mirroring the web side's
+ * tokens.css drift test.
  */
+import { designTokens } from '@kairos/shared-contracts';
+
+const t = designTokens;
 
 export const WS = {
-  canvas: '#FCF7F2',
-  mist: '#F7EADF',
-  dawn: '#EFD9C8',
-  terracotta: '#B4795A',
-  clay: '#8A5F43',
-  ink: '#3B322C',
-  muted: '#A2937F',
-  night: '#171D2C',
-  dusk: '#242C40',
-  candle: '#E7D7A6',
-  paper: '#EEEBE2',
-  radiusCard: '24px',
-  radiusPill: '999px',
+  // Light (morning) set — §08 handoff, via the shared literal.
+  canvas: t.color.light.canvas,
+  mist: t.color.light.mist,
+  dawn: t.color.light.dawn,
+  terracotta: t.color.light.terracotta,
+  clay: t.color.light.clay,
+  ink: t.color.light.ink,
+  muted: t.color.light.muted,
+  // Dark (evening/examen) set — §08 handoff, via the shared literal.
+  night: t.color.dark.night,
+  dusk: t.color.dark.dusk,
+  candle: t.color.dark.candle,
+  paper: t.color.dark.paper,
+  /** `muted`'s AA-passing text role on the dark set (shared `accessible` group). */
+  mutedInkDark: t.color.accessible.mutedInkDark,
+  radiusCard: t.radius.card,
+  radiusPill: t.radius.pill,
   /** Warm-tinted card shadow — §08: never gray. */
-  shadow: '0 12px 30px rgba(146,104,73,.12)',
+  shadow: t.shadow.card,
   /** Hero-scale warm shadow. */
-  shadowHero: '0 22px 50px rgba(146,104,73,.16)',
+  shadowHero: t.shadow.hero,
   /** CTA shadow (§05 primary CTA spec). */
-  shadowCta: '0 10px 22px rgba(180,121,90,.3)',
-  ease: 'cubic-bezier(.4,0,.2,1)',
-  /** Crossfade duration — §08 allows 700–1200ms; 900ms is the token default. */
-  dur: '900ms',
+  shadowCta: t.shadow.cta,
+  /** The dark set's glow — candlelight, not a drop shadow. */
+  glowDark: t.shadow.glowDark,
+  ease: t.motion.ease,
+  /** Crossfade duration — §08 allows 700–1200ms; the shared literal pins the default. */
+  dur: `${t.motion.durationMs}ms`,
   /** Terracotta gradient (§08) — CTA pills, progress fill, brand circle. */
-  gradientTerracotta: 'linear-gradient(145deg,#c98a63,#b4795a)',
+  gradientTerracotta: t.gradient.terracotta,
+  /** The CTA fill on the dark set — candle, with night text. */
+  gradientCtaDark: t.gradient.ctaDark,
   /** Verse-block ground (§05 signature component). */
-  gradientVerse: 'linear-gradient(180deg,#FBF3EC,#F5E6DA)',
+  gradientVerse: t.gradient.verse,
 } as const;
 
 /**
- * Type stacks. Spectral / Hanken Grotesk load via the self-hosted
- * @font-face rules below WHEN the woff2 files exist under
- * apps/api/assets/fonts (T1 #348 commits them); the fallbacks keep every
- * page correct without them (Georgia/Iowan serif, system-ui sans).
+ * Type stacks — the shared literal's, verbatim. Spectral / Hanken Grotesk
+ * load via the self-hosted @font-face rules below WHEN the woff2 files
+ * exist under apps/api/assets/fonts (T1 #348 commits them); the fallback
+ * tails keep every page correct without them.
  */
-export const WS_SERIF =
-  `'Spectral', 'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, 'Times New Roman', serif`;
-export const WS_SANS =
-  `'Hanken Grotesk', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif`;
+export const WS_SERIF = t.font.serif;
+export const WS_SANS = t.font.sans;
 
 /**
  * The font files the /stage/assets/fonts route will serve — matched to the

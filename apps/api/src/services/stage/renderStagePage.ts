@@ -19,7 +19,7 @@
  * from stored data. Tab labels stay English for the hackathon (same scope
  * decision as O's "app UI stays English").
  */
-import type { TimingManifest } from '@kairos/shared-contracts';
+import type { SlotType, TimingManifest } from '@kairos/shared-contracts';
 import { WS, WS_SANS, WS_SERIF, wsFontFaceCss } from '../design/wsTokens.js';
 import { escapeHtml } from '../session/html.js';
 import type { SessionPageData } from '../session/renderSessionPage.js';
@@ -36,6 +36,15 @@ export interface StagePageData {
    * one instance, one audio source, nothing to mute.
    */
   muted: boolean;
+  /**
+   * The devotional's slot (T3 #350 residual): `examen` renders the
+   * design's evening/dark variant (night/dusk grounds, candle accent,
+   * paper text — "light for morning, dark evening"); `standard` the
+   * light one. The variant is a `ws-evening` class on `<body>` plus CSS
+   * custom-property overrides — layout, markup, timing, and script are
+   * byte-identical between the two (the parity test pins this).
+   */
+  slotType: SlotType;
 }
 
 /**
@@ -44,11 +53,30 @@ export interface StagePageData {
  * 26–36px (lh 1.4, text-wrap: pretty), Hanken Grotesk chrome, terracotta
  * as the ONLY accent (active tab pill, progress fill, caption-chip dot,
  * Begin CTA, brand circle), warm-tinted shadows, brand mark small in the
- * top-left corner. Fonts are self-hosted @font-face with Georgia/Iowan +
- * system-ui fallbacks (wsTokens.ts) — the page is correct with or without
- * the woff2 files. `prefers-reduced-motion` disables fades/transitions.
+ * top-left corner. Fonts are self-hosted @font-face with the shared
+ * literal's Georgia/system-ui fallback tails (wsTokens.ts) — the page is
+ * correct with or without the woff2 files. `prefers-reduced-motion`
+ * disables fades/transitions.
+ *
+ * ## Evening/examen variant (§08 dark set; #347 residual)
+ *
+ * Every themable value routes through a `--stage-*` role variable whose
+ * light default lives on `:root` and whose dark override lives under
+ * `body.ws-evening` — night ground into dusk, candle replacing terracotta
+ * as THE accent, paper text, the candle glow replacing warm drop shadows.
+ * `options.evening` adds ONLY the class to `<body>`; the CSS (including
+ * the override block), markup, timing, and script are byte-identical
+ * between variants, so autoplay/captions/manifest/404-parity behavior
+ * structurally cannot fork. The brand circle deliberately stays
+ * terracotta-gradient in BOTH variants (decorative, aria-hidden — brand
+ * continuity over palette purity; it picks up the candle glow instead of
+ * the warm shadow).
  */
-function stageShell(title: string, bodyHtml: string, options: { withScript: boolean }): string {
+function stageShell(
+  title: string,
+  bodyHtml: string,
+  options: { withScript: boolean; evening?: boolean },
+): string {
   const script = options.withScript
     ? '\n<script src="/stage/assets/stage.js" defer></script>'
     : '';
@@ -69,18 +97,64 @@ function stageShell(title: string, bodyHtml: string, options: { withScript: bool
     --ws-clay: ${WS.clay};
     --ws-ink: ${WS.ink};
     --ws-muted: ${WS.muted};
+    --ws-night: ${WS.night};
+    --ws-dusk: ${WS.dusk};
+    --ws-candle: ${WS.candle};
+    --ws-paper: ${WS.paper};
+    --ws-muted-ink-dark: ${WS.mutedInkDark};
     --ws-ease: ${WS.ease};
     --ws-dur: ${WS.dur};
     --serif: ${WS_SERIF};
     --sans: ${WS_SANS};
+    /* Role variables — light (morning) defaults. The evening/examen
+       overrides live on body.ws-evening below; rules only ever read the
+       role, never the palette directly, so the two variants cannot
+       diverge structurally. */
+    --stage-ground: var(--ws-canvas);
+    --stage-ground-image: linear-gradient(180deg, var(--ws-canvas) 0%, var(--ws-mist) 68%, var(--ws-dawn) 100%);
+    --stage-text: var(--ws-ink);
+    --stage-accent: var(--ws-terracotta);
+    --stage-secondary: var(--ws-clay);
+    --stage-shadow: ${WS.shadow};
+    --stage-shadow-hero: ${WS.shadowHero};
+    --stage-pill-active-bg: rgba(255, 255, 255, 0.55);
+    --stage-chip-bg: var(--ws-ink);
+    --stage-chip-text: var(--ws-canvas);
+    --stage-progress-track: rgba(180, 121, 90, 0.16);
+    --stage-progress-fill: ${WS.gradientTerracotta.replace('145deg', '90deg')};
+    --stage-cta-bg: ${WS.gradientTerracotta};
+    --stage-cta-text: #fff;
+    --stage-cta-shadow: ${WS.shadowCta};
+  }
+  /* Evening/examen (§08 dark set): night→dusk ground, candle accent
+     (11.75:1 on night — AA even at small sizes), paper text, the
+     dark-set text role for secondary lines, and the candle glow as the
+     only shadow. Same roles, same layout — palette only. */
+  body.ws-evening {
+    color-scheme: dark;
+    --stage-ground: var(--ws-night);
+    --stage-ground-image: linear-gradient(180deg, var(--ws-night) 0%, var(--ws-night) 55%, var(--ws-dusk) 100%);
+    --stage-text: var(--ws-paper);
+    --stage-accent: var(--ws-candle);
+    --stage-secondary: var(--ws-muted-ink-dark);
+    --stage-shadow: ${WS.glowDark};
+    --stage-shadow-hero: ${WS.glowDark};
+    --stage-pill-active-bg: rgba(36, 44, 64, 0.72);
+    --stage-chip-bg: var(--ws-dusk);
+    --stage-chip-text: var(--ws-paper);
+    --stage-progress-track: rgba(231, 215, 166, 0.18);
+    --stage-progress-fill: ${WS.gradientCtaDark.replace('145deg', '90deg')};
+    --stage-cta-bg: ${WS.gradientCtaDark};
+    --stage-cta-text: var(--ws-night);
+    --stage-cta-shadow: ${WS.glowDark};
   }
   * { box-sizing: border-box; }
   html, body { height: 100%; }
   body {
     margin: 0;
-    background: var(--ws-canvas);
-    background-image: linear-gradient(180deg, var(--ws-canvas) 0%, var(--ws-mist) 68%, var(--ws-dawn) 100%);
-    color: var(--ws-ink);
+    background: var(--stage-ground);
+    background-image: var(--stage-ground-image);
+    color: var(--stage-text);
     font-family: var(--serif);
     overflow: hidden;
   }
@@ -105,7 +179,7 @@ function stageShell(title: string, bodyHtml: string, options: { withScript: bool
     font-family: var(--serif);
     font-size: 1rem;
     font-weight: 400;
-    color: var(--ws-ink);
+    color: var(--stage-text);
     z-index: 5;
   }
   .brand-circle {
@@ -113,7 +187,7 @@ function stageShell(title: string, bodyHtml: string, options: { withScript: bool
     height: 20px;
     border-radius: 50%;
     background: ${WS.gradientTerracotta};
-    box-shadow: ${WS.shadow};
+    box-shadow: var(--stage-shadow);
   }
   .tabs {
     margin-top: 2.4rem;
@@ -126,17 +200,17 @@ function stageShell(title: string, bodyHtml: string, options: { withScript: bool
     font-weight: 600;
     letter-spacing: 0.18em;
     text-transform: uppercase;
-    color: var(--ws-clay);
+    color: var(--stage-secondary);
     padding: 0.5rem 1.15rem;
     border: 1px solid transparent;
     border-radius: ${WS.radiusPill};
     transition: color 0.4s var(--ws-ease), border-color 0.4s var(--ws-ease), background-color 0.4s var(--ws-ease);
   }
   .tab-pill.active {
-    color: var(--ws-ink);
-    border-color: var(--ws-terracotta);
-    background: rgba(255, 255, 255, 0.55);
-    box-shadow: ${WS.shadow};
+    color: var(--stage-text);
+    border-color: var(--stage-accent);
+    background: var(--stage-pill-active-bg);
+    box-shadow: var(--stage-shadow);
   }
   .panels {
     flex: 1;
@@ -160,16 +234,17 @@ function stageShell(title: string, bodyHtml: string, options: { withScript: bool
     transition: opacity var(--ws-dur) var(--ws-ease), visibility var(--ws-dur) var(--ws-ease);
   }
   .panel.active { opacity: 1; visibility: visible; }
-  /* Eyebrow role (§03): Hanken 600 · 12px · uppercase · .22em · terracotta.
-     The stage is a 1280×720 display surface (not axe-gated); the /session
-     page darkens this role to clay for WCAG AA — see renderSessionPage. */
+  /* Eyebrow role (§03): Hanken 600 · 12px · uppercase · .22em · the accent
+     (terracotta by day — the stage is a 1280×720 display surface, not
+     axe-gated; the /session page darkens this role to clay for WCAG AA,
+     see renderSessionPage — and candle by evening, 11.75:1 on night). */
   .eyebrow {
     font-family: var(--sans);
     font-size: 12px;
     font-weight: 600;
     letter-spacing: 0.22em;
     text-transform: uppercase;
-    color: var(--ws-terracotta);
+    color: var(--stage-accent);
     margin: 0 0 1.4rem;
   }
   /* Scripture role (§03): Spectral 300 · 26–36px · lh 1.4 · text-wrap: pretty. */
@@ -191,7 +266,7 @@ function stageShell(title: string, bodyHtml: string, options: { withScript: bool
     font-size: 13px;
     font-weight: 500;
     letter-spacing: 0.08em;
-    color: var(--ws-clay);
+    color: var(--stage-secondary);
     margin: 1.9rem 0 0;
   }
   .prose {
@@ -229,12 +304,12 @@ function stageShell(title: string, bodyHtml: string, options: { withScript: bool
   .caption-chip {
     font-size: 1.02rem;
     line-height: 1.5;
-    color: var(--ws-canvas);
-    background: var(--ws-ink);
+    color: var(--stage-chip-text);
+    background: var(--stage-chip-bg);
     border-radius: ${WS.radiusPill};
     padding: 0.62rem 1.5rem;
     max-width: 54rem;
-    box-shadow: ${WS.shadowHero};
+    box-shadow: var(--stage-shadow-hero);
     opacity: 0;
     transform: translateY(6px);
     transition: opacity 0.45s var(--ws-ease), transform 0.45s var(--ws-ease);
@@ -245,7 +320,7 @@ function stageShell(title: string, bodyHtml: string, options: { withScript: bool
     width: 6px;
     height: 6px;
     border-radius: 50%;
-    background: var(--ws-terracotta);
+    background: var(--stage-accent);
     margin-right: 0.7rem;
     vertical-align: 0.14em;
   }
@@ -256,19 +331,19 @@ function stageShell(title: string, bodyHtml: string, options: { withScript: bool
     right: 0;
     bottom: 0;
     height: 4px;
-    background: rgba(180, 121, 90, 0.16);
+    background: var(--stage-progress-track);
   }
   .progress-fill {
     height: 100%;
     width: 0%;
-    background: linear-gradient(90deg, #c98a63, #b4795a);
+    background: var(--stage-progress-fill);
     transition: width 0.25s linear;
   }
   .begin-overlay {
     position: fixed;
     inset: 0;
-    background: var(--ws-canvas);
-    background-image: linear-gradient(180deg, var(--ws-canvas) 0%, var(--ws-mist) 68%, var(--ws-dawn) 100%);
+    background: var(--stage-ground);
+    background-image: var(--stage-ground-image);
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -290,12 +365,12 @@ function stageShell(title: string, bodyHtml: string, options: { withScript: bool
     font-family: var(--sans);
     font-size: 15px;
     font-weight: 600;
-    color: #fff;
-    background: ${WS.gradientTerracotta};
+    color: var(--stage-cta-text);
+    background: var(--stage-cta-bg);
     border: none;
     border-radius: ${WS.radiusPill};
     padding: 1.05rem 2.6rem;
-    box-shadow: ${WS.shadowCta};
+    box-shadow: var(--stage-cta-shadow);
     cursor: pointer;
   }
   .begin-button::before { content: '\\25B8'; font-size: 0.9em; }
@@ -305,7 +380,7 @@ function stageShell(title: string, bodyHtml: string, options: { withScript: bool
     font-weight: 500;
     letter-spacing: 0.12em;
     text-transform: uppercase;
-    color: var(--ws-clay);
+    color: var(--stage-secondary);
   }
   /* Gone card: glass card per §08 (white .55 + soft border, radius 24,
      warm shadow) — calm and neutral if it ever lands on camera. */
@@ -332,7 +407,7 @@ function stageShell(title: string, bodyHtml: string, options: { withScript: bool
   #attendee-audio-error { display: none !important; }
 </style>
 </head>
-<body>
+<body${options.evening ? ' class="ws-evening"' : ''}>
 ${bodyHtml}${script}
 </body>
 </html>`;
@@ -447,5 +522,8 @@ ${audioHtml}
     hasQuestions,
   })}</script>`;
 
-  return stageShell(`${devotional.theme} — Wellspring`, body, { withScript: true });
+  return stageShell(`${devotional.theme} — Wellspring`, body, {
+    withScript: true,
+    evening: data.slotType === 'examen',
+  });
 }

@@ -20,6 +20,7 @@
 import type {
   GlooEngagementSummary,
   SessionFeedbackBody,
+  SlotType,
   TimingManifest,
 } from '@kairos/shared-contracts';
 import type { AudioStorage, SignedUrlOptions } from '../audio/audioStorage.js';
@@ -40,11 +41,15 @@ export type SessionLookupResult = { kind: 'not_found' } | { kind: 'ok'; page: Se
 /**
  * Stage-page lookup (Q2 #332): the same enumeration-collapsed page data
  * as `SessionLookupResult`, plus the Q1 timing manifest (null when absent
- * or unreadable — the page degrades to no-captions).
+ * or unreadable — the page degrades to no-captions) and the devotional's
+ * `slot_type` (T3 #350 residual, epic #347): `examen` selects the
+ * evening/dark stage variant ("light for morning, dark for evening"),
+ * `standard` the light one. Stage-only — the /session page renders the
+ * same light chrome for both slots, so `SessionPageData` stays slot-blind.
  */
 export type StageLookupResult =
   | { kind: 'not_found' }
-  | { kind: 'ok'; page: SessionPageData; manifest: TimingManifest | null };
+  | { kind: 'ok'; page: SessionPageData; manifest: TimingManifest | null; slotType: SlotType };
 
 export type SessionCompleteResult = { kind: 'not_found' } | { kind: 'ok'; completedAt: Date };
 
@@ -177,7 +182,7 @@ export class SessionService {
       manifest = null;
     }
 
-    return { kind: 'ok', page: result.page, manifest };
+    return { kind: 'ok', page: result.page, manifest, slotType: result.slotType };
   }
 
   /**
@@ -189,7 +194,10 @@ export class SessionService {
   private async loadPageView(
     token: string,
     options: { markJoined: boolean },
-  ): Promise<{ kind: 'not_found' } | { kind: 'ok'; page: SessionPageData; devotionalId: string }> {
+  ): Promise<
+    | { kind: 'not_found' }
+    | { kind: 'ok'; page: SessionPageData; devotionalId: string; slotType: SlotType }
+  > {
     const session = await this.sessions.findByToken(token);
     if (!session) {
       return { kind: 'not_found' };
@@ -234,6 +242,11 @@ export class SessionService {
     return {
       kind: 'ok',
       devotionalId: devotional.id,
+      // The column is NOT NULL DEFAULT 'standard' (issue #77), so the
+      // fallback only guards fakes/fixtures that predate the field —
+      // an unknown slot must select the LIGHT (default) variant, never
+      // throw or render dark by accident.
+      slotType: devotional.slot_type === 'examen' ? 'examen' : 'standard',
       page: {
         token: session.token,
         completed: session.completed_at !== null,

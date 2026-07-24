@@ -16,6 +16,7 @@ const OTHER_TOKEN = '00000000-0000-4000-8000-000000000002';
 
 const OK_VIEW: StageLookupResult = {
   kind: 'ok',
+  slotType: 'standard',
   page: {
     token: TOKEN,
     completed: false,
@@ -239,7 +240,69 @@ describe('Wellspring Design System style pins (T3 #350) — deliberate, adjust w
     expect(res.body).toContain("src: url('/stage/assets/fonts/");
     expect(res.body).not.toMatch(/fonts\.googleapis|fonts\.gstatic|use\.typekit/);
     // Warm-tinted shadows only (§08) — the warm rgb base must be present.
-    expect(res.body).toContain('rgba(146,104,73');
+    // (Formatting follows the SHARED designTokens literal — spaces and
+    // leading zeros — since the interim wsTokens module was collapsed
+    // into it, epic #347 residual.)
+    expect(res.body).toContain('rgba(146, 104, 73');
+  });
+});
+
+describe('evening/examen dark stage variant (T3 #350 residual — "light for morning, dark for evening")', () => {
+  const EXAMEN_VIEW: StageLookupResult = { ...OK_VIEW, slotType: 'examen' } as StageLookupResult;
+
+  it('slotType examen renders the ws-evening body class with the §08 dark set: night ground, dusk surfaces, candle accent, paper text, candle glow', async () => {
+    const app = buildTestApp(async () => EXAMEN_VIEW);
+    const res = await app.inject({ method: 'GET', url: `/stage/${TOKEN}` });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body).toContain('<body class="ws-evening">');
+    // The dark override block carries the shared dark tokens.
+    expect(res.body).toContain('--ws-night: #171D2C');
+    expect(res.body).toContain('--ws-dusk: #242C40');
+    expect(res.body).toContain('--ws-candle: #E7D7A6');
+    expect(res.body).toContain('--ws-paper: #EEEBE2');
+    // Candle glow (§08 dark set) replaces the warm drop shadows.
+    expect(res.body).toContain('rgba(217, 200, 155, 0.35)');
+    // Evening accent role is candle; evening text is paper.
+    expect(res.body).toContain('--stage-accent: var(--ws-candle)');
+    expect(res.body).toContain('--stage-text: var(--ws-paper)');
+  });
+
+  it('standard slotType renders WITHOUT the evening class — light stays the default', async () => {
+    const app = buildTestApp(async () => OK_VIEW);
+    const res = await app.inject({ method: 'GET', url: `/stage/${TOKEN}` });
+    expect(res.body).toContain('<body>');
+    expect(res.body).not.toContain('class="ws-evening"');
+  });
+
+  it('PARITY: the dark variant differs from the light one ONLY by the body palette class — markup, manifest, audio, script all byte-identical', async () => {
+    const lightApp = buildTestApp(async () => OK_VIEW);
+    const darkApp = buildTestApp(async () => EXAMEN_VIEW);
+    const light = await lightApp.inject({ method: 'GET', url: `/stage/${TOKEN}` });
+    const dark = await darkApp.inject({ method: 'GET', url: `/stage/${TOKEN}` });
+
+    // The class attribute appears exactly once (the CSS override block is
+    // present in BOTH variants — `body.ws-evening` never matches this
+    // string), so stripping it must reproduce the light page exactly.
+    expect(dark.body.split(' class="ws-evening"').length).toBe(2);
+    expect(dark.body.replace(' class="ws-evening"', '')).toBe(light.body);
+  });
+
+  it('?mute=1 works identically on the examen variant — audio attribute only, nothing else differs', async () => {
+    const app = buildTestApp(async () => EXAMEN_VIEW);
+    const unmuted = await app.inject({ method: 'GET', url: `/stage/${TOKEN}` });
+    const muted = await app.inject({ method: 'GET', url: `/stage/${TOKEN}?mute=1` });
+
+    expect(muted.body).toContain('autoplay preload="auto" muted');
+    expect(muted.body.replace(' muted', '')).toBe(unmuted.body);
+  });
+
+  it('the enumeration-safe gone page is slot-blind — not_found renders the same light card whether or not the token ever mapped to an examen', async () => {
+    const app = buildTestApp(async () => ({ kind: 'not_found' }));
+    const res = await app.inject({ method: 'GET', url: `/stage/${TOKEN}` });
+    expect(res.statusCode).toBe(404);
+    expect(res.body).not.toContain('ws-evening"');
+    expect(res.body).toContain("This link isn&#39;t active.");
   });
 });
 
