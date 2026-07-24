@@ -44,7 +44,7 @@ struct HistoryView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding()
             }
-            .background(Color(.systemGroupedBackground))
+            .background(WSTheme.canvas)
             .navigationTitle("Your devotionals")
             .refreshable { await viewModel.load() }
             .alert(
@@ -71,7 +71,8 @@ struct HistoryView: View {
                 .accessibilityIdentifier("history.search")
             if viewModel.searchResults != nil {
                 Button("Clear") { searchText = ""; viewModel.clearSearch() }
-                    .font(.subheadline)
+                    .font(WSTheme.ui(.medium, size: 15))
+                    .foregroundStyle(WSTheme.clayDeep)
             }
         }
     }
@@ -88,6 +89,10 @@ struct HistoryView: View {
             loadMore: { Task { await viewModel.loadMore() } },
             makeReader: { DevotionalReaderScreen(devotionalID: $0.id, viewModel: viewModel) }
         )
+        // The archive sits on one warm card surface (radius 24, warm
+        // shadow), matching the Home card system (T5 #352).
+        .padding(CardLayout.padding)
+        .wsCardSurface()
         .accessibilityIdentifier("history.list")
     }
 }

@@ -60,14 +60,18 @@ struct DevotionalReaderScreen: View {
                 DevotionalDetailView(detail: detail)
             case .failed(let message):
                 VStack(spacing: 12) {
-                    Text(message).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                    Text(message)
+                        .font(WSTheme.ui(size: 15))
+                        .foregroundStyle(WSTheme.mutedInk)
+                        .multilineTextAlignment(.center)
                     Button("Try again") { Task { await load() } }
-                        .buttonStyle(.borderedProminent)
+                        .buttonStyle(WSQuietPillButtonStyle())
                 }
                 .padding()
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
+        .background(WSTheme.canvas)
         .task { await load() }
     }
 

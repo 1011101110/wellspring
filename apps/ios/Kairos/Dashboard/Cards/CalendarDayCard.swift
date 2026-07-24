@@ -118,16 +118,18 @@ struct CalendarDayCard: View {
 
     private func busyRow(_ block: FreeBusyBlock) -> some View {
         HStack(alignment: .top, spacing: 12) {
+            // A quiet warm-stone dot — busy time is context, never the focus.
             Circle()
-                .fill(Color.secondary)
+                .fill(WSTheme.muted)
                 .frame(width: 8, height: 8)
                 .padding(.top, 6)
             VStack(alignment: .leading, spacing: 2) {
                 Text("\(DashboardDate.timeLabel(block.start))–\(DashboardDate.timeLabel(block.end))")
-                    .font(.subheadline.weight(.semibold))
+                    .font(WSTheme.ui(.medium, size: 15))
+                    .foregroundStyle(WSTheme.ink)
                 Text("Busy")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
+                    .font(WSTheme.ui(size: 13))
+                    .foregroundStyle(WSTheme.mutedInk)
             }
             Spacer(minLength: 0)
         }
@@ -135,23 +137,26 @@ struct CalendarDayCard: View {
     }
 
     private func slotRow(_ slot: UpcomingCalendarEvent) -> some View {
+        // Wellspring's own moment — the row the eye should land on:
+        // terracotta dot (the only accent) on a soft mist ground.
         HStack(alignment: .top, spacing: 12) {
             Circle()
-                .fill(Color.accentColor)
+                .fill(WSTheme.terracotta)
                 .frame(width: 8, height: 8)
                 .padding(.top, 6)
             VStack(alignment: .leading, spacing: 2) {
                 Text("\(DashboardDate.timeLabel(slot.gapStartAt))–\(DashboardDate.timeLabel(slot.gapEndAt))")
-                    .font(.subheadline.weight(.semibold))
+                    .font(WSTheme.ui(.semibold, size: 15))
+                    .foregroundStyle(WSTheme.ink)
                 Text(slot.devotional?.theme ?? "Wellspring devotional")
-                    .font(.footnote)
-                    .foregroundStyle(Color.accentColor)
+                    .font(WSTheme.ui(.medium, size: 13))
+                    .foregroundStyle(WSTheme.clayDeep)
             }
             Spacer(minLength: 0)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(8)
-        .background(RoundedRectangle(cornerRadius: CardLayout.insetCornerRadius).fill(Color.accentColor.opacity(0.1)))
+        .padding(10)
+        .background(RoundedRectangle(cornerRadius: CardLayout.insetCornerRadius, style: .continuous).fill(WSTheme.mist))
     }
 
     // MARK: - Zone label

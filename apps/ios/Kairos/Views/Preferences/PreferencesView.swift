@@ -187,6 +187,11 @@ struct PreferencesView: View {
                     Text("About")
                 }
             }
+            // Wellspring Design System (T5 #352): the form keeps its native
+            // controls (a settings screen is chrome), but sits on the warm
+            // canvas; the global terracotta tint styles its controls.
+            .scrollContentBackground(.hidden)
+            .background(WSTheme.canvas)
             .navigationTitle("Preferences")
         }
     }

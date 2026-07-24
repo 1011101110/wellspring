@@ -21,7 +21,9 @@ struct TodayCard: View {
                 VStack(alignment: .leading, spacing: 12) {
                     if let season = viewModel.season { CardHint(season.line) }
                     Text("Wellspring books devotionals into the open moments in your day. Your first one will appear here.")
-                        .font(.subheadline).foregroundStyle(.secondary)
+                        .font(WSTheme.ui(size: 15))
+                        .foregroundStyle(WSTheme.mutedInk)
+                        .lineSpacing(4)
                     generateNowButton(title: "Make one now")
                 }
             case .loaded(let content):
@@ -30,22 +32,27 @@ struct TodayCard: View {
                     if content.provenance == .recent {
                         CardHint("From the last devotional Wellspring wrote for you.")
                     }
+                    // §05 verse block: the theme is the eyebrow over the
+                    // quote. `.textCase` only changes the rendering — the
+                    // accessibility identifier the UI tests query is
+                    // untouched.
                     Text(content.devotional.theme)
-                        .font(.title3.weight(.semibold))
+                        .wsEyebrow()
                         .accessibilityIdentifier("home.today.theme")
                     Text(content.devotional.cardSummary)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                        .font(WSTheme.ui(size: 15))
+                        .foregroundStyle(WSTheme.mutedInk)
+                        .lineSpacing(4)
                     if let verse = content.verse { VerseBlock(verse: verse) }
                     // Opens the native in-app reader (#3), not a web session.
+                    // The screen's one focal point (§08) — the pill CTA.
                     NavigationLink {
                         DevotionalReaderScreen(devotionalID: content.devotional.id, viewModel: viewModel)
                     } label: {
                         Text(content.provenance == .today ? "Open today's devotional" : "Read your last devotional")
                             .frame(maxWidth: .infinity)
                     }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.large)
+                    .buttonStyle(WSPillButtonStyle())
                     .accessibilityIdentifier("home.today.openButton")
                 }
             }
@@ -63,8 +70,7 @@ struct TodayCard: View {
             }
             .frame(maxWidth: .infinity)
         }
-        .buttonStyle(.borderedProminent)
-        .controlSize(.large)
+        .buttonStyle(WSPillButtonStyle())
         .disabled(viewModel.generateNowBusy)
         // Distinct from the loaded state's "home.today.openButton" (S4 #345
         // — the two used to share an identifier; they can never coexist, but
@@ -79,16 +85,25 @@ struct TodayCard: View {
 struct VerseBlock: View {
     let verse: Verse
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        // §05 signature verse block: Spectral 300 quote on the soft dawn
+        // gradient, Hanken 500 reference line. Text is byte-exact
+        // (Foundation §4.3) — only the dress changes here.
+        VStack(alignment: .leading, spacing: 10) {
             Text(verse.fetchedText)
-                .font(.body)
-                .italic()
+                .font(WSTheme.scripture(size: 24))
+                .foregroundStyle(WSTheme.ink)
+                .lineSpacing(8)
             Text("\(verse.reference) — \(verse.attribution)")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                .font(WSTheme.reference())
+                .foregroundStyle(WSTheme.mutedInk)
                 .accessibilityIdentifier("home.today.attribution")
         }
-        .padding(.vertical, 4)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(16)
+        .background(
+            RoundedRectangle(cornerRadius: WSTheme.radiusInset, style: .continuous)
+                .fill(WSTheme.verseGradient)
+        )
     }
 }
 
@@ -121,25 +136,39 @@ struct UpcomingCard: View {
     @ViewBuilder
     private func upcomingRow(_ event: UpcomingCalendarEvent) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(DashboardDate.dayLabel(event.gapStartAt))
-                .font(.subheadline.weight(.semibold))
+            // §05 "Held for you" line: the 6px terracotta dot marks the
+            // moment; time in Hanken 500.
+            HStack(spacing: 8) {
+                Circle()
+                    .fill(WSTheme.terracotta)
+                    .frame(width: 6, height: 6)
+                Text(DashboardDate.dayLabel(event.gapStartAt))
+                    .font(WSTheme.ui(.semibold, size: 15))
+                    .foregroundStyle(WSTheme.ink)
+            }
             Text("\(DashboardDate.timeLabel(event.gapStartAt))–\(DashboardDate.timeLabel(event.gapEndAt))")
-                .font(.footnote)
-                .foregroundStyle(.secondary)
+                .font(WSTheme.reference())
+                .foregroundStyle(WSTheme.mutedInk)
             if let devo = event.devotional {
-                Text(devo.theme).font(.subheadline)
-                Text(devo.cardSummary).font(.footnote).foregroundStyle(.secondary)
+                Text(devo.theme)
+                    .font(WSTheme.ui(.medium, size: 15))
+                    .foregroundStyle(WSTheme.ink)
+                Text(devo.cardSummary)
+                    .font(WSTheme.ui(size: 13))
+                    .foregroundStyle(WSTheme.mutedInk)
             } else {
                 Text("Wellspring will write this one closer to the time.")
-                    .font(.footnote).foregroundStyle(.secondary)
+                    .font(WSTheme.ui(size: 13))
+                    .foregroundStyle(WSTheme.mutedInk)
             }
             if event.rescheduleCount > 0 {
                 CardHint("Moved to fit your day.")
             }
             if let meet = event.meetUri, let url = URL(string: meet) {
                 Button("Join the meeting") { openURL(url) }
-                    .font(.subheadline.weight(.semibold))
-                    .padding(.top, 2)
+                    .font(WSTheme.ui(.semibold, size: 15))
+                    .foregroundStyle(WSTheme.clayDeep)
+                    .frame(minHeight: 44)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -164,14 +193,16 @@ struct ConnectionCard: View {
             case .loaded(let state):
                 VStack(alignment: .leading, spacing: 8) {
                     Text(state.body)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                        .font(WSTheme.ui(size: 15))
+                        .foregroundStyle(WSTheme.mutedInk)
+                        .lineSpacing(4)
                     if case .active(let since) = state, let since, let date = DashboardDate.parse(since) {
                         CardHint("Connected since \(date.formatted(date: .abbreviated, time: .omitted)).")
                     }
                     if let label = state.actionLabel {
                         // In-card connect/reconnect (#7) — runs the same Google
-                        // OAuth as onboarding via the view model.
+                        // OAuth as onboarding via the view model. A quiet pill:
+                        // the Today CTA keeps the screen's one focal point.
                         Button {
                             Task { await viewModel.connectCalendar() }
                         } label: {
@@ -180,7 +211,7 @@ struct ConnectionCard: View {
                                 Text(viewModel.isConnectingCalendar ? "Connecting…" : label)
                             }
                         }
-                        .buttonStyle(.borderedProminent)
+                        .buttonStyle(WSQuietPillButtonStyle())
                         .disabled(viewModel.isConnectingCalendar)
                         .accessibilityIdentifier("home.connection.connectButton")
                     }
@@ -201,19 +232,23 @@ struct InviteAddressCard: View {
             CardFrame("Invite Wellspring") {
                 VStack(alignment: .leading, spacing: 10) {
                     Text("Add this address as a guest on any calendar invite and Wellspring will bring a devotional to it.")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                        .font(WSTheme.ui(size: 15))
+                        .foregroundStyle(WSTheme.mutedInk)
+                        .lineSpacing(4)
                     Text(address)
                         .font(.system(.footnote, design: .monospaced))
+                        .foregroundStyle(WSTheme.ink)
                         .textSelection(.enabled)
-                        .padding(8)
+                        .padding(10)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(RoundedRectangle(cornerRadius: CardLayout.insetCornerRadius).fill(Color(.tertiarySystemGroupedBackground)))
+                        .background(RoundedRectangle(cornerRadius: CardLayout.insetCornerRadius, style: .continuous).fill(WSTheme.mist))
                     Button(copied ? "Copied" : "Copy address") {
                         UIPasteboard.general.string = address
                         copied = true
                     }
-                    .font(.subheadline.weight(.semibold))
+                    .font(WSTheme.ui(.semibold, size: 15))
+                    .foregroundStyle(WSTheme.clayDeep)
+                    .frame(minHeight: 44)
                 }
             }
         }
@@ -230,13 +265,17 @@ struct JournalCard: View {
         CardFrame("Your journal") {
             VStack(alignment: .leading, spacing: 12) {
                 Text("A place for whatever you're carrying. Kept until you delete it, and never used to write your devotionals — it's just for you.")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
+                    .font(WSTheme.ui(size: 13))
+                    .foregroundStyle(WSTheme.mutedInk)
+                    .lineSpacing(3)
 
                 TextEditor(text: $viewModel.journalDraft)
+                    .font(WSTheme.ui(size: 15))
+                    .foregroundStyle(WSTheme.ink)
+                    .scrollContentBackground(.hidden)
                     .frame(minHeight: 80)
                     .padding(6)
-                    .background(RoundedRectangle(cornerRadius: CardLayout.insetCornerRadius).fill(Color(.tertiarySystemGroupedBackground)))
+                    .background(RoundedRectangle(cornerRadius: CardLayout.insetCornerRadius, style: .continuous).fill(WSTheme.mist))
                     .accessibilityIdentifier("home.journal.field")
 
                 Button {
@@ -244,7 +283,7 @@ struct JournalCard: View {
                 } label: {
                     Text(viewModel.isSavingJournal ? "Keeping…" : "Keep this")
                 }
-                .font(.subheadline.weight(.semibold))
+                .buttonStyle(WSQuietPillButtonStyle())
                 .disabled(viewModel.isSavingJournal || viewModel.journalDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
 
                 switch viewModel.journal {
@@ -270,9 +309,12 @@ struct JournalCard: View {
     private func journalRow(_ entry: JournalEntry) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(DashboardDate.dayLabel(entry.createdAt))
-                .font(.caption).foregroundStyle(.secondary)
+                .font(WSTheme.reference())
+                .foregroundStyle(WSTheme.mutedInk)
             Text(entry.text)
-                .font(.subheadline)
+                .font(WSTheme.ui(size: 15))
+                .foregroundStyle(WSTheme.ink)
+                .lineSpacing(4)
                 .fixedSize(horizontal: false, vertical: true)
             if pendingDeleteID == entry.id {
                 HStack(spacing: 12) {
@@ -282,11 +324,11 @@ struct JournalCard: View {
                     }
                     Button("Cancel") { pendingDeleteID = nil }
                 }
-                .font(.caption)
+                .font(WSTheme.ui(.medium, size: 13))
             } else {
                 Button("Delete") { pendingDeleteID = entry.id }
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .font(WSTheme.ui(size: 13))
+                    .foregroundStyle(WSTheme.mutedInk)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -311,7 +353,8 @@ struct HistoryCard: View {
                             .accessibilityIdentifier("home.history.search")
                         if viewModel.searchResults != nil {
                             Button("Clear") { searchText = ""; viewModel.clearSearch() }
-                                .font(.subheadline)
+                                .font(WSTheme.ui(.medium, size: 15))
+                                .foregroundStyle(WSTheme.clayDeep)
                         }
                     }
                 }
@@ -360,7 +403,10 @@ struct RecapCard: View {
         if case .loaded(let recap) = viewModel.recap {
             CardFrame(recap.title()) {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text(recap.narrative).font(.subheadline)
+                    Text(recap.narrative)
+                        .font(WSTheme.ui(size: 15))
+                        .foregroundStyle(WSTheme.ink)
+                        .lineSpacing(4)
                     if !recap.recurringPassages.isEmpty {
                         CardHint("You kept returning to \(recap.recurringPassages.joined(separator: ", ")).")
                     }
@@ -385,11 +431,16 @@ struct ComingSoonCard: View {
         CardFrame("Coming to Wellspring") {
             VStack(alignment: .leading, spacing: 12) {
                 Text("These are being built. Nothing here is switched on yet.")
-                    .font(.footnote).foregroundStyle(.secondary)
+                    .font(WSTheme.ui(size: 13))
+                    .foregroundStyle(WSTheme.mutedInk)
                 ForEach(items, id: \.title) { item in
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(item.title).font(.subheadline.weight(.semibold))
-                        Text(item.body).font(.footnote).foregroundStyle(.secondary)
+                        Text(item.title)
+                            .font(WSTheme.ui(.medium, size: 15))
+                            .foregroundStyle(WSTheme.ink)
+                        Text(item.body)
+                            .font(WSTheme.ui(size: 13))
+                            .foregroundStyle(WSTheme.mutedInk)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }

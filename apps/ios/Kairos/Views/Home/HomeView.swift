@@ -41,7 +41,7 @@ struct HomeView: View {
                 }
                 .padding()
             }
-            .background(Color(.systemGroupedBackground))
+            .background(WSTheme.canvas)
             .navigationTitle("Wellspring")
             .refreshable { await viewModel.loadAll() }
             .alert(
@@ -67,15 +67,14 @@ struct HomeView: View {
                 Task { await checkInNow() }
             } label: {
                 Label("I could use a moment now", systemImage: "heart")
-                    .font(.subheadline)
             }
-            .buttonStyle(.bordered)
+            .buttonStyle(WSQuietPillButtonStyle())
             .accessibilityIdentifier("home.distressCheckinButton")
 
             if distressFailed {
                 Text("Couldn't reach Wellspring just now — please try again in a moment. If you need immediate help, call or text 988.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .font(WSTheme.ui(size: 13))
+                    .foregroundStyle(WSTheme.mutedInk)
                     .multilineTextAlignment(.center)
                     .accessibilityIdentifier("home.distressCheckinError")
             }

@@ -47,58 +47,67 @@ struct DevotionalDetailView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
+            VStack(alignment: .leading, spacing: 24) {
+                // The reader per §06: Spectral scripture hero, Hanken chrome.
                 Text(content.theme.capitalized)
-                    .font(.title2)
-                    .bold()
+                    .font(WSTheme.title(size: 30))
+                    .foregroundStyle(WSTheme.ink)
                     .accessibilityIdentifier("devotionalDetail.theme")
 
                 ForEach(content.verses) { verse in
-                    VStack(alignment: .leading, spacing: 8) {
+                    // §05 verse block: eyebrow reference, Spectral 300 quote,
+                    // Hanken reference line, on the soft dawn gradient.
+                    VStack(alignment: .leading, spacing: 10) {
                         Text(verse.reference)
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
+                            .wsEyebrow()
                             .accessibilityIdentifier("devotionalDetail.verseReference")
 
                         Text(verse.text)
-                            .font(.body)
-                            .italic()
+                            .font(WSTheme.scripture(size: 26))
+                            .foregroundStyle(WSTheme.ink)
+                            .lineSpacing(10)
                             .accessibilityIdentifier("devotionalDetail.verseText")
 
                         Text(verse.attribution)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .font(WSTheme.reference())
+                            .foregroundStyle(WSTheme.mutedInk)
                             .accessibilityIdentifier("devotionalDetail.attribution")
                     }
-                    .padding()
-                    .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(20)
+                    .background(
+                        RoundedRectangle(cornerRadius: WSTheme.radiusCard, style: .continuous)
+                            .fill(WSTheme.verseGradient)
+                            .shadow(
+                                color: WSTheme.shadowColor,
+                                radius: WSTheme.shadowRadius,
+                                y: WSTheme.shadowY
+                            )
+                    )
                 }
 
                 playbackControl
 
-                Divider()
-
-                Text("Transcript")
-                    .font(.headline)
+                sectionHeader("Transcript")
                 Text(content.body)
-                    .font(.body)
+                    .font(WSTheme.ui(size: 16))
+                    .foregroundStyle(WSTheme.ink)
+                    .lineSpacing(7)
                     .accessibilityIdentifier("devotionalDetail.transcript")
 
-                Divider()
-
-                Text("Prayer")
-                    .font(.headline)
+                sectionHeader("Prayer")
                 Text(content.prayer)
-                    .font(.body)
-                    .italic()
+                    .font(WSTheme.prayer(size: 22))
+                    .foregroundStyle(WSTheme.ink)
+                    .lineSpacing(8)
                     .accessibilityIdentifier("devotionalDetail.prayer")
 
                 if let actionStep = content.actionStep {
-                    Divider()
-                    Text("Action step")
-                        .font(.headline)
+                    sectionHeader("Action step")
                     Text(actionStep)
-                        .font(.body)
+                        .font(WSTheme.ui(size: 16))
+                        .foregroundStyle(WSTheme.ink)
+                        .lineSpacing(7)
                         .accessibilityIdentifier("devotionalDetail.actionStep")
                 }
 
@@ -106,8 +115,21 @@ struct DevotionalDetailView: View {
             }
             .padding()
         }
+        .background(WSTheme.canvas)
         .navigationTitle("Devotional")
         .navigationBarTitleDisplayMode(.inline)
+    }
+
+    /// Section chrome in the eyebrow role over a soft dawn rule — quieter
+    /// than a system headline + divider, and never serif (§03).
+    private func sectionHeader(_ label: String) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Rectangle()
+                .fill(WSTheme.dawn)
+                .frame(height: 1)
+            Text(label)
+                .wsEyebrow()
+        }
     }
 
     /// docs/05_UX_FLOWS.md §4 "Main": large play/pause control. No real audio
@@ -118,10 +140,9 @@ struct DevotionalDetailView: View {
         Button {
             isPlaying.toggle()
         } label: {
-            Label(isPlaying ? "Pause" : "Play", systemImage: isPlaying ? "pause.circle.fill" : "play.circle.fill")
-                .font(.title2)
+            Label(isPlaying ? "Pause" : "Play", systemImage: isPlaying ? "pause.fill" : "play.fill")
         }
-        .buttonStyle(.borderedProminent)
+        .buttonStyle(WSPillButtonStyle())
         .accessibilityIdentifier("devotionalDetail.playButton")
     }
 
@@ -132,8 +153,9 @@ struct DevotionalDetailView: View {
             isCompleted = true
         } label: {
             Text(isCompleted ? "Completed \u{2713}" : "Amen \u{2014} mark complete")
+                .frame(maxWidth: .infinity)
         }
-        .buttonStyle(.bordered)
+        .buttonStyle(WSQuietPillButtonStyle())
         .disabled(isCompleted)
         .accessibilityIdentifier("devotionalDetail.completeButton")
     }
