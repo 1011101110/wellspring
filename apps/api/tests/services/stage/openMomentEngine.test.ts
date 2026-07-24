@@ -18,8 +18,11 @@ import {
 import type { FetchLike as GlooFetchLike } from '../../../src/services/gloo/glooTokenManager.js';
 import {
   OpenMomentEngine,
+  hasVerbatimEcho,
+  verbatimEchoGuard,
   type OpenMomentEngineLogger,
 } from '../../../src/services/stage/openMomentEngine.js';
+import type { LiveResponse } from '@kairos/shared-contracts';
 
 const CONTEXT: OpenMomentContext = {
   language: 'en',
@@ -284,6 +287,59 @@ describe('OpenMomentEngine.respond — silence + distress', () => {
     );
     const [, init] = glooFetch.mock.calls[0] as [string, { body: string }];
     expect(JSON.parse(init.body).instructions).not.toContain('988');
+  });
+});
+
+describe('hasVerbatimEcho (V5 #366, pure)', () => {
+  it('flags a >=5-word verbatim run of the transcript', () => {
+    const transcript = 'I still set two plates at dinner every single night since he died.';
+    expect(hasVerbatimEcho(transcript, 'You still set two plates at dinner, and that is love.')).toBe(
+      true,
+    );
+  });
+
+  it('does NOT flag a short incidental overlap (below the word threshold)', () => {
+    // "I hear you" shares only short function-word runs — not an echo.
+    expect(hasVerbatimEcho('I am so tired of everything today', 'I hear you, and you are held.')).toBe(
+      false,
+    );
+  });
+
+  it('is case- and punctuation-insensitive', () => {
+    const transcript = 'my brother has not spoken to me in three whole years now';
+    expect(
+      hasVerbatimEcho(transcript, 'HAS NOT SPOKEN TO ME IN THREE... whole years — that aches.'),
+    ).toBe(true);
+  });
+
+  it('catches a long verbatim run in CJK (character-level, no whitespace)', () => {
+    const transcript = '我最近一直觉得非常孤独和疲惫';
+    // shares the contiguous 6+ char run 一直觉得非常孤独
+    expect(hasVerbatimEcho(transcript, '你说你一直觉得非常孤独，你并不孤单。')).toBe(true);
+  });
+
+  it('empty transcript or text never echoes', () => {
+    expect(hasVerbatimEcho('', 'anything at all here')).toBe(false);
+    expect(hasVerbatimEcho('anything at all here', '')).toBe(false);
+  });
+
+  it('verbatimEchoGuard checks BOTH acknowledgment and framing (verse is exempt)', () => {
+    const transcript = 'please tell my wife sarah that i forgive her for everything she did';
+    const echoInFraming: LiveResponse = {
+      acknowledgment: 'That is a tender thing to carry.',
+      verse: {
+        usfm: 'MAT.11.28',
+        versionId: 3034,
+        reference: 'Matthew 11:28',
+        fetchedText: EXACT_TEXT,
+        attribution: 'BSB',
+      },
+      framing: 'I forgive her for everything she did — rest in grace.',
+    };
+    expect(verbatimEchoGuard(echoInFraming, transcript)).toBe(true);
+
+    const clean: LiveResponse = { ...echoInFraming, framing: 'Rest in that grace as we pray.' };
+    expect(verbatimEchoGuard(clean, transcript)).toBe(false);
   });
 });
 

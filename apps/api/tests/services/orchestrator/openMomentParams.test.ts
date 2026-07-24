@@ -8,10 +8,11 @@
  *  - a fixture-fallback generation NEVER enables it (pinned);
  *  - default (flag off) persists null.
  */
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   GenerateNowOrchestrator,
   resolveOpenMomentEnabled,
+  resolveOpenMomentKillSwitch,
 } from '../../../src/services/orchestrator/generateNowOrchestrator.js';
 import type {
   DailyBandsRepository,
@@ -158,10 +159,49 @@ describe('resolveOpenMomentEnabled (pure, mutation-checked)', () => {
     // the distress guard — this asserts it is present.
     expect(resolveOpenMomentEnabled(true, true)).not.toBe(true);
   });
+
+  it('kill switch OFF disables it even when requested + non-distress (V5 #366)', () => {
+    // MUTATION CHECK: the ONLY way requested + non-distress + killSwitch=false
+    // yields true is deleting the kill-switch guard — this asserts it is ANDed in.
+    expect(resolveOpenMomentEnabled(true, false, false)).toBe(false);
+    expect(resolveOpenMomentEnabled(true, false, false)).not.toBe(true);
+    // kill switch ON restores the normal resolution.
+    expect(resolveOpenMomentEnabled(true, false, true)).toBe(true);
+  });
+});
+
+describe('resolveOpenMomentKillSwitch (pure, V5 #366) — ships dark by default', () => {
+  it('is enabled ONLY for the exact string "true"', () => {
+    expect(resolveOpenMomentKillSwitch('true')).toBe(true);
+  });
+
+  it('is disabled for unset / false / any other value (fail-safe default)', () => {
+    for (const raw of [undefined, '', 'false', '0', 'TRUE', 'yes', '1', 'enabled']) {
+      expect(resolveOpenMomentKillSwitch(raw)).toBe(false);
+    }
+  });
 });
 
 describe('generateNow — open moment threading', () => {
+  // The kill switch ships dark by default (V5 #366); the enabled-path
+  // assertions below require it explicitly ON. Stubbed per-describe and
+  // unstubbed after each so no other suite sees a leaked env.
+  afterEach(() => vi.unstubAllEnvs());
+
+  it('kill switch OFF (default/dark) → openMoment stays null even when requested + non-distress + non-fixture', async () => {
+    vi.stubEnv('OPEN_MOMENT_ENABLED', 'false');
+    const { orchestrator, createCalls, synthesizeArgs } = buildHarness();
+    await orchestrator.generateNow({
+      userId: 'user-1',
+      skipCalendar: true,
+      openMomentEnabled: true,
+    });
+    expect(createCalls[0]?.openMoment).toBeNull();
+    expect(synthesizeArgs[0]?.[5]).toBe(false);
+  });
+
   it('enabled + non-distress + non-fixture → persists the OpenMomentContext and passes the invitation flag to TTS', async () => {
+    vi.stubEnv('OPEN_MOMENT_ENABLED', 'true');
     const { orchestrator, createCalls, synthesizeArgs } = buildHarness();
     await orchestrator.generateNow({
       userId: 'user-1',
@@ -187,6 +227,8 @@ describe('generateNow — open moment threading', () => {
   });
 
   it('distress NEVER gets an open moment even when requested', async () => {
+    // Kill switch ON, so distress — not the switch — is what forces null.
+    vi.stubEnv('OPEN_MOMENT_ENABLED', 'true');
     const { orchestrator, createCalls, synthesizeArgs } = buildHarness();
     await orchestrator.generateNow({
       userId: 'user-1',
@@ -199,6 +241,8 @@ describe('generateNow — open moment threading', () => {
   });
 
   it('PIN: a fixture-fallback generation never gets an open moment (no live engine)', async () => {
+    // Kill switch ON, so the fixture rule — not the switch — is what forces null.
+    vi.stubEnv('OPEN_MOMENT_ENABLED', 'true');
     const { orchestrator, createCalls, synthesizeArgs } = buildHarness({ source: 'fixture' });
     await orchestrator.generateNow({
       userId: 'user-1',

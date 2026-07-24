@@ -172,6 +172,18 @@ export class StageResponseService {
       distressFlagged: authoritative.distressFlagged,
     });
 
+    // Ops counter (V5 #366): a stable, greppable, transcript-free line a
+    // log-based metric can COUNT by outcome class + distress flag (e.g. to
+    // alert if the silence rate spikes, or to see the 988-variant rate). The
+    // fixed `event` label is the metric key; `outcome`/`distressFlagged` are
+    // its dimensions. Deliberately separate from the ops line above so the
+    // metric filter never depends on that line's exact shape.
+    this.logger.info('open_moment.counter', {
+      event: 'open_moment_outcome',
+      outcome: authoritative.outcome,
+      distressFlagged: authoritative.distressFlagged,
+    });
+
     const envelope = await this.buildEnvelope(token, authoritative);
     return { kind: 'ok', envelope };
   }

@@ -251,4 +251,22 @@ describe('StageResponseService — privacy (epic §5)', () => {
       'sessionTokenHash',
     ]);
   });
+
+  it('emits a transcript-free ops COUNTER line (outcome class + distressFlagged) — V5 #366', async () => {
+    const logger = { info: vi.fn(), error: vi.fn() };
+    const { service } = build({ logger });
+    await service.respond('tok-1', 'an ordinary heavy day');
+
+    const counter = logger.info.mock.calls.find(([msg]) =>
+      String(msg).includes('open_moment.counter'),
+    );
+    expect(counter).toBeTruthy();
+    const meta = counter?.[1] as Record<string, unknown>;
+    // Metadata-only: the counter carries the metric key + its two dimensions,
+    // and NOTHING that could contain transcript content.
+    expect(Object.keys(meta ?? {}).sort()).toEqual(['distressFlagged', 'event', 'outcome']);
+    expect(meta.event).toBe('open_moment_outcome');
+    expect(['response', 'silence']).toContain(meta.outcome);
+    expect(typeof meta.distressFlagged).toBe('boolean');
+  });
 });
