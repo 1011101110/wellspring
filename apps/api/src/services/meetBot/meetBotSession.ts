@@ -1,9 +1,13 @@
 /**
- * MeetBotSession — the H1 (#53) bot lifecycle: create → wait for
- * admission → stream the devotional as PCM → leave. docs/22 §3 execution
- * plan step 3 (H1c). Built against the `AttendeeClient` interface so it
- * can be fully unit-tested with `FakeAttendeeClient` — no live
- * attendee.dev account exists yet (blocked on issue #129, the H1a spike).
+ * MeetBotSession — the websocket-PCM bot lifecycle (H1 #53): create →
+ * wait for admission → stream the devotional as PCM → leave. docs/22 §3
+ * execution plan step 3 (H1c). This is one of TWO dispatch modes since
+ * Q5 (kairos-devotional#335) — the other is the voice-agent mode, where
+ * Attendee's container renders the Stage page and this streaming loop
+ * never runs. Built against the `AttendeeClient` interface so it is
+ * fully unit-testable with `FakeAttendeeClient`; the live account and
+ * bot join were verified in the H1a spike (2026-07-07) and again in the
+ * Q4 voice-agent spike + Q7 rehearsal (2026-07-23).
  *
  * Bounded, request-driven lifecycle (DEC-K11 lesson carried over from D4,
  * docs/22 §3 point 5) — this function runs to completion within one
@@ -37,10 +41,8 @@ export interface BotAudioChannel {
    * sample rate, per Attendee's `realtime_audio.bot_output` message
    * shape (docs.attendee.dev "Realtime Audio Input and Output"). The
    * real implementation is the websocket connection Attendee's service
-   * opens to our `audioWebsocketUrl` — not built yet; that live
-   * websocket server is separate infra work, tracked alongside the H1a
-   * spike since its exact framing/backpressure behavior needs
-   * confirming live first.
+   * opens to our `audioWebsocketUrl` — served by routes/meetBotAudio.ts
+   * (permanent since #221; framing live-verified in the H1a spike).
    */
   sendChunk(chunkBase64: string, sampleRate: AttendeeSampleRate): Promise<void>;
 }
@@ -336,8 +338,9 @@ export async function streamPcm(
     // cadence, but sending an entire clip's worth of chunks instantly
     // would front-load audio Attendee expects to arrive roughly in real
     // time — pace to the chunk's own duration, same reasoning as D4's
-    // frame pacing (docs/23_LIVEKIT_DELIVERY.md), confirm against a live
-    // bot in H1a before trusting this is sufficient on its own.
+    // frame pacing (docs/23_LIVEKIT_DELIVERY.md). The H1a live bot
+    // (2026-07-07) streamed with this pacing and the owner heard clean
+    // audio, so it is sufficient for the clip lengths we produce.
     await sleep(chunkMs);
   }
 }

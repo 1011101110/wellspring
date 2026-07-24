@@ -16,11 +16,8 @@
  * caller holding a raw `PUBLIC_BASE_URL` (which humans set, sometimes with
  * a trailing `/`) and a caller holding an already-trimmed base produce the
  * same URL. Idempotent by construction — double-trimming costs nothing.
- *
- * TODO(#343): generateNowOrchestrator.ts still builds its sessionUrl
- * inline (`${this.publicBaseUrl}/session/${sessionToken}`) — adopt
- * sessionUrlFor there once #342's restructure of that file lands; the two
- * stories touch the same lines and #342 owns the file.
+ * Every session/stage URL construction now routes through here — the
+ * orchestrator's last inline build was adopted after #342/#343 both landed.
  */
 
 /** Trailing-slash-safe base — the same `/\/+$/` trim every call site used. */

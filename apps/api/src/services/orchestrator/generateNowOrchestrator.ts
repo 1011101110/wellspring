@@ -65,6 +65,7 @@ import type { DeliveryProvider } from '../delivery/deliveryProvider.js';
 import { buildEventBody } from '../invite/eventBody.js';
 import type { TaskScheduler } from '../tasks/taskScheduler.js';
 import { HostedSessionProvider } from '../delivery/hostedSessionProvider.js';
+import { sessionUrlFor } from '../delivery/sessionUrls.js';
 import {
   asVerifiedUserId,
   type CalendarEventsRepository,
@@ -746,7 +747,7 @@ export class GenerateNowOrchestrator {
     const existingSessions = await this.sessions.listForUser(verifiedUserId);
     const existingSession = existingSessions.find((s) => s.devotional_id === existingToday.id);
     const sessionToken = existingSession?.token ?? '';
-    const sessionUrl = sessionToken ? `${this.publicBaseUrl}/session/${sessionToken}` : '';
+    const sessionUrl = sessionToken ? sessionUrlFor(this.publicBaseUrl, sessionToken) : '';
     throw new AlreadyExistsError(existingToday.id, sessionToken, sessionUrl);
   }
 
