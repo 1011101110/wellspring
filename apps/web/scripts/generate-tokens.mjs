@@ -18,6 +18,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { wellspringTokensCss } from '@kairos/shared-contracts';
 
+// Silent on success, loud on failure (writeFileSync throws) — the repo's
+// eslint config declares no Node globals, so there is no `console` here.
 const out = join(dirname(fileURLToPath(import.meta.url)), '..', 'src', 'tokens.css');
 writeFileSync(out, wellspringTokensCss());
-console.log(`wrote ${out}`);
