@@ -1,0 +1,38 @@
+/*
+ * GENERATED from @kairos/shared-contracts designTokens.ts — do not edit.
+ * Regenerate: npm run tokens --workspace=apps/web
+ */
+:root {
+  --ws-canvas: #FCF7F2;
+  --ws-mist: #F7EADF;
+  --ws-dawn: #EFD9C8;
+  --ws-terracotta: #B4795A;
+  --ws-clay: #8A5F43;
+  --ws-ink: #3B322C;
+  --ws-muted: #A2937F;
+  --ws-night: #171D2C;
+  --ws-dusk: #242C40;
+  --ws-candle: #E7D7A6;
+  --ws-paper: #EEEBE2;
+  --ws-muted-ink: #6F614E;
+  --ws-muted-ink-dark: #B4AB9A;
+  --ws-clay-deep: #7C5539;
+  --ws-terracotta-light: #D9A07F;
+  --ws-grad-terracotta: linear-gradient(145deg, #c98a63, #b4795a);
+  --ws-grad-cta: linear-gradient(145deg, #96674B, #8A5F43);
+  --ws-grad-cta-dark: linear-gradient(145deg, #EFE2B8, #E7D7A6);
+  --ws-grad-verse: linear-gradient(180deg, #FBF3EC, #F5E6DA);
+  --ws-radius-card: 24px;
+  --ws-radius-pill: 999px;
+  --ws-shadow: 0 12px 30px rgba(146, 104, 73, 0.12);
+  --ws-shadow-hero: 0 22px 50px rgba(146, 104, 73, 0.16);
+  --ws-shadow-cta: 0 10px 22px rgba(180, 121, 90, 0.3);
+  --ws-glow-dark: 0 0 60px rgba(217, 200, 155, 0.35);
+  --ws-ease: cubic-bezier(0.4, 0, 0.2, 1);
+  --ws-dur: 900ms;
+  --ws-serif: 'Spectral', Georgia, 'Times New Roman', serif;
+  --ws-sans: 'Hanken Grotesk', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --ws-glass-bg: rgba(255, 255, 255, 0.55);
+  --ws-glass-blur: 12px;
+  --ws-glass-border: 1px solid rgba(255, 255, 255, 0.7);
+}

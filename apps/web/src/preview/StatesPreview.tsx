@@ -40,6 +40,15 @@ import {
   type CalendarViewMode,
 } from '../lib/calendarGrid';
 import { zonedTimeToInstant } from '../lib/datetime';
+import { DEFAULT_PREFERENCES } from '../lib/preferences';
+import {
+  CalendarConnectStep,
+  DoneStep,
+  PreferencesStep,
+  SignInStep,
+  WelcomeStep,
+} from '../views/Onboarding';
+import { SettingsView } from '../views/Settings';
 import { emptyUpcomingMessage } from '../lib/upcoming';
 import { RETURN_GAP_DAYS, returnGreeting } from '../lib/returnGreeting';
 import { readyCard, emptyCard, errorCard, loadingCard } from '../lib/cardState';
@@ -619,6 +628,56 @@ export function StatesPreview() {
 
       <Section title="Coming soon — content only, no controls">
         <ComingSoonCards />
+      </Section>
+
+      {/*
+       * ## Onboarding and Settings, as fixtures (T2 #349)
+       *
+       * These surfaces normally sit behind Firebase auth, which makes them
+       * invisible to exactly the kind of design review this page exists
+       * for. The step components are presentational (their Firebase and
+       * API imports are lazy, loaded on click), so they render here with
+       * noop handlers — the controls are real but go nowhere.
+       */}
+      <Section title="Onboarding — welcome and sign-in (T2 #349)">
+        <WelcomeStep onNext={noop} />
+        <SignInStep onBack={noop} />
+      </Section>
+
+      <Section title="Onboarding — calendar connect, preferences, done">
+        <CalendarConnectStep onConnected={noop} onSkip={noop} />
+        <PreferencesStep
+          value={DEFAULT_PREFERENCES}
+          onChange={noop}
+          timezone={PREVIEW_ZONE}
+          onConfirm={noop}
+          onSkip={noop}
+          busy={false}
+          error={null}
+        />
+        <DoneStep onFinish={noop} busy={false} error={null} calendarConnected={true} />
+      </Section>
+
+      <Section title="Settings — connected, reading on">
+        <SettingsView
+          value={DEFAULT_PREFERENCES}
+          onChange={noop}
+          timezone={PREVIEW_ZONE}
+          onSave={noop}
+          busy={false}
+          error={null}
+          saved={false}
+          connection={{ kind: 'active', connection: connectionActive }}
+          calendarReadingEnabled={true}
+          onToggleCalendarReading={noop}
+          onConnectCalendar={noop}
+          onSignOut={noop}
+          email="maya@example.com"
+          rhythm={{ mode: 'adaptive', daysPerWeek: 5, minPerWeek: 3, reason: 'hold' }}
+          activeDaysCount={7}
+          onToggleScheduleFixed={noop}
+          onChangeMinPerWeek={noop}
+        />
       </Section>
     </main>
   );

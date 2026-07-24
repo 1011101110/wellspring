@@ -1,6 +1,4 @@
 import { useEffect, useState } from 'react';
-import { getGoogleConnectUrl } from '../api/connect';
-import { describeAuthError, signInWithGoogle } from '../firebase';
 import { takeConnectResult, type ConnectCallbackResult } from '../lib/connectCallback';
 import { PreferencesForm } from '../components/PreferencesForm';
 import type { WebPreferences } from '../lib/preferences';
@@ -26,7 +24,11 @@ export type OnboardingStep = 'welcome' | 'signIn' | 'calendarConnect' | 'prefere
 export function WelcomeStep({ onNext }: { onNext: () => void }) {
   return (
     <section aria-labelledby="welcome-heading" className="card">
-      <h1 id="welcome-heading">Wellspring</h1>
+      {/* The brand lockup (§05) — the mark is decorative, the name is the heading. */}
+      <h1 id="welcome-heading" className="brand">
+        <span className="brand-mark" aria-hidden="true" />
+        Wellspring
+      </h1>
       <p className="lede">
         Wellspring finds the open moment in your workday and books a short meeting with God.
       </p>
@@ -49,12 +51,23 @@ export function SignInStep({ onBack }: { onBack: () => void }) {
     setBusy(true);
     setError(null);
     try {
-      await signInWithGoogle();
-      // No navigation here: the auth listener in App flips the whole
-      // shell over once Firebase reports the user, so there is exactly
-      // one place that decides what a signed-in person sees.
-    } catch (err) {
-      setError(describeAuthError(err));
+      // Imported on click rather than at module scope: `firebase.ts`
+      // initializes Firebase as it loads, which requires a real API key —
+      // and the fixture-driven states preview renders this step with no
+      // Firebase config at all. The app itself loads the module at
+      // startup anyway (App.tsx imports it statically), so for real users
+      // this resolves from cache.
+      const { describeAuthError, signInWithGoogle } = await import('../firebase');
+      try {
+        await signInWithGoogle();
+        // No navigation here: the auth listener in App flips the whole
+        // shell over once Firebase reports the user, so there is exactly
+        // one place that decides what a signed-in person sees.
+      } catch (err) {
+        setError(describeAuthError(err));
+      }
+    } catch {
+      setError('We could not start sign-in. Please try again.');
     } finally {
       setBusy(false);
     }
@@ -113,6 +126,10 @@ export function CalendarConnectStep({
     setBusy(true);
     setError(null);
     try {
+      // Lazy for the same reason as `handleSignIn` above: the module
+      // chain behind `api/connect` reaches `config.ts`, which demands a
+      // Firebase API key at load — which the states preview does not have.
+      const { getGoogleConnectUrl } = await import('../api/connect');
       const url = await getGoogleConnectUrl();
       window.location.assign(url);
     } catch (err) {

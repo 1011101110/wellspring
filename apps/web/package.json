@@ -9,6 +9,7 @@
     "build": "tsc -p tsconfig.json --noEmit && vite build",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "dev": "vite",
+    "tokens": "node scripts/generate-tokens.mjs",
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",

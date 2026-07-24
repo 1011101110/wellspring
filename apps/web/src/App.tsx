@@ -280,7 +280,7 @@ export function App() {
 
   if (!authResolved || phase.kind === 'loading') {
     return (
-      <Shell>
+      <Shell surface="loading">
         <p role="status">Loading your settings…</p>
       </Shell>
     );
@@ -288,7 +288,7 @@ export function App() {
 
   if (phase.kind === 'error') {
     return (
-      <Shell>
+      <Shell surface="error">
         <section className="card">
           <h1>We could not reach Wellspring</h1>
           <ErrorNote message={phase.message} />
@@ -302,7 +302,7 @@ export function App() {
 
   if (phase.kind === 'signedOut') {
     return (
-      <Shell>
+      <Shell surface={step === 'signIn' ? 'signIn' : 'welcome'}>
         {step === 'signIn' ? (
           <SignInStep onBack={() => setStep('welcome')} />
         ) : (
@@ -321,7 +321,7 @@ export function App() {
    */
   if (phase.kind === 'dashboard' && serverPrefs) {
     return (
-      <Shell>
+      <Shell surface="dashboard">
         <DashboardView
           preferences={serverPrefs}
           browserZone={timezone}
@@ -336,7 +336,7 @@ export function App() {
 
   if (phase.kind === 'devotional') {
     return (
-      <Shell>
+      <Shell surface="devotional">
         <DevotionalDetailView
           devotionalId={phase.id}
           alreadyExistedNote={phase.note ?? null}
@@ -348,7 +348,7 @@ export function App() {
 
   if (phase.kind === 'settings') {
     return (
-      <Shell>
+      <Shell surface="settings">
         {/* Settings is now a secondary surface, so it needs a way home. */}
         <button type="button" className="quiet" onClick={() => setPhase({ kind: 'dashboard' })}>
           Back to your dashboard
@@ -380,7 +380,7 @@ export function App() {
   }
 
   return (
-    <Shell>
+    <Shell surface={step}>
       {step === 'calendarConnect' && (
         <CalendarConnectStep
           onConnected={() => {
@@ -438,14 +438,23 @@ export function App() {
   );
 }
 
-function Shell({ children }: { children: React.ReactNode }) {
+function Shell({ children, surface }: { children: React.ReactNode; surface: string }) {
   return (
     <>
       <a className="skip-link" href="#main">
         Skip to main content
       </a>
       <main id="main" tabIndex={-1}>
-        {children}
+        {/*
+          The design system's crossfade (§08): keyed on the surface name so
+          moving between phases remounts the wrapper and plays the fade
+          again. The animation itself lives behind
+          `prefers-reduced-motion: no-preference` in styles.css — for
+          everyone else this div is inert.
+        */}
+        <div className="ws-fade" key={surface}>
+          {children}
+        </div>
       </main>
     </>
   );

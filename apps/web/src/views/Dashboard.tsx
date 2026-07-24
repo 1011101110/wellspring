@@ -413,7 +413,15 @@ export function DashboardView({
   return (
     <>
       <header className="dash-header">
-        <h1>Wellspring</h1>
+        {/*
+         * The brand lockup (§05): 34px terracotta-gradient circle +
+         * Spectral wordmark. The mark is decoration — `aria-hidden` keeps
+         * the heading's accessible name exactly "Wellspring".
+         */}
+        <h1 className="brand">
+          <span className="brand-mark" aria-hidden="true" />
+          Wellspring
+        </h1>
         <nav aria-label="Sections">
           <button type="button" className="quiet" onClick={onOpenSettings}>
             Settings
