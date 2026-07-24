@@ -40,14 +40,18 @@ const STAGE_WIRING_JS = `(function () {
   var progressFill = document.getElementById('progress-fill');
   var TABS = ['scripture', 'reflection', 'questions', 'prayer'];
 
-  // Attendee's browser-voice-agent container wants the mic permission
-  // prompt satisfied at load; a normal browser user may deny — non-fatal
-  // either way (Q2 #332).
-  try {
-    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-      navigator.mediaDevices.getUserMedia({ audio: true }).catch(function () {});
-    }
-  } catch (e) { /* non-fatal */ }
+  // Deliberately NO microphone request (Q7 rehearsal finding, 2026-07-23).
+  // Attendee's container patches the mic API: a mic request makes it open a
+  // WebRTC path that pipes the MEETING's audio to the page as a virtual mic
+  // (for two-way voice agents that listen), and when that track doesn't
+  // arrive within 10s it injects a red "Failed to receive remote audio
+  // stream" banner into our DOM — on screen for every participant. This
+  // playback-only page never consumes meeting audio, and outgoing audio is
+  // captured from the page's output independent of the mic path
+  // (live-verified: audio reached the Meet while the virtual mic failed).
+  // Requesting the mic here buys nothing and risks the banner; see
+  // attendee-labs/attendee bots/webpage_streamer/webpage_streamer_payload.js.
+  // A test pins that the mic API name never re-appears in this script.
 
   var activeTab = 'scripture';
   function setTab(tab) {
