@@ -19,7 +19,6 @@ import type { FastifyInstance, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import {
   BandsUploadRequestSchema,
-  CreateJournalEntryRequestSchema,
   GenerateNowRequestSchema,
   IsoDateParamSchema,
   MonthParamSchema,
@@ -33,7 +32,6 @@ import {
   isVersionInLanguage,
   type BandsUploadResponseData,
   type DevotionalCard,
-  type JournalEntry,
   type PreferencesResponseData,
   type UpcomingCalendarEvent,
 } from '@kairos/shared-contracts';
@@ -61,6 +59,7 @@ import {
 } from '../services/orchestrator/generateNowOrchestrator.js';
 import { generateInviteRoutingAddress } from '../services/invite/inviteRoutingAddress.js';
 import { buildMonthlyRecap } from '../services/recap/monthlyRecapService.js';
+import { registerJournalRoutes } from './journal.js';
 
 /**
  * Maps the raw (snake_case) `daily_bands` row to the camelCased wire
@@ -803,75 +802,11 @@ export function registerUserScopedRoutes(app: FastifyInstance, deps: UserScopedR
   );
 
   // --- journal (N9, #268) -------------------------------------------------
-  // A kept, user-owned place to write what one is carrying. Never sent to
-  // the model (v1) — it is for the person, which also keeps the
-  // prompt-injection surface closed. No route here returns a count: the
-  // journal keeps words, it does not tally them (Foundation §9, ruling
-  // #271).
-  const JOURNAL_PAGE_SIZE = 20;
-
-  const toJournalEntry = (row: {
-    id: string;
-    text: string;
-    created_at: Date;
-  }): JournalEntry => ({
-    id: row.id,
-    text: row.text,
-    createdAt: row.created_at.toISOString(),
-  });
-
-  app.post<{ Body: unknown }>('/v1/journal', { preHandler: requireAuth }, async (request, reply) => {
-    const parsed = CreateJournalEntryRequestSchema.safeParse(request.body);
-    if (!parsed.success) {
-      // A real 400 here, unlike the devotionals-list query: an empty or
-      // over-long entry is a genuine client error with no sensible
-      // fallback reading — there is nothing to keep.
-      return badRequest(reply, parsed.error.issues[0]?.message ?? 'Invalid entry');
-    }
-    const row = await repositories.journal.create(request.auth!.userId, parsed.data.text);
-    return reply.status(201).send({ ok: true, data: toJournalEntry(row) });
-  });
-
-  app.get<{ Querystring: { before?: string } }>(
-    '/v1/journal',
-    { preHandler: requireAuth },
-    async (request) => {
-      // `before` is a plain ISO instant cursor (the previous page's oldest
-      // `createdAt`), not an opaque encoded token: the journal list is
-      // ordered by one column and there is nothing to hide in the cursor,
-      // so an unparseable value just means "the first page" rather than a
-      // 400 that would blank the journal over a bad query string.
-      const beforeRaw = request.query?.before;
-      const before = beforeRaw ? new Date(beforeRaw) : undefined;
-      const cursor = before && !Number.isNaN(before.getTime()) ? before : undefined;
-
-      const { entries, hasMore } = await repositories.journal.list(
-        request.auth!.userId,
-        JOURNAL_PAGE_SIZE,
-        cursor,
-      );
-      const last = entries[entries.length - 1];
-      return {
-        ok: true,
-        data: entries.map(toJournalEntry),
-        nextCursor: hasMore && last ? last.created_at.toISOString() : null,
-      };
-    },
-  );
-
-  app.delete<{ Params: { id: string } }>(
-    '/v1/journal/:id',
-    { preHandler: requireAuth },
-    async (request, reply) => {
-      if (!UuidParamSchema.safeParse(request.params.id).success) return invalidParam(reply);
-      const removed = await repositories.journal.deleteOne(request.auth!.userId, request.params.id);
-      // 404 for an id that is not the caller's (or does not exist) — the
-      // two are deliberately indistinguishable (§5.4, never leak
-      // existence), and both correctly deleted nothing.
-      if (!removed) return notFound(reply);
-      return { ok: true };
-    },
-  );
+  // Extracted to routes/journal.ts (#343); registered here so the journal
+  // keeps the exact registration condition and scope (auth, helmet, rate
+  // limit, the #80 audit) it had when its handlers lived inline in this
+  // file.
+  registerJournalRoutes(app, { journal: repositories.journal });
 
   // --- generate now (distress check-in #77 + dashboard "+" #238) ---------
   //

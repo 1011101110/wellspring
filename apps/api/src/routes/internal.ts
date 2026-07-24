@@ -21,15 +21,16 @@
  * service-to-service auth) is tracked as follow-up work.
  */
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
-import { DateTime } from 'luxon';
 import { z } from 'zod';
 import type { GenerateNowOrchestrator } from '../services/orchestrator/generateNowOrchestrator.js';
 import { AlreadyExistsError } from '../services/orchestrator/generateNowOrchestrator.js';
 import type { PreferencesRepository, UsersRepository } from '../db/repositories/index.js';
-import { asVerifiedUserId } from '../db/repositories/index.js';
-import type { DailyRunCadenceRow } from '../db/repositories/preferencesRepository.js';
-import { loadAttendanceSignals, type AttendanceSignalsDeps } from '../services/rhythm/attendanceSignals.js';
-import { decideCadence, type CadenceReason } from '../services/rhythm/cadencePolicy.js';
+import type { AttendanceSignalsDeps } from '../services/rhythm/attendanceSignals.js';
+import type { CadenceReason } from '../services/rhythm/cadencePolicy.js';
+import {
+  evaluateDailyRunGate,
+  loadDailyRunGateContext,
+} from '../services/rhythm/dailyRunGate.js';
 import { runAllPurgeJobs, type PurgeJobsDeps } from '../services/retention/purgeJobs.js';
 import { runRescheduleCheck, type RescheduleWatcherDeps } from '../services/calendar/rescheduleWatcher.js';
 import { refreshCalendarTimezone } from '../services/calendar/refreshCalendarTimezone.js';
@@ -40,6 +41,7 @@ import {
   type MeetBotConsentGateDeps,
 } from '../services/meetBot/meetBotConsentGate.js';
 import { deriveMeetBotAudioToken } from '../services/meetBot/meetBotAudioCapabilityToken.js';
+import { stageUrlFor } from '../services/delivery/sessionUrls.js';
 
 export interface InternalRoutesDeps {
   generateNowOrchestrator: GenerateNowOrchestrator;
@@ -167,11 +169,6 @@ export interface InternalRoutesDeps {
   now?: () => Date;
 }
 
-/** 0=Sunday..6=Saturday in `timezone`'s local time — same convention as `preferences.active_days`/`sabbath_day`. */
-function localDayOfWeek(now: Date, timezone: string): number {
-  return DateTime.fromJSDate(now, { zone: timezone }).weekday % 7;
-}
-
 const GenerateNowRequestSchema = z.object({
   userId: z.string().min(1),
   date: z
@@ -274,36 +271,18 @@ export function registerInternalRoutes(app: FastifyInstance, deps: InternalRoute
     let failed = 0;
     const errors: Array<{ userId: string; reason: string }> = [];
 
-    // Sabbath awareness (docs/14 §5.6, issue #94): build a lookup of
-    // sabbath-enabled users up front (one query) rather than one
-    // preferences.get() per user in the loop below.
-    const sabbathByUserId = new Map<string, { sabbath_day: number; sabbath_session: boolean }>();
-    if (deps.preferences) {
-      const sabbathRows = await deps.preferences.listWithSabbathEnabled();
-      for (const row of sabbathRows) {
-        sabbathByUserId.set(row.user_id, row);
-      }
-    }
-
-    // Active-days awareness (K2, issue #188). Same up-front-lookup shape as
-    // the sabbath map above: one query for the batch, resolved per user
-    // below against that user's own zone.
-    //
-    // Until #188 this fan-out consulted nothing but
-    // `listWithActiveGoogleCalendar()`, so `preferences.active_days` was
-    // dead config (docs/03 §10) — a user who selected Mon–Fri still got a
-    // Saturday devotional. A setting that changes nothing is a broken
-    // promise, and a quiet one, because the user believes they were heard.
-    //
-    // P6 (#325): the same rows now also carry the cadence engine's inputs
-    // (min_per_week + the adaptive_* state), so the adaptive evaluation in
-    // the loop below costs no extra query for non-adaptive users.
-    const cadencePrefsByUserId = new Map<string, DailyRunCadenceRow>();
-    if (deps.preferences) {
-      for (const row of await deps.preferences.listActiveDays()) {
-        cadencePrefsByUserId.set(row.user_id, row);
-      }
-    }
+    // The rhythm gate — sabbath, active-days, adaptive rhythm, and the
+    // per-user calendar-zone refresh — lives in services/rhythm/
+    // dailyRunGate.ts (#343). This route keeps only the fan-out shape:
+    // batch counters, generateNow, and the AlreadyExistsError-is-a-skip
+    // rule. Context is one query per table for the whole batch.
+    const gateDeps = {
+      users: deps.users,
+      preferences: deps.preferences,
+      rhythm: deps.rhythm,
+      getCalendarTimeZoneForUser: deps.getCalendarTimeZoneForUser,
+    };
+    const gateContext = await loadDailyRunGateContext(gateDeps);
 
     // P6 (#325): users whose stated day it was, but whose devotional the
     // adaptive rhythm engine rested today. Reported in the run summary
@@ -319,206 +298,29 @@ export function registerInternalRoutes(app: FastifyInstance, deps: InternalRoute
     let timezonesRefreshed = 0;
 
     for (const user of users) {
-      // Refresh the zone BEFORE the sabbath check below, not after: that
-      // check is the first thing in this loop that reads `user.timezone`,
-      // and asking "is today their sabbath" against a stale UTC default
-      // is how a user in Sydney gets rested on the wrong day. #185 only
-      // ever learned the zone at connect time, so anyone connected before
-      // it shipped is still on UTC here, and nobody's zone follows them
-      // when they relocate.
-      //
-      // Best-effort by construction — `refreshCalendarTimezone` never
-      // throws — because a revoked token or a Calendar 5xx for one user
-      // must not cost that user (or anyone after them in this loop) their
-      // devotional.
-      let timezone = user.timezone;
-      if (deps.getCalendarTimeZoneForUser) {
-        const refreshed = await refreshCalendarTimezone(
-          { users: deps.users, getCalendarTimeZoneForUser: deps.getCalendarTimeZoneForUser },
-          user.id,
-        );
-        if (refreshed.outcome === 'adopted' && refreshed.timezone) {
-          timezone = refreshed.timezone;
-          timezonesRefreshed++;
-          request.log.info(
-            { userId: user.id, timezone },
-            'daily run: refreshed calendar time zone',
-          );
+      const outcome = await evaluateDailyRunGate(gateDeps, gateContext, user, now, request.log);
+      if (outcome.timezoneRefreshed) timezonesRefreshed++;
+      if (outcome.rhythmEvaluationError) {
+        // Fail-open adaptive-engine error (see DailyRunGateOutcome):
+        // loud in the run summary, but NOT counted in `failed` —
+        // `failed` means "a user did not get their devotional", and
+        // when the decision below is `generate` this user still does.
+        errors.push({ userId: user.id, reason: outcome.rhythmEvaluationError });
+      }
+
+      const { decision } = outcome;
+      if (decision.action === 'skip') {
+        skipped++;
+        if (decision.kind === 'rhythm') {
+          skippedByRhythm.push({ userId: user.id, reason: decision.reason });
         }
-      }
-
-      // Resolved once and reused by both gates below. `localDayOfWeek`
-      // reads the *user's* zone, never the server's and never UTC: at
-      // 2026-07-19T00:30Z a user in Australia/Sydney is already on Sunday
-      // local while UTC still says Saturday, and a UTC-derived weekday
-      // would rest them (or generate for them) a day out. That is the
-      // exact defect class #205 fixed for the scheduling window; the day
-      // of week is the same wall-clock-meets-UTC hazard one unit up.
-      const today = localDayOfWeek(now(), timezone);
-
-      const sabbath = sabbathByUserId.get(user.id);
-      const isSabbathToday = sabbath !== undefined && today === sabbath.sabbath_day;
-
-      // ── Adaptive rhythm evaluation (P6 #325, epic #312) ──────────────
-      //
-      // Runs BEFORE every gate below (sabbath included), so the engine's
-      // state advances on schedule even on days this user generates
-      // nothing — a back-off decided on their sabbath is still a back-off,
-      // and deferring it would smear the one-step-per-week ladder across
-      // whichever days happen to generate.
-      //
-      // Only entered for `adaptive_enabled = true` users: the policy's own
-      // rule 1 would return `fixed_by_user` with the full stated day set
-      // anyway, so skipping the signal reads for everyone else is pure
-      // savings (three queries per adaptive user, zero for the rest) and
-      // keeps non-adaptive scheduling byte-identical to K2 (#188).
-      //
-      // FAIL-OPEN, per the epic's ground rule: any error in the signal
-      // reads or the policy for one user falls back to that user's full
-      // stated `active_days` — logged and surfaced in `errors`, but the
-      // devotional still generates. The failure mode this must never have
-      // is "the adaptive engine broke and silently stopped everyone's
-      // devotionals"; erring toward MORE presence is the whole posture.
-      const prefs = cadencePrefsByUserId.get(user.id);
-      let effectiveDays = prefs?.active_days;
-      let rhythmReason: CadenceReason | null = null;
-      if (deps.rhythm && deps.preferences && prefs?.adaptive_enabled) {
-        try {
-          const rhythmNow = now();
-          // P4's "since back-off" anchor: only an `easing_back` decision
-          // counts as a back-off; `adaptive_decided_at` under any other
-          // reason is just the rate limiter's clock.
-          const lastBackoffAt =
-            prefs.adaptive_reason === 'easing_back' ? prefs.adaptive_decided_at : null;
-          const signals = await loadAttendanceSignals(deps.rhythm, asVerifiedUserId(user.id), {
-            now: rhythmNow,
-            lastBackoffAt,
-          });
-          const decision = decideCadence(
-            signals,
-            {
-              activeDays: prefs.active_days,
-              minPerWeek: prefs.min_per_week,
-              adaptiveEnabled: prefs.adaptive_enabled,
-              adaptiveDaysPerWeek: prefs.adaptive_days_per_week,
-              adaptiveDecidedAt: prefs.adaptive_decided_at,
-            },
-            { now: rhythmNow },
-          );
-
-          // Persist ONLY when the decision actually moved the ladder —
-          // never on a hold. `adaptive_decided_at` is doing double duty as
-          // the 7-day rate limiter's clock and P4's "since back-off"
-          // anchor (see `updateAdaptiveState`'s contract), so recording a
-          // no-op would push that clock forward every day and freeze a
-          // backed-off user below their ceiling forever. "Moved" is
-          // measured against what the engine treats as the current level —
-          // stored state, or the ceiling when never adapted (the policy's
-          // own `?? ceiling` default) — so a fresh user holding at their
-          // full schedule (`no_data`/`hold`) writes nothing and keeps a
-          // null limiter clock.
-          const ceiling = new Set(prefs.active_days).size;
-          if (decision.daysPerWeek !== (prefs.adaptive_days_per_week ?? ceiling)) {
-            await deps.preferences.updateAdaptiveState(asVerifiedUserId(user.id), {
-              daysPerWeek: decision.daysPerWeek,
-              reason: decision.reason,
-              decidedAt: rhythmNow,
-            });
-          }
-
-          effectiveDays = decision.effectiveDays;
-          rhythmReason = decision.reason;
-        } catch (err) {
-          // Fall back to the full stated schedule. Surfaced in `errors` so
-          // a broken engine is loud in the run summary, but NOT counted in
-          // `failed` — `failed` means "a user did not get their
-          // devotional", and this user is about to get theirs.
-          request.log.error(
-            { userId: user.id, err: String(err) },
-            'daily run: adaptive rhythm evaluation failed — failing open to full active_days',
-          );
-          errors.push({
-            userId: user.id,
-            reason: `adaptive rhythm evaluation failed (failed open, generation still attempted): ${String(err)}`,
-          });
-          effectiveDays = prefs.active_days;
-          rhythmReason = null;
-        }
-      }
-
-      if (isSabbathToday && !sabbath!.sabbath_session) {
-        // Genuine rest — no devotional generated today at all.
-        skipped++;
-        continue;
-      }
-
-      // K2 (#188): the active-days gate. `active_days` is the single
-      // source of truth for "does this user want a devotional today";
-      // `cadence` is a derived label over the same set and is deliberately
-      // NOT consulted here (see `cadenceForActiveDays` in
-      // shared-contracts/src/api/preferences.ts for the full model).
-      //
-      // Ordered AFTER the sabbath check, and skipped entirely on a sabbath
-      // day, on purpose. A sabbath day resolves wholly through the sabbath
-      // rules: `sabbath_session` is an explicit opt-in that *names a
-      // specific day* ("on my sabbath, give me the extended contemplative
-      // session"), and the shipped defaults are `active_days = Mon–Fri`
-      // with `sabbath_day = Sunday` — so gating the sabbath session on
-      // active_days would make `sabbath_session` dead config for every
-      // user holding the defaults. Fixing one silently-ignored preference
-      // by silently ignoring another is not progress (#193).
-      //
-      // A user with no preferences row is not in the map at all. That must
-      // fail OPEN — generate — rather than closed: the row is created on
-      // first write, so a missing row means "this user has never expressed
-      // a day preference", and reading that as "no days selected" would
-      // withhold devotionals from a user who never asked for silence.
-      const activeDays = prefs?.active_days;
-      if (!isSabbathToday && activeDays !== undefined && !activeDays.includes(today)) {
-        // A skip, not an error — the same treatment AlreadyExistsError
-        // gets below. Today simply isn't one of their days; nothing went
-        // wrong, nothing needs retrying, and nothing about this user
-        // affects the rest of the batch.
-        skipped++;
-        request.log.info(
-          { userId: user.id, timezone, localDayOfWeek: today, activeDays },
-          'daily run: skipped — not an active day for this user',
-        );
-        continue;
-      }
-
-      // P6 (#325): the adaptive-rhythm gate. Only reachable when today IS
-      // one of the user's stated days (the K2 gate above already handled
-      // "never their day") but the engine's current effective set rests it
-      // — that distinction is why this is a separate check with its own
-      // `skippedByRhythm` entry rather than a merged day-set: "you chose
-      // not to have Saturdays" and "we eased back your week" must never be
-      // indistinguishable in the logs. Ordered after the sabbath check and
-      // guarded by `!isSabbathToday` for exactly K2's reason: a sabbath
-      // day resolves wholly through the sabbath rules, and gating the
-      // opted-in sabbath session on effective days would make it dead
-      // config. `rhythmReason !== null` scopes this to users the engine
-      // actually decided for — fixed-schedule users, engine-less deploys,
-      // and the fail-open path all pass straight through on `active_days`.
-      if (
-        !isSabbathToday &&
-        rhythmReason !== null &&
-        effectiveDays !== undefined &&
-        !effectiveDays.includes(today)
-      ) {
-        skipped++;
-        skippedByRhythm.push({ userId: user.id, reason: rhythmReason });
-        request.log.info(
-          { userId: user.id, timezone, localDayOfWeek: today, effectiveDays, reason: rhythmReason },
-          'daily run: skipped by adaptive rhythm — today is outside the effective day set',
-        );
         continue;
       }
 
       try {
         await generateNowOrchestrator.generateNow({
           userId: user.id,
-          ...(isSabbathToday ? { sabbathSession: true } : {}),
+          ...(decision.sabbathSession ? { sabbathSession: true } : {}),
           // P7 (#326): the daily run is the one "scheduled, standard-slot"
           // caller, so it is the one place feedback steering applies —
           // generate-now/examen/invite/distress callers never set this.
@@ -716,13 +518,19 @@ export function registerInternalRoutes(app: FastifyInstance, deps: InternalRoute
     return { ok: true, ...result };
   });
 
-  // POST /internal/dispatch-meetbot — H1c (#131): the Cloud-Tasks-scheduled
-  // callback that actually dispatches an Attendee bot at gap_start_at.
-  // Same shared-secret auth as every other /internal/* route — this is a
-  // GCP-internal caller (our own Cloud Tasks queue), never a third party,
-  // so reusing INTERNAL_API_TOKEN here is consistent with the daily-run/
-  // examen/purge/reschedule-check routes above (unlike routes/meetBotAudio.ts's
-  // MEETBOT_AUDIO_TOKEN, whose URL is sent to Attendee, an actual third party).
+  // POST /internal/dispatch-meetbot — H1c (#131): the callback that
+  // actually dispatches an Attendee bot. Two transports POST it (Q6 #336):
+  // the Cloud Tasks queue, scheduled for gap_start_at (the original H1c
+  // path), and ImmediateTaskScheduler, which fire-and-forgets the same
+  // POST at generation time when MEETBOT_IMMEDIATE_DISPATCH=1 (the demo
+  // path — same call site, same body, only the transport differs; the two
+  // are mutually exclusive at boot, see index.ts).
+  // Same shared-secret auth as every other /internal/* route — both
+  // transports are our own infrastructure calling ourselves, never a third
+  // party, so reusing INTERNAL_API_TOKEN here is consistent with the
+  // daily-run/examen/purge/reschedule-check routes above (unlike
+  // routes/meetBotAudio.ts's MEETBOT_AUDIO_TOKEN, whose URL is sent to
+  // Attendee, an actual third party).
   //
   // Gated on live consent at fire time (#217) — see the block inside the
   // handler. That gate is why a refusal here returns 200 rather than an
@@ -829,7 +637,7 @@ export function registerInternalRoutes(app: FastifyInstance, deps: InternalRoute
       // Log discipline: the Stage URL contains a live session token — like
       // the meeting URL it must never be logged; the devotionalId above is
       // the auditable identifier.
-      const stageUrl = `${mbd.publicBaseUrl.replace(/\/+$/, '')}/stage/${session.token}`;
+      const stageUrl = stageUrlFor(mbd.publicBaseUrl, session.token);
       dispatchParams = { mode: 'voice-agent', meetingUrl, botName: botName ?? 'Wellspring', stageUrl };
     } else {
       // Mint a capability scoped to THIS devotional (#221). What we hand
