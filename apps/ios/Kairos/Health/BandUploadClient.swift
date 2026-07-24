@@ -76,22 +76,9 @@ public struct BandUploadRequest: Encodable, Equatable, Sendable {
     }
 }
 
-public enum BandUploadError: Error, Equatable, LocalizedError {
-    case notAuthenticated
-    case network(String)
-    case server(statusCode: Int)
-
-    public var errorDescription: String? {
-        switch self {
-        case .notAuthenticated:
-            return "Not signed in."
-        case .network(let detail):
-            return "Network problem: \(detail)"
-        case .server(let statusCode):
-            return "Server error (\(statusCode))."
-        }
-    }
-}
+/// The shared `APIError` under the name this client's seam and tests were
+/// written against (kairos-devotional #345).
+public typealias BandUploadError = APIError
 
 /// Abstraction over "how the app uploads today's bands to the backend."
 /// Kept as a protocol (same pattern as `AuthService`/`CalendarConnectService`/
@@ -107,56 +94,28 @@ public protocol BandUploading: AnyObject, Sendable {
 
 /// Real implementation: `POST {baseURL}/v1/bands` with a Firebase Auth JWT
 /// bearer token, per docs/03_API_INTEGRATION_SPEC.md §8.1 ("All user
-/// routes require a Firebase Auth JWT"). `baseURL` is always injected by
-/// the caller (`AppEnvironment.apiBaseURL`, issue #71) — this type has no
-/// URL default/literal of its own, so there is exactly one place in the app
+/// routes require a Firebase Auth JWT"). The HTTP mechanics live in the
+/// shared `APITransport` (#345); `baseURL` is always injected by the caller
+/// (`AppEnvironment.apiBaseURL`, issue #71) — this type has no URL
+/// default/literal of its own, so there is exactly one place in the app
 /// that decides which host real network calls go to.
 public final class HTTPBandUploadClient: BandUploading, @unchecked Sendable {
-    private let baseURL: URL
-    private let session: URLSession
-    /// Supplies a fresh Firebase Auth ID token for the `Authorization`
-    /// header. Injected as a closure (rather than depending on
-    /// `AuthService` directly) to keep this client decoupled from the auth
-    /// layer's concrete type.
-    private let idTokenProvider: @Sendable () async throws -> String
+    private let transport: APITransport
 
+    /// `idTokenProvider` supplies a fresh Firebase Auth ID token for the
+    /// `Authorization` header. Injected as a closure (rather than depending
+    /// on `AuthService` directly) to keep this client decoupled from the
+    /// auth layer's concrete type.
     public init(
         baseURL: URL,
         session: URLSession = .shared,
         idTokenProvider: @escaping @Sendable () async throws -> String
     ) {
-        self.baseURL = baseURL
-        self.session = session
-        self.idTokenProvider = idTokenProvider
+        transport = APITransport(baseURL: baseURL, session: session, idTokenProvider: idTokenProvider)
     }
 
     public func upload(_ request: BandUploadRequest) async throws {
-        let token: String
-        do {
-            token = try await idTokenProvider()
-        } catch {
-            throw BandUploadError.notAuthenticated
-        }
-
-        var urlRequest = URLRequest(url: baseURL.appendingPathComponent("v1/bands"))
-        urlRequest.httpMethod = "POST"
-        urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        urlRequest.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        urlRequest.httpBody = try JSONEncoder().encode(request)
-
-        let (_, response): (Data, URLResponse)
-        do {
-            (_, response) = try await session.data(for: urlRequest)
-        } catch {
-            throw BandUploadError.network(error.localizedDescription)
-        }
-
-        guard let http = response as? HTTPURLResponse else {
-            throw BandUploadError.network("No HTTP response.")
-        }
-        guard (200..<300).contains(http.statusCode) else {
-            throw BandUploadError.server(statusCode: http.statusCode)
-        }
+        try await transport.sendNoContent(path: "v1/bands", method: "POST", jsonBody: try JSONEncoder().encode(request))
     }
 }
 

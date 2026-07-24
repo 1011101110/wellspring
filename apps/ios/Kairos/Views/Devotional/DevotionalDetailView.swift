@@ -4,10 +4,14 @@ import SwiftUI
 /// demo fixture (`DemoFixtureSnapshot`) and a live devotional
 /// (`DevotionalDetail`) fetched from `GET /v1/devotionals/:id` (issue #3).
 struct DevotionalReaderContent: Equatable {
-    struct ReaderVerse: Equatable {
+    /// Identified by `reference` — a devotional never quotes the same
+    /// passage twice, and a stable id keeps SwiftUI's identity tied to the
+    /// verse rather than its position (S4 #345; was `ForEach(id: \.offset)`).
+    struct ReaderVerse: Equatable, Identifiable {
         let reference: String
         let text: String
         let attribution: String
+        var id: String { reference }
     }
     let theme: String
     let verses: [ReaderVerse]
@@ -27,19 +31,6 @@ struct DevotionalDetailView: View {
 
     init(content: DevotionalReaderContent) {
         self.content = content
-    }
-
-    init(snapshot: DemoFixtureSnapshot) {
-        let output = snapshot.devotionalOutput
-        self.content = DevotionalReaderContent(
-            theme: output.theme,
-            verses: output.verses.map {
-                .init(reference: $0.reference, text: $0.fetchedText, attribution: $0.attribution)
-            },
-            body: output.devotionalBody,
-            prayer: output.prayer,
-            actionStep: output.actionStep
-        )
     }
 
     init(detail: DevotionalDetail) {
@@ -62,7 +53,7 @@ struct DevotionalDetailView: View {
                     .bold()
                     .accessibilityIdentifier("devotionalDetail.theme")
 
-                ForEach(Array(content.verses.enumerated()), id: \.offset) { _, verse in
+                ForEach(content.verses) { verse in
                     VStack(alignment: .leading, spacing: 8) {
                         Text(verse.reference)
                             .font(.subheadline)
@@ -148,8 +139,21 @@ struct DevotionalDetailView: View {
     }
 }
 
+// The preview renders the shared demo fixture (#41) through the same
+// `DevotionalReaderContent` normalization the live path uses. The mapping
+// lives here — the view itself no longer carries a fixture-specific init
+// (its one runtime entry point is `init(detail:)`; S4 #345).
 #Preview {
-    NavigationStack {
-        DevotionalDetailView(snapshot: try! DemoFixtureLoader.load(bundle: .main))
+    let output = (try! DemoFixtureLoader.load(bundle: .main)).devotionalOutput
+    return NavigationStack {
+        DevotionalDetailView(content: DevotionalReaderContent(
+            theme: output.theme,
+            verses: output.verses.map {
+                .init(reference: $0.reference, text: $0.fetchedText, attribution: $0.attribution)
+            },
+            body: output.devotionalBody,
+            prayer: output.prayer,
+            actionStep: output.actionStep
+        ))
     }
 }

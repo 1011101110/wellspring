@@ -1,22 +1,9 @@
 import Foundation
 
-/// Errors an `AccountDeletionClient` conformance can surface.
-public enum AccountDeletionError: Error, Equatable, LocalizedError {
-    case notAuthenticated
-    case network(String)
-    case server(statusCode: Int)
-
-    public var errorDescription: String? {
-        switch self {
-        case .notAuthenticated:
-            return "Not signed in."
-        case .network(let detail):
-            return "Network problem: \(detail)"
-        case .server(let statusCode):
-            return "Server error (\(statusCode))."
-        }
-    }
-}
+/// Errors an `AccountDeletionClient` conformance can surface — the shared
+/// `APIError` under the name this client's seam and tests were written
+/// against (kairos-devotional #345).
+public typealias AccountDeletionError = APIError
 
 /// Abstraction over "how the app asks the backend to delete this account
 /// and all its data" — docs/05_UX_FLOWS.md §3.1 "Data & Privacy" row:
@@ -41,51 +28,24 @@ public protocol AccountDeletionClient: AnyObject, Sendable {
 }
 
 /// Real implementation: `DELETE {baseURL}/v1/account` with a Firebase Auth
-/// JWT bearer token, mirroring `HTTPBandUploadClient`'s auth pattern
-/// exactly. Kept deliberately simple (no request body — the verified
-/// bearer token *is* the account identifier, matching every other
-/// authenticated route's "userId from the verified token, never from the
-/// request body" rule, 04_DATA_PRIVACY_SECURITY §5.1).
+/// JWT bearer token, on the shared `APITransport` (#345). Kept deliberately
+/// simple (no request body — the verified bearer token *is* the account
+/// identifier, matching every other authenticated route's "userId from the
+/// verified token, never from the request body" rule,
+/// 04_DATA_PRIVACY_SECURITY §5.1).
 public final class HTTPAccountDeletionClient: AccountDeletionClient, @unchecked Sendable {
-    private let baseURL: URL
-    private let session: URLSession
-    private let idTokenProvider: @Sendable () async throws -> String
+    private let transport: APITransport
 
     public init(
         baseURL: URL,
         session: URLSession = .shared,
         idTokenProvider: @escaping @Sendable () async throws -> String
     ) {
-        self.baseURL = baseURL
-        self.session = session
-        self.idTokenProvider = idTokenProvider
+        transport = APITransport(baseURL: baseURL, session: session, idTokenProvider: idTokenProvider)
     }
 
     public func deleteAccount() async throws {
-        let token: String
-        do {
-            token = try await idTokenProvider()
-        } catch {
-            throw AccountDeletionError.notAuthenticated
-        }
-
-        var urlRequest = URLRequest(url: baseURL.appendingPathComponent("v1/account"))
-        urlRequest.httpMethod = "DELETE"
-        urlRequest.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-
-        let (_, response): (Data, URLResponse)
-        do {
-            (_, response) = try await session.data(for: urlRequest)
-        } catch {
-            throw AccountDeletionError.network(error.localizedDescription)
-        }
-
-        guard let http = response as? HTTPURLResponse else {
-            throw AccountDeletionError.network("No HTTP response.")
-        }
-        guard (200..<300).contains(http.statusCode) else {
-            throw AccountDeletionError.server(statusCode: http.statusCode)
-        }
+        try await transport.sendNoContent(path: "v1/account", method: "DELETE", jsonBody: nil)
     }
 }
 

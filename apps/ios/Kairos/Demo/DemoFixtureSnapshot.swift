@@ -94,9 +94,10 @@ public enum DemoFixtureLoader {
         do {
             let data = try Data(contentsOf: url)
             return try JSONDecoder().decode(DemoFixtureSnapshot.self, from: data)
-        } catch let error as LoadError {
-            throw error
         } catch {
+            // Nothing inside the `do` throws `LoadError` (`resourceNotFound`
+            // is thrown above, outside it), so everything here is a
+            // read/decode failure by construction.
             throw LoadError.decodingFailed(String(describing: error))
         }
     }

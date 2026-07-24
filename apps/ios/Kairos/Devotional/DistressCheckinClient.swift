@@ -1,23 +1,10 @@
 import Foundation
 
-/// Errors a `DistressCheckinClient.checkInNow()` call can surface — same
-/// shape as `PreferencesSyncError`/`SlotsUploadError`.
-public enum DistressCheckinError: Error, Equatable, LocalizedError {
-    case notAuthenticated
-    case network(String)
-    case server(statusCode: Int)
-
-    public var errorDescription: String? {
-        switch self {
-        case .notAuthenticated:
-            return "Not signed in."
-        case .network(let detail):
-            return "Network problem: \(detail)"
-        case .server(let statusCode):
-            return "Server error (\(statusCode))."
-        }
-    }
-}
+/// Errors a `DistressCheckinClient.checkInNow()` call can surface — the
+/// shared `APIError` under the name this client's seam and tests were
+/// written against (kairos-devotional #345), same as
+/// `PreferencesSyncError`/`SlotsUploadError`.
+public typealias DistressCheckinError = APIError
 
 /// The subset of `POST /v1/devotional/generate-now`'s success response this
 /// app needs: where to open the session, so the "I could use a moment now"
@@ -47,65 +34,35 @@ public protocol DistressCheckinRequesting: AnyObject, Sendable {
 /// backend forces `distressSignalOverride`/`skipIdempotencyCheck`/`skipCalendar`
 /// itself.
 ///
-/// `baseURL` is always injected (from `AppEnvironment.apiBaseURL`) and auth
-/// follows the same Firebase-ID-token-bearer pattern as
+/// The HTTP mechanics live in the shared `APITransport` (#345); `baseURL` is
+/// always injected (from `AppEnvironment.apiBaseURL`) and auth follows the
+/// same Firebase-ID-token-bearer pattern as
 /// `HTTPPreferencesClient`/`SlotsUploadClient` — no client in this app
 /// carries a URL literal of its own.
 public final class HTTPDistressCheckinClient: DistressCheckinRequesting, @unchecked Sendable {
-    private let baseURL: URL
-    private let session: URLSession
-    private let idTokenProvider: @Sendable () async throws -> String
+    private let transport: APITransport
 
     public init(
         baseURL: URL,
         session: URLSession = .shared,
         idTokenProvider: @escaping @Sendable () async throws -> String
     ) {
-        self.baseURL = baseURL
-        self.session = session
-        self.idTokenProvider = idTokenProvider
+        transport = APITransport(baseURL: baseURL, session: session, idTokenProvider: idTokenProvider)
     }
 
     public func checkInNow() async throws -> DistressCheckinResult {
-        let token: String
-        do {
-            token = try await idTokenProvider()
-        } catch {
-            throw DistressCheckinError.notAuthenticated
-        }
-
-        var request = URLRequest(url: baseURL.appendingPathComponent("v1/devotional/generate-now"))
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        request.httpBody = Data("{}".utf8)
-        // generate-now runs the full Gloo tool-loop (+ a possible repair round-trip)
-        // and TTS synthesis server-side — ~60-90s. URLSession's default 60s request
-        // timeout aborts client-side before it finishes, surfacing "The request timed
-        // out" and losing the devotional (kairos-devotional #296). Give it headroom.
-        request.timeoutInterval = 120
-
-        let data: Data
-        let response: URLResponse
-        do {
-            (data, response) = try await session.data(for: request)
-        } catch {
-            throw DistressCheckinError.network(error.localizedDescription)
-        }
-
-        guard let http = response as? HTTPURLResponse else {
-            throw DistressCheckinError.network("No HTTP response.")
-        }
-        guard (200..<300).contains(http.statusCode) else {
-            throw DistressCheckinError.server(statusCode: http.statusCode)
-        }
-
-        let decoded: DistressCheckinResponseBody
-        do {
-            decoded = try JSONDecoder().decode(DistressCheckinResponseBody.self, from: data)
-        } catch {
-            throw DistressCheckinError.network("Malformed response body.")
-        }
+        let decoded = try await transport.send(
+            path: "v1/devotional/generate-now",
+            method: "POST",
+            jsonBody: Data("{}".utf8),
+            // generate-now runs the full Gloo tool-loop (+ a possible repair
+            // round-trip) and TTS synthesis server-side — ~60-90s. URLSession's
+            // default 60s request timeout aborts client-side before it finishes,
+            // surfacing "The request timed out" and losing the devotional
+            // (kairos-devotional #296). Give it headroom.
+            timeoutInterval: 120,
+            as: DistressCheckinResponseBody.self
+        )
         guard let sessionUrl = URL(string: decoded.sessionUrl) else {
             throw DistressCheckinError.network("Malformed sessionUrl.")
         }

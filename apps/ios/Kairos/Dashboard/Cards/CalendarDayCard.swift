@@ -58,8 +58,8 @@ struct CalendarDayCard: View {
             CardHint(Self.privacyNote)
 
             VStack(alignment: .leading, spacing: 12) {
-                ForEach(Array(rows(busy: busy, slots: slots).enumerated()), id: \.offset) { _, row in
-                    row.view
+                ForEach(rows(busy: busy, slots: slots)) { row in
+                    rowView(row)
                 }
             }
 
@@ -70,10 +70,27 @@ struct CalendarDayCard: View {
     // MARK: - Rows
 
     /// A single timeline entry — a busy window or one of Wellspring's slots —
-    /// carrying its sort key so both kinds interleave by start time.
-    private struct TimelineRow {
-        let start: Date
-        let view: AnyView
+    /// as a value, not a pre-built `AnyView` (S4 #345): the row enum keeps
+    /// SwiftUI's type-level view identity, and `id` is derived from the
+    /// underlying data (not the row's position) so identity survives
+    /// reordering. `start` is the sort key both kinds interleave by.
+    private enum TimelineRow: Identifiable {
+        case busy(FreeBusyBlock, start: Date)
+        case slot(UpcomingCalendarEvent, start: Date)
+
+        var start: Date {
+            switch self {
+            case .busy(_, let start), .slot(_, let start): return start
+            }
+        }
+
+        var id: String {
+            switch self {
+            // A busy window has no server id — its bounds are its identity.
+            case .busy(let block, _): return "busy:\(block.start)-\(block.end)"
+            case .slot(let event, _): return "slot:\(event.id)"
+            }
+        }
     }
 
     private func rows(busy: [FreeBusyBlock], slots: [UpcomingCalendarEvent]) -> [TimelineRow] {
@@ -81,14 +98,22 @@ struct CalendarDayCard: View {
 
         for block in busy {
             guard let start = DashboardDate.parse(block.start) else { continue }
-            rows.append(TimelineRow(start: start, view: AnyView(busyRow(block))))
+            rows.append(.busy(block, start: start))
         }
         for slot in slots {
             guard let start = DashboardDate.parse(slot.gapStartAt) else { continue }
-            rows.append(TimelineRow(start: start, view: AnyView(slotRow(slot))))
+            rows.append(.slot(slot, start: start))
         }
 
         return rows.sorted { $0.start < $1.start }
+    }
+
+    @ViewBuilder
+    private func rowView(_ row: TimelineRow) -> some View {
+        switch row {
+        case .busy(let block, _): busyRow(block)
+        case .slot(let slot, _): slotRow(slot)
+        }
     }
 
     private func busyRow(_ block: FreeBusyBlock) -> some View {
@@ -126,7 +151,7 @@ struct CalendarDayCard: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(8)
-        .background(RoundedRectangle(cornerRadius: 8).fill(Color.accentColor.opacity(0.1)))
+        .background(RoundedRectangle(cornerRadius: CardLayout.insetCornerRadius).fill(Color.accentColor.opacity(0.1)))
     }
 
     // MARK: - Zone label

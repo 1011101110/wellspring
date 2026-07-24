@@ -1,5 +1,21 @@
 import SwiftUI
 
+/// The card system's shared metrics (S4 #345 — previously repeated literals
+/// scattered across the card files). Two corner radii on purpose: the card
+/// surface itself, and the smaller radius for insets *within* a card (text
+/// fields, highlighted rows), so the nesting reads as one system.
+enum CardLayout {
+    /// Corner radius of the card surface (`CardFrame`).
+    static let cornerRadius: CGFloat = 16
+    /// Corner radius for inset surfaces inside a card (text editors, the
+    /// invite-address well, highlighted timeline rows).
+    static let insetCornerRadius: CGFloat = 8
+    /// The card's outer padding.
+    static let padding: CGFloat = 16
+    /// The standard vertical rhythm between elements in a card body.
+    static let contentSpacing: CGFloat = 12
+}
+
 /// The visual container every dashboard card sits in — a titled, rounded
 /// surface, matching the web `CardFrame` (a labelled section with an h2 and an
 /// optional header action). Keeps the Home screen visually one system.
@@ -19,7 +35,7 @@ struct CardFrame<Content: View, HeaderAction: View>: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: CardLayout.contentSpacing) {
             HStack(alignment: .firstTextBaseline) {
                 Text(title)
                     .font(.headline)
@@ -29,9 +45,9 @@ struct CardFrame<Content: View, HeaderAction: View>: View {
             content
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(16)
+        .padding(CardLayout.padding)
         .background(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
+            RoundedRectangle(cornerRadius: CardLayout.cornerRadius, style: .continuous)
                 .fill(Color(.secondarySystemGroupedBackground))
         )
     }
