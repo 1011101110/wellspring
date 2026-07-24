@@ -77,9 +77,7 @@ extension WSTheme {
         let canvas = UIColor(WSTheme.canvas)
 
         let nav = UINavigationBarAppearance()
-        nav.configureWithOpaqueBackground()
-        nav.backgroundColor = canvas
-        nav.shadowColor = nil
+        nav.configureWithDefaultBackground()
         if let large = UIFont(name: "Spectral-Regular", size: 34) {
             nav.largeTitleTextAttributes = [.font: large, .foregroundColor: ink]
         }
