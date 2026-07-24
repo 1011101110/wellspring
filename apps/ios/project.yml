@@ -80,6 +80,23 @@ targets:
         NSCalendarsUsageDescription: "Wellspring reads when you're free or busy to place your devotional in a quiet gap. Event titles, attendees, and notes are never read."
         NSCalendarsFullAccessUsageDescription: "Wellspring reads when you're free or busy to place your devotional in a quiet gap. Event titles, attendees, and notes are never read."
         NSHealthShareUsageDescription: "Wellspring turns your recovery, sleep, and activity into three simple words on your phone. Raw health data never leaves your device."
+        # Wellspring Design System fonts (T5 #352) — Spectral for scripture/
+        # prayer/titles, Hanken Grotesk for UI chrome. Static TTFs (CoreText
+        # has no reliable woff2 support, so the web's woff2 files under
+        # apps/api/assets/fonts are not reusable here); same OFL-licensed
+        # families, downloaded from google/fonts (Spectral) and the upstream
+        # marcologous/hanken-grotesk repo google/fonts points at (statics —
+        # google/fonts only carries the variable font). OFL licenses ship
+        # alongside in Kairos/Resources/Fonts/. XcodeGen picks the .ttf files
+        # up as bundle resources from the `sources` glob; this key is what
+        # makes CoreText register them at launch.
+        UIAppFonts:
+          - Spectral-Light.ttf
+          - Spectral-LightItalic.ttf
+          - Spectral-Regular.ttf
+          - HankenGrotesk-Regular.ttf
+          - HankenGrotesk-Medium.ttf
+          - HankenGrotesk-SemiBold.ttf
         ITSAppUsesNonExemptEncryption: false
         UIBackgroundModes:
           - fetch

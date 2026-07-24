@@ -23,25 +23,36 @@ struct DevotionalCardList: View {
                     makeReader(card)
                 } label: {
                     VStack(alignment: .leading, spacing: 3) {
-                        Text(card.theme).font(.subheadline.weight(.semibold))
+                        // The row's title wears the serif title role — a
+                        // devotional is content, not chrome (§03).
+                        Text(card.theme)
+                            .font(WSTheme.title(size: 17))
+                            .foregroundStyle(WSTheme.ink)
                         Text(DashboardDate.calendarDateLabel(card.date))
-                            .font(.caption).foregroundStyle(.secondary)
-                        Text(card.cardSummary).font(.footnote).foregroundStyle(.secondary)
+                            .font(WSTheme.reference())
+                            .foregroundStyle(WSTheme.mutedInk)
+                        Text(card.cardSummary)
+                            .font(WSTheme.ui(size: 13))
+                            .foregroundStyle(WSTheme.mutedInk)
+                            .lineSpacing(3)
                         if card.completedAt != nil {
                             CardHint("You sat with this one.")
                         }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.vertical, 4) // rows stay comfortably ≥44pt targets
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                if card.id != cards.last?.id { Divider() }
+                if card.id != cards.last?.id { Divider().overlay(WSTheme.dawn) }
             }
             if showMore {
                 Button(action: loadMore) {
                     Text(isLoadingMore ? "Loading…" : "Show more")
                 }
-                .font(.subheadline.weight(.semibold))
+                .font(WSTheme.ui(.semibold, size: 15))
+                .foregroundStyle(WSTheme.clayDeep)
+                .frame(minHeight: 44)
                 .disabled(isLoadingMore)
             }
         }

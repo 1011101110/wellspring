@@ -14,12 +14,18 @@ struct KairosApp: App {
         // already constructed by the property initializer above by the
         // time `init` runs, so this reads back through the wrapper.
         _appEnvironment.wrappedValue.backgroundBandRefreshScheduler.register()
+
+        // Wellspring Design System (T5 #352): Spectral navigation titles and
+        // the warm canvas chrome, applied at the UIKit appearance level.
+        WSTheme.applyChromeAppearance()
     }
 
     var body: some Scene {
         WindowGroup {
             RootView(appEnvironment: appEnvironment)
                 .environmentObject(appEnvironment)
+                // Terracotta is the ONLY accent (§08) — one tint, everywhere.
+                .tint(WSTheme.terracotta)
                 #if canImport(GoogleSignIn)
                 // GoogleSignIn callback safety net: forwards the OAuth
                 // redirect (the reversed-client-id scheme registered in

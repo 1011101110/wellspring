@@ -5,13 +5,15 @@ import SwiftUI
 /// surface itself, and the smaller radius for insets *within* a card (text
 /// fields, highlighted rows), so the nesting reads as one system.
 enum CardLayout {
-    /// Corner radius of the card surface (`CardFrame`).
-    static let cornerRadius: CGFloat = 16
+    /// Corner radius of the card surface (`CardFrame`) — `--ws-radius-card`
+    /// (T5 #352).
+    static let cornerRadius: CGFloat = WSTheme.radiusCard
     /// Corner radius for inset surfaces inside a card (text editors, the
-    /// invite-address well, highlighted timeline rows).
-    static let insetCornerRadius: CGFloat = 8
+    /// invite-address well, highlighted timeline rows), kept concentric with
+    /// the 24pt card surface.
+    static let insetCornerRadius: CGFloat = WSTheme.radiusInset
     /// The card's outer padding.
-    static let padding: CGFloat = 16
+    static let padding: CGFloat = 18
     /// The standard vertical rhythm between elements in a card body.
     static let contentSpacing: CGFloat = 12
 }
@@ -37,8 +39,11 @@ struct CardFrame<Content: View, HeaderAction: View>: View {
     var body: some View {
         VStack(alignment: .leading, spacing: CardLayout.contentSpacing) {
             HStack(alignment: .firstTextBaseline) {
+                // The card's title wears the design's serif title role
+                // (Spectral 400 — §03); all chrome inside stays Hanken.
                 Text(title)
-                    .font(.headline)
+                    .font(WSTheme.title(size: 20))
+                    .foregroundStyle(WSTheme.ink)
                 Spacer(minLength: 8)
                 headerAction
             }
@@ -46,10 +51,7 @@ struct CardFrame<Content: View, HeaderAction: View>: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(CardLayout.padding)
-        .background(
-            RoundedRectangle(cornerRadius: CardLayout.cornerRadius, style: .continuous)
-                .fill(Color(.secondarySystemGroupedBackground))
-        )
+        .wsCardSurface()
     }
 }
 
@@ -61,7 +63,9 @@ struct CardLoading: View {
     var body: some View {
         HStack(spacing: 8) {
             ProgressView()
-            Text(label).foregroundStyle(.secondary)
+            Text(label)
+                .font(WSTheme.ui(size: 15))
+                .foregroundStyle(WSTheme.mutedInk)
         }
         .accessibilityElement(children: .combine)
     }
@@ -72,8 +76,9 @@ struct CardEmpty: View {
     let message: String
     var body: some View {
         Text(message)
-            .font(.subheadline)
-            .foregroundStyle(.secondary)
+            .font(WSTheme.ui(size: 15))
+            .foregroundStyle(WSTheme.mutedInk)
+            .lineSpacing(4)
             .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
@@ -85,10 +90,12 @@ struct CardError: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(message)
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .font(WSTheme.ui(size: 15))
+                .foregroundStyle(WSTheme.mutedInk)
             Button("Try again", action: retry)
-                .font(.subheadline.weight(.semibold))
+                .font(WSTheme.ui(.semibold, size: 15))
+                .foregroundStyle(WSTheme.clayDeep)
+                .frame(minHeight: 44)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -100,7 +107,7 @@ struct CardHint: View {
     init(_ text: String) { self.text = text }
     var body: some View {
         Text(text)
-            .font(.footnote)
-            .foregroundStyle(.secondary)
+            .font(WSTheme.ui(size: 13))
+            .foregroundStyle(WSTheme.mutedInk)
     }
 }
