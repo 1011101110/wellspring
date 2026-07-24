@@ -7,7 +7,7 @@ import { ErrorEnvelopeSchema, GENERIC_INTERNAL_ERROR_MESSAGE } from '@kairos/sha
 import { registerAudioRoutes } from './routes/audio.js';
 import { registerHealthRoutes } from './routes/health.js';
 import { registerSessionRoutes } from './routes/session.js';
-import { registerUserScopedRoutes } from './routes/userScoped.js';
+import { registerUserScopedRoutes, type UserScopedRoutesDeps } from './routes/userScoped.js';
 import { registerDevotionalAudioRoutes } from './routes/devotionalAudio.js';
 import { registerDevotionalSearchRoutes } from './routes/devotionalSearch.js';
 import { registerInternalRoutes, type InternalRoutesDeps } from './routes/internal.js';
@@ -124,6 +124,16 @@ export interface BuildAppOptions {
    * need OAuth don't have to supply connectRoutes.
    */
   connectRoutes?: ConnectRoutesDeps;
+  /**
+   * YouVersion connect flow wiring (U2, kairos-devotional#355). Unlike
+   * `connectRoutes`, the YouVersion routes register whenever the user-scoped
+   * block does (they extend `registerUserScopedRoutes`), so this only carries
+   * the env-derived half — the OAuth service (undefined until
+   * `YOUVERSION_OAUTH_CLIENT_ID` is provisioned in U1, in which case the
+   * routes 503), the KMS service, and the web redirect base. Omitted in tests
+   * that don't exercise the connect flow.
+   */
+  youVersionConnect?: UserScopedRoutesDeps['youVersion'];
   /**
    * Wires GET /v1/calendar/freebusy (M1, #255) — the dashboard calendar
    * view's live free/busy proxy. Optional on the same terms as
@@ -365,6 +375,12 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
     allowedPublicV1Routes: [
       // Google's OAuth redirect — no Authorization header is possible here.
       '/v1/connect/google/callback',
+      // YouVersion's OAuth redirect (U2, kairos-devotional#355) — same
+      // reasoning: a provider redirect carries no Authorization header. State
+      // is validated server-side via oauth_states (single-use, PKCE verifier
+      // bound to the user), so the route is not unprotected, just not
+      // Firebase-authed.
+      '/v1/youversion/oauth/callback',
     ],
   });
 
@@ -423,6 +439,9 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
         inviteEmailDomain: options.inviteEmailDomain,
         // L2 (#238) — per-user limit on the one route that spends money.
         generateNowRateLimit: options.generateNowRateLimit,
+        // U2 (kairos-devotional#355) — YouVersion connect flow. Undefined
+        // until the OAuth secret is provisioned (U1); the routes 503 until then.
+        youVersion: options.youVersionConnect,
       });
 
       // GET /v1/devotionals/:id/audio (EPIC L, issues #236/#241) — the

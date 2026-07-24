@@ -363,6 +363,17 @@ describe('hardDeleteAccount', () => {
       gapStartAt: new Date(),
       gapEndAt: new Date(Date.now() + 1800_000),
     });
+    // YouVersion connection (U2, kairos-devotional#355) — must cascade-delete
+    // with the user like every other user-scoped table.
+    await repos.youversionConnections.upsert(userA, {
+      accessTokenEncrypted: Buffer.from('yv-access-ct'),
+      refreshTokenEncrypted: Buffer.from('yv-refresh-ct'),
+      kmsKeyVersion: 'v1',
+      tokenExpiresAt: new Date(Date.now() + 3600_000),
+      youVersionUserId: 'yv-user-1',
+      displayName: 'Test Person',
+      scopes: 'openid profile email',
+    });
 
     // Untouched control data for user B.
     await repos.preferences.ensureExists(userB);
@@ -390,6 +401,8 @@ describe('hardDeleteAccount', () => {
     expect(connectionsA.rows).toHaveLength(0);
     const calA = await pool.query('SELECT * FROM calendar_events WHERE user_id = $1', [userA]);
     expect(calA.rows).toHaveLength(0);
+    const yvA = await pool.query('SELECT * FROM youversion_connections WHERE user_id = $1', [userA]);
+    expect(yvA.rows).toHaveLength(0);
 
     // Audio file physically removed from disk.
     expect(await audioStorage.exists(devo.id)).toBe(false);

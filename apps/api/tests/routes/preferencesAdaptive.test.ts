@@ -49,6 +49,8 @@ const PREFERENCES_ROW = {
   sabbath_enabled: false,
   sabbath_session: false,
   liturgical_seasons_enabled: false,
+  yv_write_highlights: false,
+  yv_read_highlights: false,
   min_per_week: 2,
   adaptive_enabled: true,
   adaptive_days_per_week: 3,
@@ -61,6 +63,7 @@ async function buildTestApp(): Promise<{
   app: FastifyInstance;
   token: string;
   update: ReturnType<typeof vi.fn>;
+  yvGet: ReturnType<typeof vi.fn>;
 }> {
   const app = Fastify();
   const verifier = await FakeTokenVerifier.create();
@@ -71,16 +74,18 @@ async function buildTestApp(): Promise<{
     markOnboarded: vi.fn().mockResolvedValue(null),
   } as unknown as UsersRepository;
   const update = vi.fn().mockResolvedValue(PREFERENCES_ROW);
+  const yvGet = vi.fn().mockResolvedValue(null);
 
   registerAuth(app, verifier, users);
   registerUserScopedRoutes(app, {
     repositories: {
       users,
       preferences: { ensureExists: vi.fn().mockResolvedValue(PREFERENCES_ROW), update },
+      youversionConnections: { get: yvGet },
     } as unknown as Repositories,
     audioStorage: {} as AudioStorage,
   });
-  return { app, token: await verifier.mint(FIREBASE_UID), update };
+  return { app, token: await verifier.mint(FIREBASE_UID), update, yvGet };
 }
 
 async function putPreferences(
@@ -180,5 +185,66 @@ describe('PUT /v1/preferences — adaptive rhythm preferences (#324)', () => {
     expect(body.data.adaptiveDaysPerWeek).toBeUndefined();
     expect(body.data.adaptiveReason).toBeUndefined();
     expect(body.data.adaptiveDecidedAt).toBeUndefined();
+  });
+});
+
+describe('PUT /v1/preferences — YouVersion consent flags (U2, kairos-devotional#355)', () => {
+  it('writes both consent flags through to the repository', async () => {
+    const { app, token, update } = await buildTestApp();
+    const response = await putPreferences(app, token, {
+      yvWriteHighlights: true,
+      yvReadHighlights: true,
+    });
+    expect(response.statusCode).toBe(200);
+    const updates = writtenUpdates(update);
+    expect(updates.yv_write_highlights).toBe(true);
+    expect(updates.yv_read_highlights).toBe(true);
+  });
+
+  it('is sparse — toggling one flag does not clobber the other (S3 no-clobber)', async () => {
+    const { app, token, update } = await buildTestApp();
+    await putPreferences(app, token, { yvWriteHighlights: true });
+    const updates = writtenUpdates(update);
+    // Only the named flag is written; the other is `undefined`, which the
+    // repository's COALESCE leaves at its stored value.
+    expect(updates.yv_write_highlights).toBe(true);
+    expect(updates.yv_read_highlights).toBeUndefined();
+  });
+
+  it('leaves both flags alone when the body does not mention them', async () => {
+    const { app, token, update } = await buildTestApp();
+    await putPreferences(app, token, { voice: 'calm' });
+    const updates = writtenUpdates(update);
+    expect(updates.yv_write_highlights).toBeUndefined();
+    expect(updates.yv_read_highlights).toBeUndefined();
+  });
+});
+
+describe('GET /v1/preferences — YouVersion connection status (U2/U5, kairos-devotional#355)', () => {
+  it('reports { connected: false } when there is no stored connection', async () => {
+    const { app, token } = await buildTestApp();
+    const response = await app.inject({
+      method: 'GET',
+      url: '/v1/preferences',
+      headers: { authorization: `Bearer ${token}` },
+    });
+    const body = response.json() as { data: { youversionConnection?: unknown } };
+    expect(body.data.youversionConnection).toEqual({ connected: false });
+  });
+
+  it('composes the §9-safe status (connected + display name) from the store', async () => {
+    const { app, token, yvGet } = await buildTestApp();
+    yvGet.mockResolvedValueOnce({ display_name: 'Ada Lovelace' });
+    const response = await app.inject({
+      method: 'GET',
+      url: '/v1/preferences',
+      headers: { authorization: `Bearer ${token}` },
+    });
+    const body = response.json() as {
+      data: { youversionConnection?: unknown; yvWriteHighlights?: unknown };
+    };
+    expect(body.data.youversionConnection).toEqual({ connected: true, displayName: 'Ada Lovelace' });
+    // And the consent flags are echoed from the preferences row.
+    expect(body.data.yvWriteHighlights).toBe(false);
   });
 });

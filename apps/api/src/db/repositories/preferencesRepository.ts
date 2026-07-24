@@ -26,6 +26,15 @@ export interface PreferencesRow {
   sabbath_session: boolean;
   liturgical_seasons_enabled: boolean;
   /**
+   * YouVersion highlight consent gates (U4/U5, kairos-devotional#355,
+   * migration 1722700000000). Both default FALSE and are independently
+   * revocable (Foundation §8): connecting a YouVersion account is NOT consent
+   * to read or write highlights — the two are separate acts. Client-writable
+   * via `PUT /v1/preferences`, same as the other consent toggles above.
+   */
+  yv_write_highlights: boolean;
+  yv_read_highlights: boolean;
+  /**
    * Adaptive rhythm (Epic P #312 / P5 #324, migration 1722500000000).
    * `min_per_week`/`adaptive_enabled` are user-owned; the three
    * `adaptive_*` columns are the cadence engine's own state and are
@@ -148,6 +157,8 @@ export class PreferencesRepository {
          liturgical_seasons_enabled = COALESCE($18::boolean, liturgical_seasons_enabled),
          min_per_week = COALESCE($20::smallint, min_per_week),
          adaptive_enabled = COALESCE($21::boolean, adaptive_enabled),
+         yv_write_highlights = COALESCE($22::boolean, yv_write_highlights),
+         yv_read_highlights = COALESCE($23::boolean, yv_read_highlights),
          updated_at = now()
        WHERE user_id = $1
        RETURNING *`,
@@ -174,6 +185,8 @@ export class PreferencesRepository {
         updates.duration_preference !== undefined,
         updates.min_per_week ?? null,
         updates.adaptive_enabled ?? null,
+        updates.yv_write_highlights ?? null,
+        updates.yv_read_highlights ?? null,
       ],
     );
     return result.rows[0] ?? null;

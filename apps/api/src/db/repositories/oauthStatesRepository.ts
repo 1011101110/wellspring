@@ -4,6 +4,14 @@ export interface OAuthStateRow {
   token: string;
   user_id: string;
   nonce: string;
+  /**
+   * PKCE `code_verifier` (kairos-devotional#355) — populated only by the
+   * YouVersion flow, which is authorization-code + PKCE. NULL for the Google
+   * Calendar flow, which shares this table but does not use PKCE. The
+   * verifier is held here, server-side, and replayed at token exchange; it
+   * never travels through the browser.
+   */
+  code_verifier: string | null;
   expires_at: Date;
   consumed_at: Date | null;
   created_at: Date;
@@ -21,28 +29,41 @@ export interface OAuthStateRow {
 export class OAuthStatesRepository {
   constructor(private readonly db: Queryable) {}
 
-  async create(token: string, userId: VerifiedUserId, nonce: string, expiresAt: Date): Promise<void> {
+  /**
+   * `codeVerifier` is the PKCE verifier for the YouVersion flow
+   * (kairos-devotional#355); the Google flow omits it (stored NULL). Kept as
+   * a trailing optional parameter so the Google call site is unchanged.
+   */
+  async create(
+    token: string,
+    userId: VerifiedUserId,
+    nonce: string,
+    expiresAt: Date,
+    codeVerifier?: string,
+  ): Promise<void> {
     await this.db.query(
-      `INSERT INTO oauth_states (token, user_id, nonce, expires_at) VALUES ($1, $2, $3, $4)`,
-      [token, userId, nonce, expiresAt],
+      `INSERT INTO oauth_states (token, user_id, nonce, expires_at, code_verifier)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [token, userId, nonce, expiresAt, codeVerifier ?? null],
     );
   }
 
   /**
-   * Atomically claims a state token: returns the row's user_id if it exists,
-   * is unexpired, and has not already been consumed — and marks it consumed
-   * in the same statement. Returns null otherwise (unknown, expired, or
-   * replayed token — all treated identically by the caller).
+   * Atomically claims a state token: returns the row's user_id (and the PKCE
+   * `codeVerifier`, null for non-PKCE flows) if it exists, is unexpired, and
+   * has not already been consumed — and marks it consumed in the same
+   * statement. Returns null otherwise (unknown, expired, or replayed token —
+   * all treated identically by the caller).
    */
-  async consume(token: string): Promise<{ userId: string } | null> {
-    const result = await this.db.query<{ user_id: string }>(
+  async consume(token: string): Promise<{ userId: string; codeVerifier: string | null } | null> {
+    const result = await this.db.query<{ user_id: string; code_verifier: string | null }>(
       `UPDATE oauth_states
        SET consumed_at = now()
        WHERE token = $1 AND consumed_at IS NULL AND expires_at > now()
-       RETURNING user_id`,
+       RETURNING user_id, code_verifier`,
       [token],
     );
     const row = result.rows[0];
-    return row ? { userId: row.user_id } : null;
+    return row ? { userId: row.user_id, codeVerifier: row.code_verifier } : null;
   }
 }

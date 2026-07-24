@@ -60,6 +60,11 @@ import {
 import { generateInviteRoutingAddress } from '../services/invite/inviteRoutingAddress.js';
 import { buildMonthlyRecap } from '../services/recap/monthlyRecapService.js';
 import { registerJournalRoutes } from './journal.js';
+import {
+  registerYouVersionConnectRoutes,
+  type YouVersionConnectRoutesDeps,
+} from './youversionConnect.js';
+import type { YouVersionConnectionRow } from '../db/repositories/youversionConnectionsRepository.js';
 
 /**
  * Maps the raw (snake_case) `daily_bands` row to the camelCased wire
@@ -97,6 +102,7 @@ function toPreferencesResponseData(
   language: string,
   translationId: number,
   inviteEmailDomain: string | undefined,
+  youversionConnection: PreferencesResponseData['youversionConnection'],
 ): PreferencesResponseData {
   return {
     userId: row.user_id,
@@ -117,6 +123,16 @@ function toPreferencesResponseData(
     sabbathEnabled: row.sabbath_enabled,
     sabbathSession: row.sabbath_session,
     liturgicalSeasonsEnabled: row.liturgical_seasons_enabled,
+    // YouVersion highlight consent gates (U4/U5, kairos-devotional#355) —
+    // real boolean columns, echoed back so the settings screen can render the
+    // two independent toggles.
+    yvWriteHighlights: row.yv_write_highlights,
+    yvReadHighlights: row.yv_read_highlights,
+    // YouVersion connection status (U2/U5) — composed by the caller from the
+    // connections store, NOT a `preferences` column. Closed §9-safe shape
+    // (connected + display name only); `undefined` when the caller could not
+    // resolve it, which the optional contract renders as "no card".
+    ...(youversionConnection ? { youversionConnection } : {}),
     // Adaptive rhythm (P5 #324): the user-owned pair round-trips; the
     // engine's `adaptive_*` state stays off the wire until P8 composes
     // §9-safe copy over it (#327).
@@ -150,6 +166,20 @@ function toPreferencesResponseData(
       : {}),
     updatedAt: row.updated_at.toISOString(),
   };
+}
+
+/**
+ * Composes the §9-safe YouVersion connection status (U2/U5,
+ * kairos-devotional#355) from the stored connection row. Status + display
+ * name ONLY — never any highlight/activity data (the closed
+ * `YouVersionConnectionSchema` enforces this structurally). A `null` row (no
+ * connection) is a real, honest `{ connected: false }`, not an omission.
+ */
+function composeYouVersionConnection(
+  row: Pick<YouVersionConnectionRow, 'display_name'> | null,
+): PreferencesResponseData['youversionConnection'] {
+  if (!row) return { connected: false };
+  return row.display_name ? { connected: true, displayName: row.display_name } : { connected: true };
 }
 
 export interface UserScopedRoutesDeps {
@@ -204,6 +234,18 @@ export interface UserScopedRoutesDeps {
    * rather than the behavior.
    */
   generateNowRateLimit?: { max: number; timeWindowMs: number };
+  /**
+   * YouVersion connect flow wiring (U2, kairos-devotional#355). Optional: the
+   * routes register regardless (so the not-configured 503 is a real response),
+   * but the OAuth service / KMS inside carry through from index.ts only when
+   * `YOUVERSION_OAUTH_CLIENT_ID` (and KMS) are configured. The `connections`,
+   * `users`, and `oauthStates` repositories are filled in here from
+   * `repositories` so callers pass only the env-derived half.
+   */
+  youVersion?: Pick<
+    YouVersionConnectRoutesDeps,
+    'oauthService' | 'kmsService' | 'webAppBaseUrl' | 'scopes'
+  >;
 }
 
 /**
@@ -403,6 +445,12 @@ export function registerUserScopedRoutes(app: FastifyInstance, deps: UserScopedR
   app.get('/v1/preferences', { preHandler: requireAuth }, async (request) => {
     const prefs = await repositories.preferences.ensureExists(request.auth!.userId);
     const user = await repositories.users.findById(request.auth!.userId);
+    // §9-safe status only (connected + display name), from our own store —
+    // never a call to YouVersion and never any highlight data. Optional-chained
+    // so a partial repositories bundle (some route tests) degrades to "no
+    // connection" rather than throwing; production always has the repo.
+    const yvConnection =
+      (await repositories.youversionConnections?.get(request.auth!.userId)) ?? null;
     return {
       ok: true,
       data: toPreferencesResponseData(
@@ -412,6 +460,7 @@ export function registerUserScopedRoutes(app: FastifyInstance, deps: UserScopedR
         user?.language ?? DEFAULT_LANGUAGE,
         user?.translation_id ?? defaultVersionIdFor(DEFAULT_LANGUAGE),
         deps.inviteEmailDomain,
+        composeYouVersionConnection(yvConnection),
       ),
     };
   });
@@ -533,6 +582,12 @@ export function registerUserScopedRoutes(app: FastifyInstance, deps: UserScopedR
       // position or reset its rate limiter through this route.
       min_per_week: b.minPerWeek,
       adaptive_enabled: b.adaptiveEnabled,
+      // YouVersion highlight consent gates (U4/U5, kairos-devotional#355) —
+      // sparse-safe like every other flag here: COALESCE in the repository
+      // means an omitted field leaves the stored value alone (the S3
+      // no-clobber pattern), so toggling one consent never resets the other.
+      yv_write_highlights: b.yvWriteHighlights,
+      yv_read_highlights: b.yvReadHighlights,
     };
 
     // `language`/`translationId` (#314, Epic O #311): two more fields that
@@ -663,6 +718,8 @@ export function registerUserScopedRoutes(app: FastifyInstance, deps: UserScopedR
     // stored value back, so PUT and GET return the same shape and a client
     // can apply either response identically.
     const user = await repositories.users.findById(request.auth!.userId);
+    const yvConnection =
+      (await repositories.youversionConnections?.get(request.auth!.userId)) ?? null;
     return {
       ok: true,
       data: toPreferencesResponseData(
@@ -672,6 +729,7 @@ export function registerUserScopedRoutes(app: FastifyInstance, deps: UserScopedR
         user?.language ?? DEFAULT_LANGUAGE,
         user?.translation_id ?? defaultVersionIdFor(DEFAULT_LANGUAGE),
         deps.inviteEmailDomain,
+        composeYouVersionConnection(yvConnection),
       ),
     };
   });
@@ -807,6 +865,22 @@ export function registerUserScopedRoutes(app: FastifyInstance, deps: UserScopedR
   // limit, the #80 audit) it had when its handlers lived inline in this
   // file.
   registerJournalRoutes(app, { journal: repositories.journal });
+
+  // --- YouVersion connect (U2, kairos-devotional#355) --------------------
+  // Same extraction pattern as journal above. Registered unconditionally so
+  // the endpoints exist even before `YOUVERSION_OAUTH_CLIENT_ID` is
+  // provisioned (U1) — the routes 503 rather than 404 in that state. The
+  // env-derived half (`oauthService`/`kmsService`/`webAppBaseUrl`) arrives via
+  // `deps.youVersion`; the repositories are wired here.
+  registerYouVersionConnectRoutes(app, {
+    oauthService: deps.youVersion?.oauthService,
+    kmsService: deps.youVersion?.kmsService,
+    webAppBaseUrl: deps.youVersion?.webAppBaseUrl,
+    scopes: deps.youVersion?.scopes,
+    connections: repositories.youversionConnections,
+    users: repositories.users,
+    oauthStates: repositories.oauthStates,
+  });
 
   // --- generate now (distress check-in #77 + dashboard "+" #238) ---------
   //
