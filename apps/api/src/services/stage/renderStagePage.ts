@@ -26,6 +26,14 @@ import type { SessionPageData } from '../session/renderSessionPage.js';
 
 export interface StagePageData {
   page: SessionPageData;
+  /**
+   * The session capability token (from the URL path) — used ONLY to build the
+   * same-origin `POST /v1/stage/:token/respond` URL for the Open Moment
+   * window (EPIC V #360 / V3 #364). It is already in the page's own URL, so
+   * inlining it leaks nothing new. Only used when the manifest carries an
+   * `open_moment` marker; otherwise the field is unused.
+   */
+  token: string;
   /** Q1 timing manifest, or null → the page renders without captions/tab sync. */
   manifest: TimingManifest | null;
   /**
@@ -125,6 +133,8 @@ function stageShell(
     --stage-cta-bg: ${WS.gradientTerracotta};
     --stage-cta-text: #fff;
     --stage-cta-shadow: ${WS.shadowCta};
+    /* §05 verse-block ground — used by the Open Moment response panel. */
+    --stage-verse-ground: ${WS.gradientVerse};
   }
   /* Evening/examen (§08 dark set): night→dusk ground, candle accent
      (11.75:1 on night — AA even at small sizes), paper text, the
@@ -147,6 +157,9 @@ function stageShell(
     --stage-cta-bg: ${WS.gradientCtaDark};
     --stage-cta-text: var(--ws-night);
     --stage-cta-shadow: ${WS.glowDark};
+    /* Dusk→night verse-block ground so the response card reads as a lit
+       panel on the evening stage rather than a bright card on dark. */
+    --stage-verse-ground: linear-gradient(180deg, var(--ws-dusk) 0%, var(--ws-night) 100%);
   }
   * { box-sizing: border-box; }
   html, body { height: 100%; }
@@ -395,8 +408,66 @@ function stageShell(
   }
   .gone-title { font-size: 1.9rem; font-weight: 400; letter-spacing: -0.01em; margin: 0 0 1rem; }
   .gone-line { font-family: var(--sans); font-size: 0.95rem; color: var(--ws-clay); margin: 0; line-height: 1.7; }
+  /* ── Open Moment window (EPIC V #360 / V3 #364) ──────────────────────
+     The listening state: the design's 7s breathing orb (scale+opacity),
+     the accent-gradient body (terracotta by day, candle by evening), the
+     question, and the invitation line. The orb goes STILL (no animation,
+     no spinner) while the response is prepared — sacred silence, not a
+     loading screen. */
+  .om-orb {
+    width: 128px;
+    height: 128px;
+    border-radius: 50%;
+    margin: 0 0 2.1rem;
+    background: radial-gradient(circle at 50% 38%, var(--stage-accent) 0%, var(--stage-secondary) 82%);
+    box-shadow: var(--stage-shadow-hero);
+    animation: om-breathe 7s var(--ws-ease) infinite;
+    will-change: transform, opacity;
+  }
+  @keyframes om-breathe {
+    0%, 100% { transform: scale(0.9); opacity: 0.72; }
+    50% { transform: scale(1.06); opacity: 1; }
+  }
+  /* Held-silence state: the orb rests, breathing stops — never a spinner. */
+  .om-orb.still { animation: none; transform: scale(1); opacity: 0.95; }
+  .om-panel .question-text { max-width: 40rem; margin: 0; }
+  .om-invitation {
+    font-family: var(--sans);
+    font-size: 0.95rem;
+    font-weight: 500;
+    letter-spacing: 0.02em;
+    line-height: 1.6;
+    color: var(--stage-secondary);
+    margin: 1.5rem 0 0;
+    max-width: 34rem;
+  }
+  /* §05 verse block — the response's on-camera provenance (reference +
+     translation), warm verse ground, warm shadow, generous padding. */
+  .om-verse-block {
+    background: var(--stage-verse-ground);
+    border-radius: ${WS.radiusCard};
+    box-shadow: var(--stage-shadow);
+    padding: 2.6rem 3rem 2.4rem;
+    max-width: 52rem;
+  }
+  .om-verse-block .verse-attribution { margin-top: 1.6rem; }
+  /* Visually-hidden aria-live region: window state changes announced to AT
+     without adding anything to the 1280×720 composition. */
+  .om-live {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+    border: 0;
+  }
   @media (prefers-reduced-motion: reduce) {
     .tab-pill, .panel, .caption-chip, .progress-fill, .begin-overlay { transition: none; }
+    /* Orb still-frame at its resting size (no breathing) when motion is reduced. */
+    .om-orb { animation: none; transform: scale(1); opacity: 0.95; }
   }
   /* Attendee's container injects diagnostic banners into this DOM under this
      id (webpage_streamer_payload.js) — seen live on the Q7 rehearsal
@@ -476,6 +547,32 @@ export function renderStagePage(data: StagePageData): string {
     </section>`
     : '';
 
+  // Open Moment (EPIC V #360 / V3 #364): the window is enabled iff the timing
+  // manifest carries an `open_moment` marker (V4 emits it only when generated
+  // with the moment enabled AND the language has a confidently-phrased
+  // invitation — ssmlBuilder.ts). Pre-#360 manifests never carry it, so the
+  // markup + inlined config below are simply absent and every existing page
+  // is byte-identical. The invitation LINE shown under the orb is the spoken
+  // invitation text from that manifest row (already validated + escaped).
+  const openMomentEntry = (manifest ?? []).find((row) => row.section === 'open_moment') ?? null;
+  const openMomentEnabled = openMomentEntry !== null;
+  const openMomentQuestion = journaling ?? actionStep ?? null;
+  const openMomentPanels = openMomentEnabled
+    ? `
+    <section class="panel om-panel" id="panel-open-moment" aria-label="A moment to respond">
+      <div class="om-orb" id="om-orb" aria-hidden="true"></div>
+      <p class="eyebrow">Listening</p>
+      ${openMomentQuestion ? `<p class="question-text">${escapeHtml(openMomentQuestion)}</p>` : ''}
+      <p class="om-invitation">${escapeHtml(openMomentEntry.text)}</p>
+    </section>
+    <section class="panel om-response" id="panel-om-response" aria-label="A word in response">
+      <div class="om-verse-block">
+        <p class="verse-text" id="om-verse-text"></p>
+        <p class="verse-attribution" id="om-verse-ref"></p>
+      </div>
+    </section>`
+    : '';
+
   // `muted` (manual/testing only — see StagePageData) also lets a strict
   // browser start the page without a gesture, since muted autoplay is
   // universally permitted. Dispatched bots never pass it (#334: single
@@ -505,21 +602,37 @@ export function renderStagePage(data: StagePageData): string {
     <section class="panel" id="panel-prayer" aria-label="Prayer">
       <p class="eyebrow">Prayer</p>
       <p class="prayer-text">${escapeHtml(devotional.prayer)}</p>
-    </section>
+    </section>${openMomentPanels}
   </div>
   <div class="caption-zone">
     <div class="caption-chip" id="caption-chip" aria-live="polite"></div>
-  </div>
+  </div>${openMomentEnabled ? '\n  <div class="om-live" id="om-live" role="status" aria-live="polite"></div>' : ''}
 </main>
 <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
 <div class="begin-overlay" id="begin-overlay">
   <button type="button" class="begin-button">Begin</button>
   <p class="begin-hint">A moment of rest is ready</p>
 </div>
-${audioHtml}
+${audioHtml}${
+    openMomentEnabled
+      ? '\n<audio id="om-audio" preload="auto"></audio>'
+      : ''
+  }
 <script type="application/json" id="stage-data">${inlineJson({
     manifest: manifest ?? [],
     hasQuestions,
+    // Open Moment (EPIC V #360): `enabled` gates the whole window in the
+    // client; `respondUrl` is the same-origin POST endpoint (connect-src
+    // 'self'); `silenceCloseUrl` is the pre-synth Path-B clip — null until
+    // V4 (#365) synthesizes + wires it, in which case Path B falls straight
+    // into the prayer (feature #361: an omitted close does exactly that).
+    openMoment: openMomentEnabled
+      ? {
+          enabled: true,
+          respondUrl: `/v1/stage/${data.token}/respond`,
+          silenceCloseUrl: null,
+        }
+      : { enabled: false },
   })}</script>`;
 
   return stageShell(`${devotional.theme} — Wellspring`, body, {

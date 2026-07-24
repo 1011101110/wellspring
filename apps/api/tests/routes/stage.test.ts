@@ -306,6 +306,128 @@ describe('evening/examen dark stage variant (T3 #350 residual — "light for mor
   });
 });
 
+describe('Open Moment listening window render (EPIC V #360 / V3 #364)', () => {
+  // The same OK view, but its manifest carries the `open_moment` marker V4
+  // emits — the ONLY thing that turns the window on.
+  const OPEN_MOMENT_VIEW: StageLookupResult = {
+    ...OK_VIEW,
+    manifest: [
+      { section: 'greeting', startSec: 0, endSec: 2, text: 'A moment of Rest for the weary.' },
+      { section: 'scripture', startSec: 2, endSec: 10, text: 'From Matthew 11:28-30. Come to me.' },
+      { section: 'reflection', startSec: 10, endSec: 25, text: 'A steady word about rest.' },
+      {
+        section: 'open_moment',
+        startSec: 25,
+        endSec: 31,
+        text: "If you'd like, speak what you're carrying. Or simply sit with it.",
+      },
+      { section: 'prayer', startSec: 31, endSec: 38, text: 'Lord, grant me rest. Amen.' },
+    ],
+  } as StageLookupResult;
+
+  it('renders the listening panel: breathing orb, "Listening" eyebrow, the question, and the spoken invitation line', async () => {
+    const app = buildTestApp(async () => OPEN_MOMENT_VIEW);
+    const res = await app.inject({ method: 'GET', url: `/stage/${TOKEN}` });
+
+    expect(res.statusCode).toBe(200);
+    // The listening state's parts.
+    expect(res.body).toContain('id="panel-open-moment"');
+    expect(res.body).toContain('class="om-orb" id="om-orb"');
+    expect(res.body).toContain('>Listening<');
+    // The invitation line is the spoken open_moment manifest text (escaped).
+    expect(res.body).toContain("If you&#39;d like, speak what you&#39;re carrying");
+    // The question surfaces on the orb screen (journalingPrompt takes priority).
+    expect(res.body).toContain('Where did you find rest today?');
+    // The 7s breathing orb animation is defined.
+    expect(res.body).toContain('@keyframes om-breathe');
+    expect(res.body).toContain('animation: om-breathe 7s');
+  });
+
+  it('renders the response verse-block skeleton and the silence-path plumbing (config, audio element)', async () => {
+    const app = buildTestApp(async () => OPEN_MOMENT_VIEW);
+    const res = await app.inject({ method: 'GET', url: `/stage/${TOKEN}` });
+
+    // Response panel: a §05 verse block with empty ref/text slots the client
+    // fills from the envelope (provenance on camera).
+    expect(res.body).toContain('id="panel-om-response"');
+    expect(res.body).toContain('class="om-verse-block"');
+    expect(res.body).toContain('id="om-verse-text"');
+    expect(res.body).toContain('id="om-verse-ref"');
+    // The live-response audio element + aria-live region.
+    expect(res.body).toContain('<audio id="om-audio" preload="auto">');
+    expect(res.body).toContain('id="om-live"');
+    // The client config: enabled + the same-origin respond URL, silence-close
+    // not yet wired (V4) so Path B falls straight into the prayer.
+    expect(res.body).toContain(`"respondUrl":"/v1/stage/${TOKEN}/respond"`);
+    expect(res.body).toContain('"enabled":true');
+    expect(res.body).toContain('"silenceCloseUrl":null');
+  });
+
+  it('MUTATION CHECK: no listening/response/silence state ever renders an error string on the presented page', async () => {
+    const app = buildTestApp(async () => OPEN_MOMENT_VIEW);
+    const res = await app.inject({ method: 'GET', url: `/stage/${TOKEN}` });
+
+    // Fail-open doctrine (feature #361 / epic §2, §6): the quiet is the ONLY
+    // visible degradation. Scope the scan to the open-moment markup region
+    // (the whole page legitimately contains the `#attendee-audio-error`
+    // suppression RULE — a hide, not a shown error) and assert none of the
+    // three states' markup carries a user-facing error/failure word.
+    const start = res.body.indexOf('id="panel-open-moment"');
+    const end = res.body.indexOf('</main>', start);
+    expect(start).toBeGreaterThan(-1);
+    const windowMarkup = res.body.slice(start, end);
+    for (const forbidden of ['Error', 'error', 'failed', 'Failed', 'Something went wrong', 'try again', 'retry', 'went wrong']) {
+      expect(windowMarkup).not.toContain(forbidden);
+    }
+
+    // And the shipped client script never writes a user-facing failure
+    // message into the DOM: the only textContent it assigns are the verse
+    // (from the envelope) and the aria-live state words — the failure paths
+    // (goSilence/resumePrayer) show NOTHING new, they just resume the prayer.
+    const js = await app.inject({ method: 'GET', url: '/stage/assets/stage.js' });
+    for (const shown of ['textContent = \'Error', 'textContent = \'Something', 'textContent = \'Sorry', 'innerHTML']) {
+      expect(js.body).not.toContain(shown);
+    }
+  });
+
+  it('a manifest WITHOUT the open_moment marker renders zero window markup (pre-#360 pages unchanged)', async () => {
+    const app = buildTestApp(async () => OK_VIEW);
+    const res = await app.inject({ method: 'GET', url: `/stage/${TOKEN}` });
+
+    // The CSS rules (`.om-orb`, `@keyframes om-breathe`, …) are static and
+    // always present; it's the MARKUP that must be absent — no window
+    // elements, no live-response audio, disabled config.
+    expect(res.body).not.toContain('id="panel-open-moment"');
+    expect(res.body).not.toContain('id="om-orb"');
+    expect(res.body).not.toContain('<audio id="om-audio"');
+    expect(res.body).toContain('"openMoment":{"enabled":false}');
+  });
+
+  it('PARITY holds with the window enabled: the evening variant differs ONLY by the body class', async () => {
+    const eveningOpenMoment: StageLookupResult = {
+      ...OPEN_MOMENT_VIEW,
+      slotType: 'examen',
+    } as StageLookupResult;
+    const lightApp = buildTestApp(async () => OPEN_MOMENT_VIEW);
+    const darkApp = buildTestApp(async () => eveningOpenMoment);
+    const light = await lightApp.inject({ method: 'GET', url: `/stage/${TOKEN}` });
+    const dark = await darkApp.inject({ method: 'GET', url: `/stage/${TOKEN}` });
+
+    expect(dark.body.split(' class="ws-evening"').length).toBe(2);
+    expect(dark.body.replace(' class="ws-evening"', '')).toBe(light.body);
+  });
+
+  it('?mute is unaffected by the window markup — the audio attribute is still the only diff', async () => {
+    const app = buildTestApp(async () => OPEN_MOMENT_VIEW);
+    const unmuted = await app.inject({ method: 'GET', url: `/stage/${TOKEN}` });
+    const muted = await app.inject({ method: 'GET', url: `/stage/${TOKEN}?mute=1` });
+
+    // The window's own <audio id="om-audio"> has no such attribute, so the
+    // first (and only) occurrence still belongs to the devotional audio.
+    expect(muted.body.replace(' muted', '')).toBe(unmuted.body);
+  });
+});
+
 describe('stage scope CSP + rate limiting (buildApp wiring)', () => {
   function buildFullApp() {
     const stageService = { getStageView: vi.fn().mockResolvedValue(OK_VIEW) };
