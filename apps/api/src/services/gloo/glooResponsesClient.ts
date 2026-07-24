@@ -27,10 +27,10 @@
  *    Retry-After is honored when present. Non-retryable 4xx (other than
  *    401, see below) fail on the first attempt.
  *  - 401 handling: if `invalidateToken` was supplied, a 401 triggers
- *    exactly one token invalidate + re-mint + retry (GlooTokenManager's
- *    `invalidate()` hook — docs/14 §2.2: "GlooTokenManager.invalidate() has
- *    zero callers"). This re-mint attempt does not consume the 429/5xx
- *    retry budget above.
+ *    exactly one token invalidate + re-mint + retry via GlooTokenManager's
+ *    `invalidate()` hook (wired in index.ts's composition root — this
+ *    closed docs/14 §2.2's "invalidate() has zero callers" finding). The
+ *    re-mint attempt does not consume the 429/5xx retry budget above.
  */
 
 import { parseRetryAfterMs, withRetry, type RetryDecision } from '../httpRetry.js';

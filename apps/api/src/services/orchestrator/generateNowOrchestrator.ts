@@ -14,8 +14,9 @@
  *      the generated devotional text.
  *   4. AudioStorage.upload() — only reached if synthesis succeeded.
  *   5. Create the devotional row (devotionalsRepository) and session row
- *      (sessionsRepository) with a fresh UUIDv4 token and a placeholder
- *      expiry of now + 48h.
+ *      (sessionsRepository — the unguessable session token is minted by
+ *      the sessions table itself on insert) with a placeholder expiry of
+ *      now + 48h.
  *   6. Calendar integration (optional, non-blocking): load the user's
  *      Google Calendar connection, decrypt the refresh token, call freeBusy
  *      for tomorrow's window, find the best gap, insert a Wellspring event,
@@ -31,7 +32,6 @@
  * Bands: reads today's most recent `daily_bands` row uploaded by the iOS
  * app. If no row exists yet, a neutral/moderate default BandInput is used.
  */
-import { randomUUID } from 'node:crypto';
 import {
   DEFAULT_LANGUAGE,
   DEFAULT_VOICE_NAME,
@@ -40,6 +40,7 @@ import {
   defaultVersionIdFor,
   isVersionInLanguage,
   resolveVoiceName,
+  versionDisplayLabel,
   type BandInput,
   type DevotionalFormat,
   type LanguageTag,
@@ -75,23 +76,28 @@ import {
   type SessionRow,
   type SessionsRepository,
   type UsersRepository,
+  type VerifiedUserId,
 } from '../../db/repositories/index.js';
 
-/** Foundation §4.3 default translation — "BSB 3034 — verified live 2026-07-02 against our app key — default." */
+/**
+ * Default tradition when a user row has none. The companion translation
+ * default is no longer a constant here: since Epic O (#311),
+ * `defaultVersionIdFor(language)` in shared-contracts is the single source
+ * of the default versionId (en -> BSB 3034, Foundation §4.3).
+ */
 export const DEFAULT_TRADITION: Tradition = 'general';
-export const DEFAULT_TRANSLATION = 'BSB';
-export const DEFAULT_VERSION_ID = 3034;
 
-/** Placeholder expiry — Foundation §10 / API spec §8.2 pin "event-end + 48h"; no calendar event exists in this pass. */
+/**
+ * Session expiry horizon — Foundation §10 / API spec §8.2 pin
+ * "event-end + 48h". Used first as a placeholder from `now` at session
+ * creation (Step 5), then re-applied from the calendar event's end once
+ * Step 6 inserts one.
+ */
 export const SESSION_EXPIRY_MS = 48 * 60 * 60 * 1000;
 
 /** Minimum calendar gap (minutes) required before inserting an 'extended'-format devotional (docs/14 §5.6, issue #94) — see runCalendarStep. */
 export const EXTENDED_FORMAT_MIN_GAP_MINUTES = 15;
 
-/**
- * Neutral fallback bands used ONLY when the user has no `daily_bands` row
- * for today yet (e.g. has never opened the iOS app / granted HealthKit).
- */
 /** The duration bands in ascending length order — the ladder the P7 duration nudge steps along. */
 export const DURATION_BANDS: readonly DevotionalFormat[] = ['micro', 'short', 'standard', 'extended'];
 
@@ -110,6 +116,10 @@ export function nudgeDuration(
   return DURATION_BANDS[next]!;
 }
 
+/**
+ * Neutral fallback bands used ONLY when the user has no `daily_bands` row
+ * for today yet (e.g. has never opened the iOS app / granted HealthKit).
+ */
 export const NEUTRAL_DEFAULT_BANDS: BandInput = {
   recovery: 'moderate',
   sleepQuality: 'fair',
@@ -322,6 +332,90 @@ function previousIsoDate(date: string): string {
 }
 
 /**
+ * Theme precedence (P7 #326 — first present wins):
+ *
+ *   1. invite context        — the user's own written words for THIS
+ *      meeting (I2 #62); a topical echo of last week's devotional has
+ *      no business displacing them.
+ *   2. prayer intention      — yesterday's deliberate disclosure
+ *      (#93); same reasoning, an explicit act outranks an inference.
+ *   3. feedback-steered theme — the "more on this topic" carry-forward,
+ *      lowest rung: it is the only one of the three the user never
+ *      typed. (Team/invite themes that call the engine directly with a
+ *      `theme` param never pass through this orchestrator path at all.)
+ *
+ * Distinct params, one precedence rule: inviteContext and
+ * prayerIntention keep flowing as their own engine params exactly as
+ * before — what yields is only the steered `theme`.
+ */
+function resolveSteeredTheme(
+  steering: SteeringDecision,
+  params: GenerateNowParams,
+  prayerIntention: string | undefined,
+): string | undefined {
+  return steering.theme !== undefined &&
+    params.inviteContext === undefined &&
+    prayerIntention === undefined
+    ? steering.theme
+    : undefined;
+}
+
+/**
+ * Duration precedence (issue #202). First match wins:
+ *
+ *   1. invite-derived override  — this generation exists to fill a
+ *      specific calendar hole, and the hole has a literal length
+ *      (inviteContext.ts's durationToFormat). A 5-minute gap cannot hold
+ *      a 15-minute devotional no matter what the user prefers, so the
+ *      concrete constraint outranks the standing one.
+ *   2. sabbath session          — an explicit, per-day opt-in
+ *      (docs/14 §5.6, issue #94) for a longer contemplative session in
+ *      place of the usual devotional. Also a deliberate choice, but a
+ *      standing one, so it yields to the invite's hard constraint above.
+ *   3. stored user preference   — the standing "always give me N min"
+ *      from docs/05 §5. Outranks the heuristic because it is the one
+ *      signal the user stated in words rather than one we inferred.
+ *   4. undefined -> band heuristic ("auto") — resolveTargetFormat picks
+ *      from recovery/busyness. Reached when the user chose auto, which
+ *      is stored as NULL (migration 1721500000000) and normalized to
+ *      undefined in loadPreferences.
+ *   5. feedback duration nudge (P7 #326) — BELOW everything above: it
+ *      applies only when every explicit source declined (i.e. the user's
+ *      stored preference is 'auto'), and then nudges what the auto band
+ *      heuristic would have picked by exactly one band. An explicit
+ *      preference is never silently overridden (the ceiling principle).
+ *      Passing the nudged band onward as `durationPreference` is safe
+ *      against the floors resolveTargetFormat enforces above preferences:
+ *      distress still forces 'micro' (and the distress path never steers
+ *      anyway).
+ *
+ * Note this whole ladder sits BELOW two floors already enforced inside
+ * resolveTargetFormat and deliberately not duplicated here: a distress
+ * signal always forces `micro` (safety, cannot be overridden by anyone),
+ * and slotType='examen' is always micro/short because the examen is a
+ * brief evening reflection by design — the user's duration preference
+ * governs the morning devotional's length, not the examen's.
+ */
+function resolveDurationPreference(
+  params: GenerateNowParams,
+  storedDurationPreference: DevotionalFormat | undefined,
+  steering: SteeringDecision,
+  bands: BandInput,
+  slotType: SlotType,
+): DevotionalFormat | undefined {
+  const explicitDurationPreference: DevotionalFormat | undefined =
+    params.durationPreferenceOverride ??
+    (params.sabbathSession ? 'extended' : undefined) ??
+    storedDurationPreference;
+  return (
+    explicitDurationPreference ??
+    (steering.durationNudge !== undefined
+      ? nudgeDuration(resolveTargetFormat(bands, undefined, slotType), steering.durationNudge)
+      : undefined)
+  );
+}
+
+/**
  * Chains DevotionalEngine -> TtsService -> AudioStorage -> devotional row ->
  * session row -> calendar event for one user.
  */
@@ -422,7 +516,10 @@ export class GenerateNowOrchestrator {
         fallbackVersionId: preferredVersionId,
       });
     }
-    const translation = versionIdToLabel(preferredVersionId);
+    // Human-readable label for the model's prose framing ("Preferred Bible
+    // translation: X."). `versionDisplayLabel` is the canonical
+    // shared-contracts map (S1 #342 — a local copy here had drifted from it).
+    const translation = versionDisplayLabel(preferredVersionId);
     // `stillness` is a plain `text` column (see shared-contracts'
     // PreferencesResponseDataSchema comment) — an unrecognized value
     // stored out-of-band would otherwise silently fall through to Cloud
@@ -615,36 +712,264 @@ export class GenerateNowOrchestrator {
     };
   }
 
+  /**
+   * Idempotency guard (phase helper): if a devotional already exists for
+   * this date AND slot, bail out so Cloud Scheduler reruns (or duplicate
+   * calls) are safe. Slot-scoped so a same-day examen never collides with
+   * that day's standard devotional (issue #77). Skippable for the manual
+   * distress check-in path, which must always produce a fresh session.
+   *
+   * Throws AlreadyExistsError rather than returning a sentinel so callers
+   * of generateNow() (e.g. trigger-daily-run) can distinguish idempotent
+   * skips from real errors.
+   */
+  private async ensureNotAlreadyGenerated(
+    verifiedUserId: VerifiedUserId,
+    date: string,
+    slotType: SlotType,
+    skipIdempotencyCheck: boolean | undefined,
+  ): Promise<void> {
+    const existingToday = skipIdempotencyCheck
+      ? null
+      : await this.devotionals.getForDate(verifiedUserId, date, slotType);
+    if (!existingToday) return;
+
+    this.logger.info('Devotional already exists for today — skipping', {
+      userId: verifiedUserId,
+      date,
+      devotionalId: existingToday.id,
+    });
+    // Find the most recent session for this devotional so we can return a URL.
+    // If somehow no session exists (shouldn't happen in normal flow), use a
+    // placeholder token — the devotional row is still the canonical signal.
+    const existingSessions = await this.sessions.listForUser(verifiedUserId);
+    const existingSession = existingSessions.find((s) => s.devotional_id === existingToday.id);
+    const sessionToken = existingSession?.token ?? '';
+    const sessionUrl = sessionToken ? `${this.publicBaseUrl}/session/${sessionToken}` : '';
+    throw new AlreadyExistsError(existingToday.id, sessionToken, sessionUrl);
+  }
+
+  /**
+   * Preference resolution (phase helper): either the caller's
+   * `preferencesOverride` escape hatch completed with safe defaults, or a
+   * real `loadPreferences` read.
+   */
+  private async resolveEffectivePreferences(
+    params: GenerateNowParams,
+  ): Promise<Awaited<ReturnType<GenerateNowOrchestrator['loadPreferences']>>> {
+    if (!params.preferencesOverride) return this.loadPreferences(params.userId);
+    return {
+      // Escape-hatch default (O3 #315): an override caller that says
+      // nothing about language gets today's English behavior — the
+      // spread below lets it opt into a content language explicitly.
+      language: DEFAULT_LANGUAGE,
+      stillness: 'off' as Stillness,
+      lectio: false,
+      liturgicalSeasonsEnabled: false,
+      // A `preferencesOverride` caller bypasses the preferences row, so
+      // there is no stored consent to honor. `true` is right here rather
+      // than a fail-safe `false` because these callers (invite-triggered
+      // and team devotionals, tests) supply their own bands wholesale via
+      // `bandsOverride` — which `resolveBands` already treats as
+      // NO_SIGNALS_OBSERVED — so there is no `daily_bands` read for a
+      // consent flag to protect. The override paths that do touch the
+      // calendar still pass through the `connections` row, which is the
+      // real grant.
+      calendarEnabled: true,
+      healthEnabled: true,
+      communicationEnabled: true,
+      // A caller supplying `preferencesOverride` is bypassing the
+      // preferences row wholesale, so there is no stored duration to
+      // honor — undefined lands on the band heuristic, and the voice
+      // on the deployment default.
+      durationPreference: undefined as DevotionalFormat | undefined,
+      voiceName: DEFAULT_VOICE_NAME,
+      ...params.preferencesOverride,
+    };
+  }
+
+  /**
+   * Band resolution (phase helper): the caller's `bandsOverride`, or a
+   * consent-gated `loadBands` read — plus the distress override, which is
+   * layered on top of whichever source won.
+   *
+   * `bandsOverride` arrives as a bare BandInput with no provenance attached,
+   * and its callers are exactly the paths that generate from neutral bands
+   * by design (invite-triggered devotionals in index.ts, team devotionals) or
+   * that hand-build bands in tests. Treating those as unobserved is both
+   * accurate for the production callers and the fail-safe reading for any
+   * other: an override cannot vouch for measurement it never made (#196).
+   */
+  private async resolveBands(
+    params: GenerateNowParams,
+    date: string,
+    consent: { calendarEnabled: boolean; healthEnabled: boolean; communicationEnabled: boolean },
+  ): Promise<{ bands: BandInput; signalProvenance: SignalProvenance }> {
+    const loaded = params.bandsOverride
+      ? { bands: params.bandsOverride, provenance: NO_SIGNALS_OBSERVED }
+      : await this.loadBands(params.userId, date, consent);
+    const bands = params.distressSignalOverride
+      ? { ...loaded.bands, distressSignal: true }
+      : loaded.bands;
+    return { bands, signalProvenance: loaded.provenance };
+  }
+
+  /**
+   * Deliberate disclosure (phase helper — docs/14 §5.5, issue #93): weave
+   * in whatever the user shared on yesterday's session-completion page, if
+   * anything. Best-effort — a lookup failure here must never block
+   * generation.
+   */
+  private async loadPrayerIntention(
+    verifiedUserId: VerifiedUserId,
+    date: string,
+  ): Promise<string | undefined> {
+    if (!this.prayerIntentions) return undefined;
+    try {
+      const row = await this.prayerIntentions.getForDate(verifiedUserId, previousIsoDate(date));
+      return row?.text;
+    } catch (err) {
+      this.logger.error('Prayer intention lookup failed — continuing without it', {
+        userId: verifiedUserId,
+        date,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      return undefined;
+    }
+  }
+
+  /**
+   * Feedback steering (phase helper — P7 #326, epic #312).
+   *
+   * Scheduled standard-slot generations only: the daily run passes
+   * `applyFeedbackSteering: true`; generate-now, examen, invite, and
+   * distress paths never do, so their params are untouched by
+   * construction. The distress guard below is belt-and-braces on top of
+   * that (safety paths must not depend on a caller remembering a flag).
+   *
+   * FAIL-OPEN, same ground rule as the daily run's adaptive-rhythm
+   * evaluation: a broken steering read costs the nudges, never the
+   * devotional.
+   */
+  private async deriveFeedbackSteering(
+    params: GenerateNowParams,
+    slotType: SlotType,
+    verifiedUserId: VerifiedUserId,
+    date: string,
+  ): Promise<SteeringDecision> {
+    if (
+      !this.feedbackSteering ||
+      !params.applyFeedbackSteering ||
+      slotType !== 'standard' ||
+      params.distressSignalOverride
+    ) {
+      return NO_STEERING;
+    }
+    try {
+      const steering = await this.feedbackSteering.deriveSteering(verifiedUserId, { now: this.now() });
+      if (steering.reasons.length > 0) {
+        this.logger.info('Feedback steering applied to generation params', {
+          userId: verifiedUserId,
+          date,
+          reasons: steering.reasons,
+          theme: steering.theme,
+          durationNudge: steering.durationNudge,
+          preferredTimeLocal: steering.preferredTimeLocal,
+        });
+      }
+      return steering;
+    } catch (err) {
+      this.logger.error('Feedback steering failed — continuing unsteered', {
+        userId: verifiedUserId,
+        date,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      return NO_STEERING;
+    }
+  }
+
+  /**
+   * Audio pipeline (phase helper — Steps 3+4): synthesize, upload the MP3,
+   * record it on the devotional row, and store the Stage timing manifest.
+   * Best-effort as a whole: any failure degrades to the audio-unavailable
+   * outcome and must never take down the request — a TTS failure must not
+   * lose the generated devotional text.
+   */
+  private async synthesizeAndStoreAudio(args: {
+    userId: string;
+    verifiedUserId: VerifiedUserId;
+    devotionalId: string;
+    devotional: GenerateDevotionalResult['devotional'];
+    stillness: Stillness;
+    lectio: boolean;
+    voiceName: string;
+    language: LanguageTag;
+  }): Promise<GenerateNowAudioOutcome> {
+    const { userId, verifiedUserId, devotionalId, devotional } = args;
+    try {
+      // `voiceName` is already catalog-validated by loadPreferences (#202) —
+      // TtsService validates again on its own account, since it is a public
+      // entry point other callers reach directly. `language` (O4 #316) makes
+      // the synthesis speak the user's content language: TtsService derives
+      // the locale (zh -> cmn-CN) and re-homes the voice name from it.
+      const synthesized = await this.ttsService.synthesize(
+        devotional,
+        args.stillness,
+        args.lectio,
+        args.voiceName,
+        args.language,
+      );
+      const stored = await this.audioStorage.upload(devotionalId, synthesized.audio);
+      await this.devotionals.setAudioObject(verifiedUserId, devotionalId, stored.objectKey);
+
+      // Stage timing manifest (Q1 #331) — written right after the MP3 it
+      // describes. Its OWN try/catch, inside the audio-success path: a
+      // manifest failure must NOT fail generation and must NOT flip the
+      // already-uploaded audio to `unavailable` — the Stage page simply
+      // degrades to no-captions (same posture as other non-fatal audio
+      // issues). An empty manifest means duration measurement itself
+      // failed in TtsService; nothing useful to store.
+      if ((synthesized.manifest?.length ?? 0) > 0) {
+        try {
+          await this.audioStorage.uploadManifest(devotionalId, synthesized.manifest);
+        } catch (err) {
+          this.logger.error('Timing-manifest upload failed — continuing without captions (#331)', {
+            userId,
+            devotionalId,
+            reason: err instanceof Error ? err.message : String(err),
+          });
+        }
+      }
+
+      this.logger.info('TTS + upload succeeded', {
+        userId,
+        devotionalId,
+        segmentCount: synthesized.segmentCount,
+      });
+      return { status: 'uploaded', objectKey: stored.objectKey };
+    } catch (err) {
+      const reason =
+        err instanceof TtsServiceError
+          ? err.message
+          : `Unexpected audio pipeline failure: ${err instanceof Error ? err.message : String(err)}`;
+      this.logger.error('TTS/upload failed — continuing with audio-unavailable session', {
+        userId,
+        devotionalId,
+        reason,
+      });
+      return { status: 'unavailable', reason };
+    }
+  }
+
   async generateNow(params: GenerateNowParams): Promise<GenerateNowResult> {
     const { userId } = params;
     const date = params.date ?? todayIsoDate(this.now);
     const verifiedUserId = asVerifiedUserId(userId);
     const slotType: SlotType = params.slotType ?? 'standard';
 
-    // Idempotency guard: if a devotional already exists for this date AND
-    // slot, return early so Cloud Scheduler reruns (or duplicate calls) are
-    // safe. Slot-scoped so a same-day examen never collides with that
-    // day's standard devotional (issue #77). Skippable for the manual
-    // distress check-in path, which must always produce a fresh session.
-    const existingToday = params.skipIdempotencyCheck
-      ? null
-      : await this.devotionals.getForDate(verifiedUserId, date, slotType);
-    if (existingToday) {
-      this.logger.info('Devotional already exists for today — skipping', {
-        userId,
-        date,
-        devotionalId: existingToday.id,
-      });
-      // Find the most recent session for this devotional so we can return a URL.
-      // If somehow no session exists (shouldn't happen in normal flow), use a
-      // placeholder token — the devotional row is still the canonical signal.
-      const existingSessions = await this.sessions.listForUser(verifiedUserId);
-      const existingSession = existingSessions.find((s) => s.devotional_id === existingToday.id);
-      const sessionToken = existingSession?.token ?? '';
-      const sessionUrl = sessionToken ? `${this.publicBaseUrl}/session/${sessionToken}` : '';
-      throw new AlreadyExistsError(existingToday.id, sessionToken, sessionUrl);
-    }
+    await this.ensureNotAlreadyGenerated(verifiedUserId, date, slotType, params.skipIdempotencyCheck);
 
+    const prefs = await this.resolveEffectivePreferences(params);
     const {
       tradition,
       language,
@@ -653,181 +978,29 @@ export class GenerateNowOrchestrator {
       stillness,
       lectio,
       liturgicalSeasonsEnabled,
-      durationPreference: storedDurationPreference,
       voiceName,
       calendarEnabled,
-      healthEnabled,
-      communicationEnabled,
-    } = params.preferencesOverride
-      ? {
-          // Escape-hatch default (O3 #315): an override caller that says
-          // nothing about language gets today's English behavior — the
-          // spread below lets it opt into a content language explicitly.
-          language: DEFAULT_LANGUAGE,
-          stillness: 'off' as Stillness,
-          lectio: false,
-          liturgicalSeasonsEnabled: false,
-          // A `preferencesOverride` caller bypasses the preferences row, so
-          // there is no stored consent to honor. `true` is right here rather
-          // than a fail-safe `false` because these callers (invite-triggered
-          // and team devotionals, tests) supply their own bands wholesale via
-          // `bandsOverride` — which is already treated as NO_SIGNALS_OBSERVED
-          // just below — so there is no `daily_bands` read for a consent flag
-          // to protect. The override paths that do touch the calendar still
-          // pass through the `connections` row, which is the real grant.
-          calendarEnabled: true,
-          healthEnabled: true,
-          communicationEnabled: true,
-          // A caller supplying `preferencesOverride` is bypassing the
-          // preferences row wholesale, so there is no stored duration to
-          // honor — undefined lands on the band heuristic, and the voice
-          // on the deployment default.
-          durationPreference: undefined as DevotionalFormat | undefined,
-          voiceName: DEFAULT_VOICE_NAME,
-          ...params.preferencesOverride,
-        }
-      : await this.loadPreferences(userId);
-    // `bandsOverride` arrives as a bare BandInput with no provenance attached,
-    // and its callers are exactly the paths that generate from neutral bands
-    // by design (invite-triggered devotionals in index.ts, team devotionals) or
-    // that hand-build bands in tests. Treating those as unobserved is both
-    // accurate for the production callers and the fail-safe reading for any
-    // other: an override cannot vouch for measurement it never made (#196).
-    const loaded = params.bandsOverride
-      ? { bands: params.bandsOverride, provenance: NO_SIGNALS_OBSERVED }
-      : await this.loadBands(userId, date, {
-          calendarEnabled,
-          healthEnabled,
-          communicationEnabled,
-        });
-    const signalProvenance = loaded.provenance;
-    const bands = params.distressSignalOverride
-      ? { ...loaded.bands, distressSignal: true }
-      : loaded.bands;
+    } = prefs;
+    const { bands, signalProvenance } = await this.resolveBands(params, date, prefs);
 
     this.logger.info('Starting generate-now', { userId, date, tradition, language, translation, slotType });
 
-    // Deliberate disclosure (docs/14 §5.5, issue #93): weave in whatever
-    // the user shared on yesterday's session-completion page, if anything.
-    // Best-effort — a lookup failure here must never block generation.
-    let prayerIntention: string | undefined;
-    if (this.prayerIntentions) {
-      try {
-        const row = await this.prayerIntentions.getForDate(verifiedUserId, previousIsoDate(date));
-        prayerIntention = row?.text;
-      } catch (err) {
-        this.logger.error('Prayer intention lookup failed — continuing without it', {
-          userId,
-          date,
-          error: err instanceof Error ? err.message : String(err),
-        });
-      }
-    }
-
-    // ── Feedback steering (P7 #326, epic #312) ─────────────────────────
-    //
-    // Scheduled standard-slot generations only: the daily run passes
-    // `applyFeedbackSteering: true`; generate-now, examen, invite, and
-    // distress paths never do, so their params are untouched by
-    // construction. The distress guard below is belt-and-braces on top of
-    // that (safety paths must not depend on a caller remembering a flag).
-    //
-    // FAIL-OPEN, same ground rule as the daily run's adaptive-rhythm
-    // evaluation: a broken steering read costs the nudges, never the
-    // devotional.
-    let steering: SteeringDecision = NO_STEERING;
-    if (
-      this.feedbackSteering &&
-      params.applyFeedbackSteering &&
-      slotType === 'standard' &&
-      !params.distressSignalOverride
-    ) {
-      try {
-        steering = await this.feedbackSteering.deriveSteering(verifiedUserId, { now: this.now() });
-        if (steering.reasons.length > 0) {
-          this.logger.info('Feedback steering applied to generation params', {
-            userId,
-            date,
-            reasons: steering.reasons,
-            theme: steering.theme,
-            durationNudge: steering.durationNudge,
-            preferredTimeLocal: steering.preferredTimeLocal,
-          });
-        }
-      } catch (err) {
-        this.logger.error('Feedback steering failed — continuing unsteered', {
-          userId,
-          date,
-          error: err instanceof Error ? err.message : String(err),
-        });
-        steering = NO_STEERING;
-      }
-    }
-
-    // Theme precedence (P7 #326 — first present wins):
-    //
-    //   1. invite context        — the user's own written words for THIS
-    //      meeting (I2 #62); a topical echo of last week's devotional has
-    //      no business displacing them.
-    //   2. prayer intention      — yesterday's deliberate disclosure
-    //      (#93); same reasoning, an explicit act outranks an inference.
-    //   3. feedback-steered theme — the "more on this topic" carry-forward,
-    //      lowest rung: it is the only one of the three the user never
-    //      typed. (Team/invite themes that call the engine directly with a
-    //      `theme` param never pass through this orchestrator path at all.)
-    //
-    // Distinct params, one precedence rule: inviteContext and
-    // prayerIntention keep flowing as their own engine params exactly as
-    // before — what yields is only the steered `theme`.
-    const steeredTheme =
-      steering.theme !== undefined && params.inviteContext === undefined && prayerIntention === undefined
-        ? steering.theme
-        : undefined;
+    const prayerIntention = await this.loadPrayerIntention(verifiedUserId, date);
+    const steering = await this.deriveFeedbackSteering(params, slotType, verifiedUserId, date);
 
     // Step 1: DevotionalEngine — never throws for the "provider had a bad
-    // day" case (falls back to fixture internally).
-    // Duration precedence (issue #202). First match wins:
-    //
-    //   1. invite-derived override  — this generation exists to fill a
-    //      specific calendar hole, and the hole has a literal length
-    //      (inviteContext.ts's durationToFormat). A 5-minute gap cannot hold
-    //      a 15-minute devotional no matter what the user prefers, so the
-    //      concrete constraint outranks the standing one.
-    //   2. sabbath session          — an explicit, per-day opt-in
-    //      (docs/14 §5.6, issue #94) for a longer contemplative session in
-    //      place of the usual devotional. Also a deliberate choice, but a
-    //      standing one, so it yields to the invite's hard constraint above.
-    //   3. stored user preference   — the standing "always give me N min"
-    //      from docs/05 §5. Outranks the heuristic because it is the one
-    //      signal the user stated in words rather than one we inferred.
-    //   4. undefined -> band heuristic ("auto") — resolveTargetFormat picks
-    //      from recovery/busyness. Reached when the user chose auto, which
-    //      is stored as NULL (migration 1721500000000) and normalized to
-    //      undefined in loadPreferences.
-    //
-    // Note this whole ladder sits BELOW two floors already enforced inside
-    // resolveTargetFormat and deliberately not duplicated here: a distress
-    // signal always forces `micro` (safety, cannot be overridden by anyone),
-    // and slotType='examen' is always micro/short because the examen is a
-    // brief evening reflection by design — the user's duration preference
-    // governs the morning devotional's length, not the examen's.
-    const explicitDurationPreference: DevotionalFormat | undefined =
-      params.durationPreferenceOverride ??
-      (params.sabbathSession ? 'extended' : undefined) ??
-      storedDurationPreference;
-    // P7 (#326) — rung 5, BELOW everything above: the feedback duration
-    // nudge applies only when every explicit source declined (i.e. the
-    // user's stored preference is 'auto'), and then nudges what the auto
-    // band heuristic would have picked by exactly one band. An explicit
-    // preference is never silently overridden (the ceiling principle).
-    // Passing the nudged band as `durationPreference` is safe against the
-    // floors resolveTargetFormat enforces above preferences: distress
-    // still forces 'micro' (and the distress path never steers anyway).
-    const durationPreference: DevotionalFormat | undefined =
-      explicitDurationPreference ??
-      (steering.durationNudge !== undefined
-        ? nudgeDuration(resolveTargetFormat(bands, undefined, slotType), steering.durationNudge)
-        : undefined);
+    // day" case (falls back to fixture internally). Theme and duration each
+    // resolve through an explicit precedence ladder; the ladders (and their
+    // full rationale) live in resolveSteeredTheme / resolveDurationPreference
+    // at module level, pure and directly testable.
+    const steeredTheme = resolveSteeredTheme(steering, params, prayerIntention);
+    const durationPreference = resolveDurationPreference(
+      params,
+      prefs.durationPreference,
+      steering,
+      bands,
+      slotType,
+    );
     const genResult = await this.devotionalEngine.generate({
       bands,
       signalProvenance,
@@ -881,62 +1054,18 @@ export class GenerateNowOrchestrator {
       slotType,
     });
 
-    // Step 3+4: TTS + upload — best-effort. Any failure degrades to
+    // Step 3+4: TTS + upload — best-effort. Any failure degrades to the
     // audio-unavailable path; must never take down the whole request.
-    let audio: GenerateNowAudioOutcome;
-    try {
-      // `voiceName` is already catalog-validated by loadPreferences (#202) —
-      // TtsService validates again on its own account, since it is a public
-      // entry point other callers reach directly. `language` (O4 #316) makes
-      // the synthesis speak the user's content language: TtsService derives
-      // the locale (zh -> cmn-CN) and re-homes the voice name from it.
-      const synthesized = await this.ttsService.synthesize(
-        devotional,
-        stillness,
-        lectio,
-        voiceName,
-        language,
-      );
-      const stored = await this.audioStorage.upload(devotionalRow.id, synthesized.audio);
-      await this.devotionals.setAudioObject(verifiedUserId, devotionalRow.id, stored.objectKey);
-      audio = { status: 'uploaded', objectKey: stored.objectKey };
-
-      // Stage timing manifest (Q1 #331) — written right after the MP3 it
-      // describes. Its OWN try/catch, inside the audio-success path: a
-      // manifest failure must NOT fail generation and must NOT flip the
-      // already-uploaded audio to `unavailable` — the Stage page simply
-      // degrades to no-captions (same posture as other non-fatal audio
-      // issues). An empty manifest means duration measurement itself
-      // failed in TtsService; nothing useful to store.
-      if ((synthesized.manifest?.length ?? 0) > 0) {
-        try {
-          await this.audioStorage.uploadManifest(devotionalRow.id, synthesized.manifest);
-        } catch (err) {
-          this.logger.error('Timing-manifest upload failed — continuing without captions (#331)', {
-            userId,
-            devotionalId: devotionalRow.id,
-            reason: err instanceof Error ? err.message : String(err),
-          });
-        }
-      }
-
-      this.logger.info('TTS + upload succeeded', {
-        userId,
-        devotionalId: devotionalRow.id,
-        segmentCount: synthesized.segmentCount,
-      });
-    } catch (err) {
-      const reason =
-        err instanceof TtsServiceError
-          ? err.message
-          : `Unexpected audio pipeline failure: ${err instanceof Error ? err.message : String(err)}`;
-      this.logger.error('TTS/upload failed — continuing with audio-unavailable session', {
-        userId,
-        devotionalId: devotionalRow.id,
-        reason,
-      });
-      audio = { status: 'unavailable', reason };
-    }
+    const audio = await this.synthesizeAndStoreAudio({
+      userId,
+      verifiedUserId,
+      devotionalId: devotionalRow.id,
+      devotional,
+      stillness,
+      lectio,
+      voiceName,
+      language,
+    });
 
     // Step 5: session row. Placeholder expiry (now + 48h) — may be
     // updated in Step 6 to event-end + 48h after calendar insertion.
@@ -1039,7 +1168,7 @@ export class GenerateNowOrchestrator {
    */
   private async runCalendarStep(params: {
     userId: string;
-    verifiedUserId: ReturnType<typeof asVerifiedUserId>;
+    verifiedUserId: VerifiedUserId;
     devotionalRow: DevotionalRow;
     sessionRow: SessionRow;
     sessionUrl: string;
@@ -1248,50 +1377,4 @@ export class GenerateNowOrchestrator {
       return { skipped: 'calendar_error' };
     }
   }
-}
-
-/**
- * Maps a YouVersion numeric versionId to the human-readable label
- * DevotionalEngine's prose framing expects (Foundation §4.3 table for en;
- * epic #311's live-verified table for the non-en catalog). Falls back to
- * the numeric id itself for any id not in the small known table.
- *
- * Non-en entries use readable names rather than en-style short codes: the
- * label's only consumer is the model's prose framing ("Preferred Bible
- * translation: X."), and "Palabra de Dios para ti" tells it something
- * "spaPdDpt" does not.
- */
-function versionIdToLabel(versionId: number): string {
-  const known: Record<number, string> = {
-    3034: 'BSB',
-    12: 'ASV',
-    206: 'WEBUS',
-    42: 'CPDV',
-    130: 'TOJB2011',
-    1207: 'WMBBE',
-    1209: 'WMB',
-    1932: 'FBV',
-    2163: 'Geneva',
-    2660: 'LSV',
-    3427: 'TCENT',
-    // es (LANGUAGE_CATALOG, epic #311, live-verified 2026-07-23)
-    3365: 'Palabra de Dios para ti',
-    147: 'Reina-Valera Antigua',
-    // fr
-    93: 'Louis Segond 1910',
-    62: 'Martin 1744',
-    131: 'Ostervald',
-    64: 'Bible Darby (French)',
-    // de
-    51: 'Luther 1912',
-    57: 'Elberfelder',
-    58: 'Elberfelder',
-    2351: 'Elberfelder',
-    // pt
-    3254: 'Bíblia Livre Para Todos',
-    // zh
-    43: 'Chinese Standard Bible (Simplified)',
-    3354: 'FEB',
-  };
-  return known[versionId] ?? String(versionId);
 }

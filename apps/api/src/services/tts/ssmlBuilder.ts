@@ -156,6 +156,16 @@ function spokenReferenceRecap(devotional: DevotionalOutput, phrases: SpokenPhras
 /**
  * Builds the full SSML `<speak>` document for a devotional's spoken script.
  *
+ * TEST-ONLY (S1 #342): no production caller. TtsService synthesizes
+ * exclusively through `buildDevotionalSsmlSegments` since Q1 (#331)
+ * removed the single-document fast path. Kept — deliberately, not as an
+ * oversight — because the test suite uses this single-document build as
+ * the readable specification of the script structure AND as the oracle
+ * the segments function is compared against (ssmlBuilder.test.ts joins
+ * the segment bodies and asserts equivalence to this output). Do not wire
+ * it back into production; change `buildDevotionalSsmlSegments` instead,
+ * and keep this in lockstep so the equivalence test stays meaningful.
+ *
  * Structure: greeting → break → [spoken reference → verse text → 2s break →
  * spoken attribution → break] for each verse → stillness (if enabled) →
  * devotionalBody → break → prayer → break → stillness (if enabled) →
@@ -199,6 +209,10 @@ export function buildDevotionalSsml(
 }
 
 /**
+ * TEST-ONLY, like `buildDevotionalSsml` above (S1 #342): reached only via
+ * that function's lectio branch — production lectio synthesis goes through
+ * `buildLectioSsmlSegments`.
+ *
  * Lectio divina structure (docs/14 §5.4, issue #92) — the historic
  * lectio/meditatio/oratio/contemplatio pattern: read the passage; silence;
  * read it again slower; one question; prayer; silence. Structure: greeting

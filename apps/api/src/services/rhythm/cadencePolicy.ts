@@ -103,6 +103,31 @@ function normalizeDays(days: readonly number[]): number[] {
 }
 
 /**
+ * The single normalize/floor/ceiling rule over a preferences row's bounds,
+ * shared by the policy (`decideCadence`) and the P8 settings summary
+ * (`composeRhythm` in rhythmSummary.ts) — the two MUST agree, or the card
+ * would describe a schedule the engine doesn't run (S1 #342 deduplicated
+ * the two hand-rolled copies into this helper).
+ *
+ * Ceiling is `|active_days|`: the user's stated day set is the outer bound
+ * on everything. Floor is `min_per_week`, but never above the ceiling — a
+ * user with 3 active days and min_per_week 5 gets 3. The `Math.max(1, …)`
+ * guards only nonsense stored values (the contract requires ≥1 active day
+ * and the DB CHECK keeps min_per_week in 1..7), so a legacy or corrupt row
+ * degrades to a 1-day schedule rather than violating the wire schema's
+ * `min(1)` downstream.
+ */
+export function resolveCadenceBounds(
+  activeDays: readonly number[],
+  minPerWeek: number,
+): { days: number[]; ceiling: number; floor: number } {
+  const days = normalizeDays(activeDays);
+  const ceiling = Math.max(1, days.length);
+  const floor = Math.min(Math.max(1, minPerWeek), ceiling);
+  return { days, ceiling, floor };
+}
+
+/**
  * The decision function. Pure: no I/O, no clock reads — `clock.now` is
  * injected precisely so the same (signals, prefs, now) triple replays to
  * the same decision in a test or a P8 explanation.
@@ -118,8 +143,10 @@ export function decideCadence(
   prefs: CadencePolicyPrefs,
   clock: { now: Date },
 ): CadenceDecision {
-  const days = normalizeDays(prefs.activeDays);
-  const ceiling = days.length;
+  // Rule 2's bounds, computed up front (see resolveCadenceBounds for the
+  // full floor/ceiling rationale — it is the one clamp rule this policy
+  // shares with the P8 summary).
+  const { days, ceiling, floor } = resolveCadenceBounds(prefs.activeDays, prefs.minPerWeek);
 
   // Rule 1 — the opt-out beats everything, before any signal is read:
   // "keep my schedule fixed" means exactly the stated days, always.
@@ -127,11 +154,6 @@ export function decideCadence(
     return { daysPerWeek: ceiling, effectiveDays: days, reason: 'fixed_by_user' };
   }
 
-  // Rule 2 — bounds. Floor is min_per_week, but never above the ceiling:
-  // a user with 3 active days and min_per_week 5 gets 3 (their day set
-  // is the outer bound on everything). Math.max(1, …) only guards a
-  // nonsense stored value; the DB CHECK keeps min_per_week in 1..7.
-  const floor = Math.min(Math.max(1, prefs.minPerWeek), ceiling);
   const raw = prefs.adaptiveDaysPerWeek ?? ceiling;
 
   // Immediate clamps — the user's EDIT moved a bound, and honoring it now

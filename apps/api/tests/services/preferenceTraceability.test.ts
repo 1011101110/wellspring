@@ -341,7 +341,8 @@ describe('users.translation_id — passage fetch + instructions (LIVE)', () => {
     const a = buildOrchestrator({ prefs: defaultPrefsRow(), translationId: 111 });
     await a.orchestrator.generateNow({ userId: 'user-1', date: '2026-07-18' });
     expect(a.captures.engineParams[0]!.preferredVersionId).toBe(3034);
-    expect(a.captures.engineParams[0]!.translation).toBe('BSB');
+    // Canonical shared-contracts label (S1 #342, versionDisplayLabel).
+    expect(a.captures.engineParams[0]!.translation).toBe('Berean Standard Bible (BSB)');
   });
 });
 
@@ -373,7 +374,7 @@ describe('users.language — engine language + version resolution (LIVE, Epic O 
     const es = buildOrchestrator({ prefs: defaultPrefsRow(), language: 'es', translationId: 3034 });
     await es.orchestrator.generateNow({ userId: 'user-1', date: '2026-07-18' });
     expect(es.captures.engineParams[0]!.preferredVersionId).toBe(3365);
-    expect(es.captures.engineParams[0]!.translation).toBe('Palabra de Dios para ti');
+    expect(es.captures.engineParams[0]!.translation).toBe('Palabra de Dios para ti (PDDPT)');
   });
 });
 
