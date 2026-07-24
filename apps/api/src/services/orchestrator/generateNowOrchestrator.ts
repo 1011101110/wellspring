@@ -165,10 +165,32 @@ export function nudgeDuration(
  * it has no live engine) is enforced at the persistence site instead, since
  * whether a generation fell back to a fixture is only known AFTER the engine
  * runs; this pure function covers the two inputs known up front.
+ *
+ * `killSwitchEnabled` (V5 #366) is the operator kill switch — when false, the
+ * window is disabled at generation time regardless of the request, so the
+ * live feature ships DARK until V6. Defaults to `true` so existing callers/
+ * tests that pass only (requested, distress) are unaffected; the orchestrator
+ * resolves the real value from the env via `resolveOpenMomentKillSwitch`.
  */
-export function resolveOpenMomentEnabled(requested: boolean, distress: boolean): boolean {
+export function resolveOpenMomentEnabled(
+  requested: boolean,
+  distress: boolean,
+  killSwitchEnabled = true,
+): boolean {
+  if (!killSwitchEnabled) return false;
   if (distress) return false;
   return requested;
+}
+
+/**
+ * The Open Moment kill switch (V5 #366): reads `OPEN_MOMENT_ENABLED`. The
+ * feature ships DARK — the window is enabled at generation time ONLY when an
+ * operator has explicitly set `OPEN_MOMENT_ENABLED=true`. Any other value
+ * (unset, 'false', '0', 'yes', a typo) resolves to false. Pure over its raw
+ * string input so the switch is unit-testable without mutating `process.env`.
+ */
+export function resolveOpenMomentKillSwitch(rawValue: string | undefined): boolean {
+  return rawValue === 'true';
 }
 
 /**
@@ -1221,8 +1243,13 @@ export class GenerateNowOrchestrator {
     // per-devotional enable gate the respond route checks AND the exact
     // language/voice/tradition/translation the live answer must speak in.
     const openMomentEnabled =
-      resolveOpenMomentEnabled(params.openMomentEnabled ?? false, bands.distressSignal) &&
-      source !== 'fixture';
+      resolveOpenMomentEnabled(
+        params.openMomentEnabled ?? false,
+        bands.distressSignal,
+        // V5 #366 kill switch — ANDed into the resolution so the live window
+        // ships dark until an operator sets OPEN_MOMENT_ENABLED=true (V6).
+        resolveOpenMomentKillSwitch(process.env.OPEN_MOMENT_ENABLED),
+      ) && source !== 'fixture';
     const openMomentContext: OpenMomentContext | null = openMomentEnabled
       ? { language, tradition, translation, preferredVersionId, voiceName }
       : null;
