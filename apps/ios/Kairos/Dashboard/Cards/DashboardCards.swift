@@ -66,7 +66,11 @@ struct TodayCard: View {
         .buttonStyle(.borderedProminent)
         .controlSize(.large)
         .disabled(viewModel.generateNowBusy)
-        .accessibilityIdentifier("home.today.openButton")
+        // Distinct from the loaded state's "home.today.openButton" (S4 #345
+        // — the two used to share an identifier; they can never coexist, but
+        // a duplicate id makes any future empty-state UI test ambiguous).
+        // KairosUITests only reference "home.today.openButton", checked.
+        .accessibilityIdentifier("home.today.generateButton")
     }
 }
 
@@ -204,7 +208,7 @@ struct InviteAddressCard: View {
                         .textSelection(.enabled)
                         .padding(8)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(RoundedRectangle(cornerRadius: 8).fill(Color(.tertiarySystemGroupedBackground)))
+                        .background(RoundedRectangle(cornerRadius: CardLayout.insetCornerRadius).fill(Color(.tertiarySystemGroupedBackground)))
                     Button(copied ? "Copied" : "Copy address") {
                         UIPasteboard.general.string = address
                         copied = true
@@ -232,7 +236,7 @@ struct JournalCard: View {
                 TextEditor(text: $viewModel.journalDraft)
                     .frame(minHeight: 80)
                     .padding(6)
-                    .background(RoundedRectangle(cornerRadius: 8).fill(Color(.tertiarySystemGroupedBackground)))
+                    .background(RoundedRectangle(cornerRadius: CardLayout.insetCornerRadius).fill(Color(.tertiarySystemGroupedBackground)))
                     .accessibilityIdentifier("home.journal.field")
 
                 Button {
@@ -334,38 +338,16 @@ struct HistoryCard: View {
         }
     }
 
-    @ViewBuilder
+    /// Row markup + pagination live in the shared `DevotionalCardList`
+    /// (S4 #345) — this card only wires in its `HomeViewModel` plumbing.
     private func devotionalList(_ cards: [DevotionalCard], showMore: Bool) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            ForEach(cards) { card in
-                NavigationLink {
-                    DevotionalReaderScreen(devotionalID: card.id, viewModel: viewModel)
-                } label: {
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text(card.theme).font(.subheadline.weight(.semibold))
-                        Text(DashboardDate.calendarDateLabel(card.date))
-                            .font(.caption).foregroundStyle(.secondary)
-                        Text(card.cardSummary).font(.footnote).foregroundStyle(.secondary)
-                        if card.completedAt != nil {
-                            CardHint("You sat with this one.")
-                        }
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                if card.id != cards.last?.id { Divider() }
-            }
-            if showMore {
-                Button {
-                    Task { await viewModel.loadMoreHistory() }
-                } label: {
-                    Text(viewModel.isLoadingMoreHistory ? "Loading…" : "Show more")
-                }
-                .font(.subheadline.weight(.semibold))
-                .disabled(viewModel.isLoadingMoreHistory)
-            }
-        }
+        DevotionalCardList(
+            cards: cards,
+            showMore: showMore,
+            isLoadingMore: viewModel.isLoadingMoreHistory,
+            loadMore: { Task { await viewModel.loadMoreHistory() } },
+            makeReader: { DevotionalReaderScreen(devotionalID: $0.id, viewModel: viewModel) }
+        )
     }
 }
 

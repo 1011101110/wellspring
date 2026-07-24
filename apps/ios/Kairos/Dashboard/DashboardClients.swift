@@ -5,105 +5,17 @@ import Foundation
 // `HTTP…` implementation, and an in-memory `Fake…` twin for demo mode /
 // previews / tests — the same shape as HTTPDistressCheckinClient et al.
 //
+// The shared error + transport these clients sit on live in
+// Networking/APITransport.swift (they started here as `DashboardError`/
+// `DashboardTransport` and were hoisted once every legacy client migrated
+// onto them — kairos-devotional #345).
+//
 // `baseURL` is always injected from AppEnvironment.apiBaseURL and auth is the
 // Firebase-ID-token bearer; no client here carries a URL literal of its own.
 
-// MARK: - Shared error + transport
-
-public enum DashboardError: Error, Equatable, LocalizedError {
-    case notAuthenticated
-    case network(String)
-    case server(statusCode: Int)
-
-    public var errorDescription: String? {
-        switch self {
-        case .notAuthenticated: return "Not signed in."
-        case .network(let detail): return "Network problem: \(detail)"
-        case .server(let statusCode): return "Server error (\(statusCode))."
-        }
-    }
-}
-
-/// The common token → request → status-check → decode flow, factored out so
-/// each client stays a thin, declarative wrapper.
-struct DashboardTransport: Sendable {
-    let baseURL: URL
-    let session: URLSession
-    let idTokenProvider: @Sendable () async throws -> String
-
-    private func makeRequest(path: String, query: [URLQueryItem], method: String, jsonBody: Data?) async throws -> URLRequest {
-        let token: String
-        do { token = try await idTokenProvider() }
-        catch { throw DashboardError.notAuthenticated }
-
-        var url = baseURL.appendingPathComponent(path)
-        if !query.isEmpty, var comps = URLComponents(url: url, resolvingAgainstBaseURL: false) {
-            comps.queryItems = query
-            if let u = comps.url { url = u }
-        }
-        var request = URLRequest(url: url)
-        request.httpMethod = method
-        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        if let jsonBody {
-            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            request.httpBody = jsonBody
-        }
-        return request
-    }
-
-    /// Returns the decoded body, or throws DashboardError. `notFoundReturnsNil`
-    /// lets probe-style endpoints (search) treat 404 as "unavailable".
-    func send<T: Decodable>(
-        path: String,
-        query: [URLQueryItem] = [],
-        method: String = "GET",
-        jsonBody: Data? = nil,
-        as type: T.Type
-    ) async throws -> T {
-        let request = try await makeRequest(path: path, query: query, method: method, jsonBody: jsonBody)
-        let data: Data
-        let response: URLResponse
-        do { (data, response) = try await session.data(for: request) }
-        catch { throw DashboardError.network(error.localizedDescription) }
-
-        guard let http = response as? HTTPURLResponse else {
-            throw DashboardError.network("No HTTP response.")
-        }
-        guard (200..<300).contains(http.statusCode) else {
-            throw DashboardError.server(statusCode: http.statusCode)
-        }
-        do { return try JSONDecoder().decode(T.self, from: data) }
-        catch { throw DashboardError.network("Malformed response body.") }
-    }
-
-    /// For mutations that return only `{ ok: true }`.
-    func sendNoContent(path: String, method: String, jsonBody: Data?) async throws {
-        let request = try await makeRequest(path: path, query: [], method: method, jsonBody: jsonBody)
-        let response: URLResponse
-        do { (_, response) = try await session.data(for: request) }
-        catch { throw DashboardError.network(error.localizedDescription) }
-        guard let http = response as? HTTPURLResponse else {
-            throw DashboardError.network("No HTTP response.")
-        }
-        guard (200..<300).contains(http.statusCode) else {
-            throw DashboardError.server(statusCode: http.statusCode)
-        }
-    }
-
-    /// GET that maps a 404 to nil (search availability probe).
-    func sendAllowing404<T: Decodable>(path: String, query: [URLQueryItem], as type: T.Type) async throws -> T? {
-        let request = try await makeRequest(path: path, query: query, method: "GET", jsonBody: nil)
-        let data: Data
-        let response: URLResponse
-        do { (data, response) = try await session.data(for: request) }
-        catch { throw DashboardError.network(error.localizedDescription) }
-        guard let http = response as? HTTPURLResponse else { throw DashboardError.network("No HTTP response.") }
-        if http.statusCode == 404 { return nil }
-        guard (200..<300).contains(http.statusCode) else { throw DashboardError.server(statusCode: http.statusCode) }
-        do { return try JSONDecoder().decode(T.self, from: data) }
-        catch { throw DashboardError.network("Malformed response body.") }
-    }
-}
+/// The name these clients' seams and tests were written against — now the
+/// one shared `APIError` (see Networking/APITransport.swift).
+public typealias DashboardError = APIError
 
 // MARK: - Upcoming events
 
@@ -114,9 +26,9 @@ public protocol UpcomingEventsProviding: AnyObject, Sendable {
 private struct UpcomingResponseBody: Decodable { let data: [UpcomingCalendarEvent] }
 
 public final class HTTPUpcomingEventsClient: UpcomingEventsProviding, @unchecked Sendable {
-    private let transport: DashboardTransport
+    private let transport: APITransport
     public init(baseURL: URL, session: URLSession = .shared, idTokenProvider: @escaping @Sendable () async throws -> String) {
-        transport = DashboardTransport(baseURL: baseURL, session: session, idTokenProvider: idTokenProvider)
+        transport = APITransport(baseURL: baseURL, session: session, idTokenProvider: idTokenProvider)
     }
     public func upcoming() async throws -> [UpcomingCalendarEvent] {
         try await transport.send(path: "v1/calendar-events/upcoming", as: UpcomingResponseBody.self).data
@@ -148,9 +60,9 @@ public protocol FreeBusyProviding: AnyObject, Sendable {
 private struct FreeBusyResponseBody: Decodable { let data: FreeBusy }
 
 public final class HTTPFreeBusyClient: FreeBusyProviding, @unchecked Sendable {
-    private let transport: DashboardTransport
+    private let transport: APITransport
     public init(baseURL: URL, session: URLSession = .shared, idTokenProvider: @escaping @Sendable () async throws -> String) {
-        transport = DashboardTransport(baseURL: baseURL, session: session, idTokenProvider: idTokenProvider)
+        transport = APITransport(baseURL: baseURL, session: session, idTokenProvider: idTokenProvider)
     }
     public func freeBusy(from: String, to: String) async throws -> FreeBusy {
         let query = [
@@ -185,9 +97,9 @@ public protocol ConnectionsProviding: AnyObject, Sendable {
 private struct ConnectionsResponseBody: Decodable { let connections: [Connection] }
 
 public final class HTTPConnectionsClient: ConnectionsProviding, @unchecked Sendable {
-    private let transport: DashboardTransport
+    private let transport: APITransport
     public init(baseURL: URL, session: URLSession = .shared, idTokenProvider: @escaping @Sendable () async throws -> String) {
-        transport = DashboardTransport(baseURL: baseURL, session: session, idTokenProvider: idTokenProvider)
+        transport = APITransport(baseURL: baseURL, session: session, idTokenProvider: idTokenProvider)
     }
     public func connections() async throws -> [Connection] {
         try await transport.send(path: "v1/connections", as: ConnectionsResponseBody.self).connections
@@ -227,9 +139,9 @@ private struct DevotionalListResponseBody: Decodable { let data: [DevotionalCard
 private struct DevotionalDetailResponseBody: Decodable { let data: DevotionalDetail }
 
 public final class HTTPDevotionalsClient: DevotionalsProviding, @unchecked Sendable {
-    private let transport: DashboardTransport
+    private let transport: APITransport
     public init(baseURL: URL, session: URLSession = .shared, idTokenProvider: @escaping @Sendable () async throws -> String) {
-        transport = DashboardTransport(baseURL: baseURL, session: session, idTokenProvider: idTokenProvider)
+        transport = APITransport(baseURL: baseURL, session: session, idTokenProvider: idTokenProvider)
     }
     public func list(cursor: String?) async throws -> DevotionalPage {
         var query = [URLQueryItem(name: "limit", value: "20")]
@@ -282,9 +194,9 @@ public protocol RecapProviding: AnyObject, Sendable {
 private struct RecapResponseBody: Decodable { let data: MonthlyRecap }
 
 public final class HTTPRecapClient: RecapProviding, @unchecked Sendable {
-    private let transport: DashboardTransport
+    private let transport: APITransport
     public init(baseURL: URL, session: URLSession = .shared, idTokenProvider: @escaping @Sendable () async throws -> String) {
-        transport = DashboardTransport(baseURL: baseURL, session: session, idTokenProvider: idTokenProvider)
+        transport = APITransport(baseURL: baseURL, session: session, idTokenProvider: idTokenProvider)
     }
     public func recap(year: Int, month: Int) async throws -> MonthlyRecap {
         try await transport.send(path: "v1/recap/\(year)/\(month)", as: RecapResponseBody.self).data
@@ -324,9 +236,9 @@ private struct JournalListResponseBody: Decodable { let data: [JournalEntry]; le
 private struct JournalCreateResponseBody: Decodable { let data: JournalEntry }
 
 public final class HTTPJournalClient: JournalProviding, @unchecked Sendable {
-    private let transport: DashboardTransport
+    private let transport: APITransport
     public init(baseURL: URL, session: URLSession = .shared, idTokenProvider: @escaping @Sendable () async throws -> String) {
-        transport = DashboardTransport(baseURL: baseURL, session: session, idTokenProvider: idTokenProvider)
+        transport = APITransport(baseURL: baseURL, session: session, idTokenProvider: idTokenProvider)
     }
     public func list(before: String?) async throws -> JournalPage {
         var query: [URLQueryItem] = []
@@ -379,9 +291,9 @@ private struct LiturgyResponseBody: Decodable {
 }
 
 public final class HTTPLiturgyClient: LiturgyProviding, @unchecked Sendable {
-    private let transport: DashboardTransport
+    private let transport: APITransport
     public init(baseURL: URL, session: URLSession = .shared, idTokenProvider: @escaping @Sendable () async throws -> String) {
-        transport = DashboardTransport(baseURL: baseURL, session: session, idTokenProvider: idTokenProvider)
+        transport = APITransport(baseURL: baseURL, session: session, idTokenProvider: idTokenProvider)
     }
     public func currentSeason() async throws -> LiturgicalSeason? {
         try await transport.send(path: "v1/liturgical-season", as: LiturgyResponseBody.self).data.season
@@ -413,9 +325,9 @@ private struct GenerateNowResponseBody: Decodable {
 }
 
 public final class HTTPGenerateNowClient: GenerateNowRequesting, @unchecked Sendable {
-    private let transport: DashboardTransport
+    private let transport: APITransport
     public init(baseURL: URL, session: URLSession = .shared, idTokenProvider: @escaping @Sendable () async throws -> String) {
-        transport = DashboardTransport(baseURL: baseURL, session: session, idTokenProvider: idTokenProvider)
+        transport = APITransport(baseURL: baseURL, session: session, idTokenProvider: idTokenProvider)
     }
     public func generateNow() async throws -> GenerateNowOutcome {
         // `mode: 'now'` — a routine "make one now" tap, distinct from the
@@ -459,9 +371,9 @@ private struct PreferencesInviteResponseBody: Decodable {
 }
 
 public final class HTTPAccountInfoClient: AccountInfoProviding, @unchecked Sendable {
-    private let transport: DashboardTransport
+    private let transport: APITransport
     public init(baseURL: URL, session: URLSession = .shared, idTokenProvider: @escaping @Sendable () async throws -> String) {
-        transport = DashboardTransport(baseURL: baseURL, session: session, idTokenProvider: idTokenProvider)
+        transport = APITransport(baseURL: baseURL, session: session, idTokenProvider: idTokenProvider)
     }
     public func inviteAddress() async throws -> String? {
         try await transport.send(path: "v1/preferences", as: PreferencesInviteResponseBody.self).data.inviteAddress

@@ -188,14 +188,17 @@ public final class PreferencesSyncCoordinator: @unchecked Sendable {
     }
 
     /// Applies a pulled snapshot over the local one, **preserving the two
-    /// fields `GET /v1/preferences` does not carry**.
+    /// fields this client's pull does not yet carry**.
     ///
     /// `tradition` and `translation` live in `OnboardingPreferences` but not
     /// in the `preferences` table — they are `users.tradition` and
-    /// `users.translation_id`, and the preferences payload has never
-    /// included them. `HTTPPreferencesClient.onboardingPreferences(from:)`
-    /// therefore fills both with `OnboardingPreferences.defaults`, which was
-    /// harmless for as long as `pull()` was called by nothing.
+    /// `users.translation_id`. The server now returns them on
+    /// `GET /v1/preferences` (O2, kairos-devotional #314: `language`/
+    /// `translationId`), but this client does not decode or push them yet —
+    /// that is the O6 #318 parity story.
+    /// `HTTPPreferencesClient.onboardingPreferences(from:)` therefore fills
+    /// both with `OnboardingPreferences.defaults`, which was harmless for
+    /// as long as `pull()` was called by nothing.
     ///
     /// The moment #225 started applying pulled state, it stopped being
     /// harmless: a plain `save(state.preferences)` would reset every user's
@@ -206,12 +209,12 @@ public final class PreferencesSyncCoordinator: @unchecked Sendable {
     /// not send; absent is not the same as empty, exactly as it isn't for
     /// `onboardedAt`.
     ///
-    /// TODO(#225 follow-up): the correct end state is for these two to
-    /// round-trip like everything else, since they are just as
+    /// TODO(O6, kairos-devotional #318): the correct end state is for these
+    /// two to round-trip like everything else, since they are just as
     /// cross-surface as the rest — a user who picks Anglican on web will
-    /// still see General on iOS. That needs `tradition`/`translationId` on
-    /// both the request and response schemas plus a `users` write path, so
-    /// it is a contract change rather than part of wiring up the pull.
+    /// still see General on iOS. The contract change and `users` write path
+    /// this used to wait on landed with O2 (#314); what remains is the iOS
+    /// client actually pushing and pulling the fields, tracked as O6 #318.
     /// Until then this guard is what keeps the pull from actively making
     /// the parity gap worse than the one it inherited.
     static func merging(

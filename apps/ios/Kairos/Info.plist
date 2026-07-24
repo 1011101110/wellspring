@@ -48,11 +48,11 @@
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 	<key>NSCalendarsFullAccessUsageDescription</key>
-	<string>Kairos reads when you're free or busy to place your devotional in a quiet gap. Event titles, attendees, and notes are never read.</string>
+	<string>Wellspring reads when you're free or busy to place your devotional in a quiet gap. Event titles, attendees, and notes are never read.</string>
 	<key>NSCalendarsUsageDescription</key>
-	<string>Kairos reads when you're free or busy to place your devotional in a quiet gap. Event titles, attendees, and notes are never read.</string>
+	<string>Wellspring reads when you're free or busy to place your devotional in a quiet gap. Event titles, attendees, and notes are never read.</string>
 	<key>NSHealthShareUsageDescription</key>
-	<string>Kairos turns your recovery, sleep, and activity into three simple words on your phone. Raw health data never leaves your device.</string>
+	<string>Wellspring turns your recovery, sleep, and activity into three simple words on your phone. Raw health data never leaves your device.</string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>fetch</string>

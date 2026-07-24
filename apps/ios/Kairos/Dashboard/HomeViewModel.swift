@@ -320,14 +320,4 @@ public final class HomeViewModel: ObservableObject {
         let todayString = f.string(from: now())
         return ymd == todayString
     }
-
-    /// TODAY headline copy, keyed on provenance (mirrors web TODAY_HEADLINES).
-    public var todayHeadline: String {
-        switch today {
-        case .loaded(let content):
-            return content.provenance == .today ? "Today's devotional is ready." : "Your last devotional"
-        default:
-            return "Today"
-        }
-    }
 }

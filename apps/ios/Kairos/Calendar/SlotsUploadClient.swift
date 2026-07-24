@@ -1,19 +1,9 @@
 import Foundation
 
-/// Error cases for `SlotsUploadClient.uploadSlots`.
-public enum SlotsUploadError: Error, Equatable, LocalizedError {
-    case notAuthenticated
-    case network(String)
-    case server(statusCode: Int)
-
-    public var errorDescription: String? {
-        switch self {
-        case .notAuthenticated:  return "Not signed in."
-        case .network(let msg):  return "Network problem: \(msg)"
-        case .server(let code):  return "Server error (\(code))."
-        }
-    }
-}
+/// Error cases for `SlotsUploadClient.uploadSlots` — the shared `APIError`
+/// under the name this client's seam and tests were written against
+/// (kairos-devotional #345).
+public typealias SlotsUploadError = APIError
 
 /// Protocol seam for `POST /v1/slots`, so callers (including
 /// `BackgroundBandRefreshScheduler`) and tests can depend on the abstraction
@@ -33,32 +23,21 @@ public protocol SlotsUploading: AnyObject, Sendable {
 /// ```
 /// Header: `Authorization: Bearer <id_token>`.
 ///
-/// `baseURL` is always injected (from `AppEnvironment.apiBaseURL`) — this
-/// client has no URL literal of its own, exactly like `HTTPBandUploadClient`.
+/// The HTTP mechanics live in the shared `APITransport` (#345); `baseURL` is
+/// always injected (from `AppEnvironment.apiBaseURL`) — this client has no
+/// URL literal of its own, exactly like `HTTPBandUploadClient`.
 public final class SlotsUploadClient: SlotsUploading, @unchecked Sendable {
-    private let baseURL: URL
-    private let session: URLSession
-    /// Supplies a fresh Firebase Auth ID token for each request.
-    private let getIdToken: @Sendable () async throws -> String
+    private let transport: APITransport
 
     public init(
         baseURL: URL,
         session: URLSession = .shared,
         getIdToken: @escaping @Sendable () async throws -> String
     ) {
-        self.baseURL = baseURL
-        self.session = session
-        self.getIdToken = getIdToken
+        transport = APITransport(baseURL: baseURL, session: session, idTokenProvider: getIdToken)
     }
 
     public func uploadSlots(date: String, freeWindows: [FreeWindow]) async throws {
-        let token: String
-        do {
-            token = try await getIdToken()
-        } catch {
-            throw SlotsUploadError.notAuthenticated
-        }
-
         // Build the wire payload matching SlotsUploadRequestSchema exactly.
         // Only "date" and "slots" (each containing only "startIso"/"endIso")
         // are ever sent — no titles, attendees, or any calendar content.
@@ -70,25 +49,7 @@ public final class SlotsUploadClient: SlotsUploading, @unchecked Sendable {
             throw SlotsUploadError.network("Encoding failed: \(error.localizedDescription)")
         }
 
-        var request = URLRequest(url: baseURL.appendingPathComponent("v1/slots"))
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        request.httpBody = encoded
-
-        let (_, response): (Data, URLResponse)
-        do {
-            (_, response) = try await session.data(for: request)
-        } catch {
-            throw SlotsUploadError.network(error.localizedDescription)
-        }
-
-        guard let http = response as? HTTPURLResponse else {
-            throw SlotsUploadError.network("No HTTP response.")
-        }
-        guard (200..<300).contains(http.statusCode) else {
-            throw SlotsUploadError.server(statusCode: http.statusCode)
-        }
+        try await transport.sendNoContent(path: "v1/slots", method: "POST", jsonBody: encoded)
     }
 
     // MARK: - Wire body

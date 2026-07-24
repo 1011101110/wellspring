@@ -75,9 +75,11 @@ targets:
         # The target, bundle id, and module stay "kairos" (internal codename);
         # only the user-facing name is Wellspring, matching the web app.
         CFBundleDisplayName: Wellspring
-        NSCalendarsUsageDescription: "Kairos reads when you're free or busy to place your devotional in a quiet gap. Event titles, attendees, and notes are never read."
-        NSCalendarsFullAccessUsageDescription: "Kairos reads when you're free or busy to place your devotional in a quiet gap. Event titles, attendees, and notes are never read."
-        NSHealthShareUsageDescription: "Kairos turns your recovery, sleep, and activity into three simple words on your phone. Raw health data never leaves your device."
+        # Permission dialogs are user-facing, so they say "Wellspring" like
+        # CFBundleDisplayName above — never the internal codename (S4 #345).
+        NSCalendarsUsageDescription: "Wellspring reads when you're free or busy to place your devotional in a quiet gap. Event titles, attendees, and notes are never read."
+        NSCalendarsFullAccessUsageDescription: "Wellspring reads when you're free or busy to place your devotional in a quiet gap. Event titles, attendees, and notes are never read."
+        NSHealthShareUsageDescription: "Wellspring turns your recovery, sleep, and activity into three simple words on your phone. Raw health data never leaves your device."
         ITSAppUsesNonExemptEncryption: false
         UIBackgroundModes:
           - fetch

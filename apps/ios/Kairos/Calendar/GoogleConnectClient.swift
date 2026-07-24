@@ -2,9 +2,14 @@ import Foundation
 
 /// Errors from the `GET /v1/connect/google` call that starts the OAuth
 /// handshake (issue #124). Distinct from `CalendarConnectError` — this is
-/// the narrow HTTP-mechanics failure set, mirroring `BandUploadError`/
-/// `PreferencesSyncError`'s shape exactly; `GoogleCalendarConnectService`
+/// the narrow HTTP-mechanics failure set; `GoogleCalendarConnectService`
 /// maps these into `CalendarConnectError` at the boundary.
+///
+/// Deliberately NOT a typealias of the shared `APIError` (#345, unlike
+/// `BandUploadError` et al.): the extra `malformedResponse` case makes the
+/// shapes differ, and collapsing it would churn the seam this client's
+/// service and tests pattern-match on. The three shared cases delegate
+/// their user-facing copy to `APIError` so the wording has one source.
 public enum GoogleConnectClientError: Error, Equatable, LocalizedError {
     case notAuthenticated
     case network(String)
@@ -14,11 +19,11 @@ public enum GoogleConnectClientError: Error, Equatable, LocalizedError {
     public var errorDescription: String? {
         switch self {
         case .notAuthenticated:
-            return "Not signed in."
+            return APIError.notAuthenticated.errorDescription
         case .network(let detail):
-            return "Network problem: \(detail)"
+            return APIError.network(detail).errorDescription
         case .server(let statusCode):
-            return "Server error (\(statusCode))."
+            return APIError.server(statusCode: statusCode).errorDescription
         case .malformedResponse:
             return "Unexpected response from the server."
         }

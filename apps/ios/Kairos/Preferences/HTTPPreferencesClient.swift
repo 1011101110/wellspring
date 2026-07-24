@@ -1,23 +1,10 @@
 import Foundation
 
-/// Errors an `HTTPPreferencesClient` call can surface — same shape as
+/// Errors an `HTTPPreferencesClient` call can surface — the shared
+/// `APIError` under the name this client's seam and tests were written
+/// against (kairos-devotional #345), same as
 /// `BandUploadError`/`AccountDeletionError`.
-public enum PreferencesSyncError: Error, Equatable, LocalizedError {
-    case notAuthenticated
-    case network(String)
-    case server(statusCode: Int)
-
-    public var errorDescription: String? {
-        switch self {
-        case .notAuthenticated:
-            return "Not signed in."
-        case .network(let detail):
-            return "Network problem: \(detail)"
-        case .server(let statusCode):
-            return "Server error (\(statusCode))."
-        }
-    }
-}
+public typealias PreferencesSyncError = APIError
 
 /// Real `RemotePreferencesSyncing` conformance: `GET`/`PUT {baseURL}/v1/preferences`
 /// with a Firebase Auth JWT bearer token, mirroring `HTTPBandUploadClient`'s
@@ -56,10 +43,12 @@ public enum PreferencesSyncError: Error, Equatable, LocalizedError {
 ///    <-> `stillness` (same string values, plain `text` column server-side) —
 ///    the one field here with an exact 1:1 string mapping; an unrecognized
 ///    value on pull falls back to `.off`.
-///  - `tradition`/`translation` are not synced at all — those live on
-///    `users`, not `preferences` (per the schema's own doc comment), so
-///    there is no server value to push or pull; `pull()` fills them with
-///    `OnboardingPreferences`'s own defaults.
+///  - `tradition`/`translation` are not synced by THIS CLIENT yet. The
+///    server-side write path exists now (O2, kairos-devotional #314:
+///    `language`/`translationId` ride the preferences route on the
+///    `users`-table exception, like `timezone`), but the iOS push/pull is
+///    the O6 #318 parity story; until that lands, `pull()` fills both with
+///    `OnboardingPreferences`'s own defaults and push sends neither.
 ///  - `calendarEnabled`/`healthEnabled` are no longer omitted (issue #225).
 ///    They have no representation in `OnboardingPreferences` — they come
 ///    from `ConsentStore` via `ConsentSyncMapping` — and are sent only when
@@ -74,18 +63,14 @@ public enum PreferencesSyncError: Error, Equatable, LocalizedError {
 ///    rather than from `OnboardingPreferences` (issue #187) — it lands on
 ///    `users`, not `preferences`, so `pull()` has nothing to read back.
 public final class HTTPPreferencesClient: RemotePreferencesSyncing, @unchecked Sendable {
-    private let baseURL: URL
-    private let session: URLSession
-    private let idTokenProvider: @Sendable () async throws -> String
+    private let transport: APITransport
 
     public init(
         baseURL: URL,
         session: URLSession = .shared,
         idTokenProvider: @escaping @Sendable () async throws -> String
     ) {
-        self.baseURL = baseURL
-        self.session = session
-        self.idTokenProvider = idTokenProvider
+        transport = APITransport(baseURL: baseURL, session: session, idTokenProvider: idTokenProvider)
     }
 
     public func push(
@@ -93,70 +78,23 @@ public final class HTTPPreferencesClient: RemotePreferencesSyncing, @unchecked S
         consent: RemoteConsentWrite?,
         onboardingCompleted: Bool
     ) async throws {
-        let token = try await authorizedToken()
-
-        var urlRequest = URLRequest(url: baseURL.appendingPathComponent("v1/preferences"))
-        urlRequest.httpMethod = "PUT"
-        urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        urlRequest.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        urlRequest.httpBody = try JSONEncoder().encode(
+        let body = try JSONEncoder().encode(
             Self.updateBody(for: preferences, consent: consent, onboardingCompleted: onboardingCompleted)
         )
-
-        let (_, response) = try await performRequest(urlRequest)
-        guard let http = response as? HTTPURLResponse else {
-            throw PreferencesSyncError.network("No HTTP response.")
-        }
-        guard (200..<300).contains(http.statusCode) else {
-            throw PreferencesSyncError.server(statusCode: http.statusCode)
-        }
+        try await transport.sendNoContent(path: "v1/preferences", method: "PUT", jsonBody: body)
     }
 
     public func pull() async throws -> RemoteUserState? {
-        let token = try await authorizedToken()
-
-        var urlRequest = URLRequest(url: baseURL.appendingPathComponent("v1/preferences"))
-        urlRequest.httpMethod = "GET"
-        urlRequest.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-
-        let (data, response) = try await performRequest(urlRequest)
-        guard let http = response as? HTTPURLResponse else {
-            throw PreferencesSyncError.network("No HTTP response.")
-        }
         // A brand-new user has no `preferences` row until the first `PUT`
         // (`PreferencesRepository.ensureExists` is only called from that
         // route) — 404 here is the documented "no stored value yet" case,
-        // not an error.
-        if http.statusCode == 404 {
+        // not an error, hence `sendAllowing404`.
+        guard let decoded = try await transport.sendAllowing404(
+            path: "v1/preferences", query: [], as: PreferencesGetResponseBody.self
+        ) else {
             return nil
         }
-        guard (200..<300).contains(http.statusCode) else {
-            throw PreferencesSyncError.server(statusCode: http.statusCode)
-        }
-
-        let decoded: PreferencesGetResponseBody
-        do {
-            decoded = try JSONDecoder().decode(PreferencesGetResponseBody.self, from: data)
-        } catch {
-            throw PreferencesSyncError.network("Malformed response body.")
-        }
         return Self.remoteUserState(from: decoded.data)
-    }
-
-    private func authorizedToken() async throws -> String {
-        do {
-            return try await idTokenProvider()
-        } catch {
-            throw PreferencesSyncError.notAuthenticated
-        }
-    }
-
-    private func performRequest(_ urlRequest: URLRequest) async throws -> (Data, URLResponse) {
-        do {
-            return try await session.data(for: urlRequest)
-        } catch {
-            throw PreferencesSyncError.network(error.localizedDescription)
-        }
     }
 
     /// `timeZoneIdentifier` defaults to the device's current zone and is a

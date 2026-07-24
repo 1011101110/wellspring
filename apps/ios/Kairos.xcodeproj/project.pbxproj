@@ -80,6 +80,8 @@
 		A05133D46BBFD4E472B915BE /* HealthKitMapping.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0E22A4A5D05FA07EF526832 /* HealthKitMapping.swift */; };
 		A3D6FC91F0342DE952D04D7B /* FakeHealthConnectService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A82EF295CA9A39C85CF828B /* FakeHealthConnectService.swift */; };
 		A9C30E134D22089A0D8FE0E5 /* DashboardDemoData.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D23DFB5FA9F6A18C19BC236 /* DashboardDemoData.swift */; };
+		A9E9052C7FB0AACDF7DAFB2F /* DevotionalCardList.swift in Sources */ = {isa = PBXBuildFile; fileRef = A39CB1C34361707DE521BBCF /* DevotionalCardList.swift */; };
+		AAA507257614E5AA1745B476 /* APITransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = EEC2EC098A40C574F0F1AC77 /* APITransport.swift */; };
 		AB1D527DA0E2159559EA0C9E /* OnboardingDoneView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E55CC8AA69A81049C4E1B40 /* OnboardingDoneView.swift */; };
 		AD6CB5E8329F0D2E4F46145F /* BandDeriver in Frameworks */ = {isa = PBXBuildFile; productRef = EFD5050A9841BB1BD16AD2DE /* BandDeriver */; };
 		AD791F0AFA6E91D520D28A3D /* HealthConnectService.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD23FB9A6EF0C74F13F7BD49 /* HealthConnectService.swift */; };
@@ -203,6 +205,7 @@
 		9C38373AAAD69B2D16624B3F /* BandPhrase.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BandPhrase.swift; sourceTree = "<group>"; };
 		9E2BF4D48A0B97F35146C037 /* OnboardingCompletionStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingCompletionStoreTests.swift; sourceTree = "<group>"; };
 		9E925B65DB23CFB18814A7DD /* DashboardClientsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardClientsTests.swift; sourceTree = "<group>"; };
+		A39CB1C34361707DE521BBCF /* DevotionalCardList.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DevotionalCardList.swift; sourceTree = "<group>"; };
 		A773E52CA6DCF45AFA3A0B52 /* HealthKitSampleReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthKitSampleReader.swift; sourceTree = "<group>"; };
 		A9245997707B87F343A508E9 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
 		AF745B89549A1A75F4A3092D /* WelcomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WelcomeView.swift; sourceTree = "<group>"; };
@@ -230,6 +233,7 @@
 		EB4A32DEE6E0611CBC123040 /* GoogleConnectClientTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoogleConnectClientTests.swift; sourceTree = "<group>"; };
 		EC4787586F95302AD40228E1 /* RootTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootTabView.swift; sourceTree = "<group>"; };
 		ED2AC8A507E59B1BEF90BCB2 /* FirebaseAuthService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FirebaseAuthService.swift; sourceTree = "<group>"; };
+		EEC2EC098A40C574F0F1AC77 /* APITransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APITransport.swift; sourceTree = "<group>"; };
 		F25F3738EEAD0D62A39FE27C /* GoogleService-Info.plist.example */ = {isa = PBXFileReference; path = "GoogleService-Info.plist.example"; sourceTree = "<group>"; };
 		F3E3E9584B35B304112B59BE /* DataPrivacyView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DataPrivacyView.swift; sourceTree = "<group>"; };
 		F582EA465E8626CE7316AB5F /* DemoFixtureSnapshot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DemoFixtureSnapshot.swift; sourceTree = "<group>"; };
@@ -424,6 +428,7 @@
 		83A520DF431F025916A81C9E /* Devotional */ = {
 			isa = PBXGroup;
 			children = (
+				A39CB1C34361707DE521BBCF /* DevotionalCardList.swift */,
 				28E40278047EBEC9094B7A2A /* DevotionalDetailView.swift */,
 				716CB5D58BA507641ADEAEA2 /* DevotionalReaderScreen.swift */,
 			);
@@ -500,6 +505,7 @@
 				5AA32894D3453FC8CBD0B072 /* Devotional */,
 				40234B77E8D899E871CEEEEC /* Health */,
 				46A89BA99493EB8A5C469E54 /* Models */,
+				DAB3F96A3D049BECF1FCDD4B /* Networking */,
 				830F50592E2760E79E2D2F65 /* Preferences */,
 				5B77F1516A7DDEF6276BCE15 /* Privacy */,
 				561D69E0F69C3C76BCD203B1 /* Resources */,
@@ -539,6 +545,14 @@
 				3976EA50134F74992818EAD4 /* Preferences */,
 			);
 			path = Views;
+			sourceTree = "<group>";
+		};
+		DAB3F96A3D049BECF1FCDD4B /* Networking */ = {
+			isa = PBXGroup;
+			children = (
+				EEC2EC098A40C574F0F1AC77 /* APITransport.swift */,
+			);
+			path = Networking;
 			sourceTree = "<group>";
 		};
 		E15AC5BDA4A1E8ACA4101A41 /* Home */ = {
@@ -648,9 +662,6 @@
 				BuildIndependentTargetsInParallel = YES;
 				LastUpgradeCheck = 1430;
 				TargetAttributes = {
-					6CD36DBB9B1781513D7A5353 = {
-						ProvisioningStyle = Automatic;
-					};
 					BB663BD61268A5A10FB69C71 = {
 						ProvisioningStyle = Automatic;
 					};
@@ -705,6 +716,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				AAA507257614E5AA1745B476 /* APITransport.swift in Sources */,
 				05C550CCCB687A78A000B766 /* AccountDeletionClient.swift in Sources */,
 				6DD56EE9B0EE885AA16A7FF1 /* AnyAuthService.swift in Sources */,
 				923280772EFD5460FF3638C6 /* AppEnvironment.swift in Sources */,
@@ -728,6 +740,7 @@
 				938A8919524210CC7C00BDCA /* DataPrivacyView.swift in Sources */,
 				5D3C6E7D348E0D899D4FFB86 /* DataPrivacyViewModel.swift in Sources */,
 				C7F30896A5555738FFE6834F /* DemoFixtureSnapshot.swift in Sources */,
+				A9E9052C7FB0AACDF7DAFB2F /* DevotionalCardList.swift in Sources */,
 				0E8CA96EB465768C155711EE /* DevotionalDetailView.swift in Sources */,
 				131ECFF394F13A10EAE9B5B2 /* DevotionalReaderScreen.swift in Sources */,
 				6AA1F153E252FAE0AA0B883E /* DistressCheckinClient.swift in Sources */,
@@ -906,6 +919,7 @@
 		210D07AB961F41D3019ECB50 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				API_BASE_URL = "";
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = Kairos/Kairos.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
@@ -1024,13 +1038,15 @@
 		C03D906342ABE2FAF9A1971C /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				API_BASE_URL = "";
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGNING_ALLOWED = YES;
 				CODE_SIGN_ENTITLEMENTS = Kairos/Kairos.entitlements;
-				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Manual;
 				CURRENT_PROJECT_VERSION = 1;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Kairos/Info.plist;
-				INFOPLIST_KEY_API_BASE_URL = "https://your-api-host.example.com";
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
