@@ -1,44 +1,111 @@
 /*
- * Plain CSS, no framework (#195 scope note).
+ * Plain CSS, no framework (#195 scope note), themed by the Wellspring
+ * Design System (Epic T #347; tokens in `tokens.css`, generated from
+ * `@kairos/shared-contracts` designTokens.ts — one source of truth).
+ *
+ * The design's own rules, held here: canvas ground, Spectral for titles
+ * and Scripture (never sans), Hanken Grotesk for chrome (never serif),
+ * terracotta as the ONLY accent, 24px card radius, warm-tinted shadows
+ * only, crossfades in the 700–1200ms band and nothing that springs.
  *
  * Colors are chosen for WCAG AA against their own background — the
- * `session-a11y` bar (docs/07 §2), held here too. The palette is
- * deliberately low-chroma and unhurried (docs/05 P1: "the product is a
- * moment of rest; the UI must not contradict that"), and no state
+ * `session-a11y` bar (docs/07 §2), held here too, and by #347 rule 2 it
+ * outranks literal fidelity: where a verbatim token pairing fails AA at
+ * its size (muted #A2937F on canvas is 2.81:1), the ROLE is kept and the
+ * shade deepened — those shades live in the token file's `accessible`
+ * group, not here, so every surface adjusts the same way. No state
  * anywhere is carried by hue alone (1.4.1) — see `.weekday`, which
- * inverts fill and adds a ring.
+ * inverts fill and adds weight.
  */
 
-:root {
-  --bg: #fdfcfa;
-  --surface: #ffffff;
-  --text: #1c1917;
-  /* 5.9:1 on --bg. Secondary copy is still body text, not decoration. */
-  --text-muted: #57534e;
-  --border: #d6d3d1;
-  /* 8.6:1 with white — safe as a button background and as link text. */
-  --accent: #3c4f8a;
-  --accent-text: #ffffff;
-  --error: #9b1c1c;
-  --ok: #14532d;
-  --warn-bg: #fdf6e3;
-  --focus: #b45309;
+@import './tokens.css';
+
+/* --- self-hosted fonts (T1 #348 — session-scope CSP forbids a CDN) ---- */
+
+@font-face {
+  font-family: 'Spectral';
+  font-style: normal;
+  font-weight: 300;
+  font-display: swap;
+  src: url('/fonts/spectral-300-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'Spectral';
+  font-style: italic;
+  font-weight: 300;
+  font-display: swap;
+  src: url('/fonts/spectral-300italic-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'Spectral';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/spectral-400-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* One variable file covers 400–600 — Hanken Grotesk ships as a variable font. */
+@font-face {
+  font-family: 'Hanken Grotesk';
+  font-style: normal;
+  font-weight: 400 600;
+  font-display: swap;
+  src: url('/fonts/hanken-grotesk-400-600-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
 }
 
+/*
+ * Semantic roles, mapped from the `--ws-*` tokens. Component rules read
+ * THESE, so the light/dark swap happens in one place.
+ */
+:root {
+  --bg: var(--ws-canvas);
+  --surface: #ffffff;
+  --text: var(--ws-ink);
+  /* `muted`'s text role at an AA shade — 5.64:1 on canvas (see tokens). */
+  --text-muted: var(--ws-muted-ink);
+  /* Decorative hairlines (dividers, card seams) — warm, not gray. */
+  --border: #ead9c9;
+  /* Form-control and toggle boundaries: 1.4.11 wants 3:1 (4.11:1 on white). */
+  --control-border: #8b7b64;
+  /* Clay carries terracotta's accent role wherever text must pass AA small. */
+  --accent: var(--ws-clay);
+  --accent-text: #ffffff;
+  /* The text-bearing CTA fill — terracotta's role, deepened to pass AA. */
+  --cta: var(--ws-grad-cta);
+  --error: #9b1c1c;
+  --ok: #14532d;
+  --warn-bg: var(--ws-mist);
+  --focus: var(--ws-clay-deep);
+  --card-bg: var(--ws-glass-bg);
+  --card-border: var(--ws-glass-border);
+  --verse-bg: var(--ws-grad-verse);
+}
+
+/* The dark (evening) set: night/dusk/candle/paper (§08). */
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #17161a;
-    --surface: #1f1e24;
-    --text: #edeaf0;
-    /* 7.2:1 on --surface. */
-    --text-muted: #b9b4c0;
-    --border: #423f4a;
-    --accent: #aec2ff;
-    --accent-text: #12121a;
+    --bg: var(--ws-night);
+    --surface: var(--ws-dusk);
+    --text: var(--ws-paper);
+    /* 6.12:1 on dusk. */
+    --text-muted: var(--ws-muted-ink-dark);
+    --border: #38415a;
+    --control-border: var(--ws-muted-ink-dark);
+    /* Terracotta's accent role, lightened for dark grounds (6.15:1 on dusk). */
+    --accent: var(--ws-terracotta-light);
+    --accent-text: var(--ws-night);
+    /* Candlelight CTA, night text — 11.75:1. */
+    --cta: var(--ws-grad-cta-dark);
     --error: #ffb3b3;
     --ok: #9ae6b4;
-    --warn-bg: #2c2718;
-    --focus: #ffd166;
+    --warn-bg: #383325;
+    --focus: var(--ws-candle);
+    --card-bg: var(--ws-dusk);
+    --card-border: 1px solid rgba(255, 255, 255, 0.08);
+    --verse-bg: #2b3247;
   }
 }
 
@@ -51,13 +118,8 @@ body {
   padding: 0;
   background: var(--bg);
   color: var(--text);
-  font-family:
-    ui-sans-serif,
-    system-ui,
-    -apple-system,
-    'Segoe UI',
-    Roboto,
-    sans-serif;
+  /* Hanken Grotesk for chrome — NEVER serif for chrome (§03). */
+  font-family: var(--ws-sans);
   font-size: 1rem;
   line-height: 1.6;
 }
@@ -66,6 +128,26 @@ main {
   max-width: 40rem;
   margin: 0 auto;
   padding: 2rem 1rem 4rem;
+}
+
+/*
+ * The crossfade (§08): surfaces arrive, they do not spring. Applied by
+ * `App`'s shell to the phase container, keyed per surface so each
+ * transition fades. 900ms sits inside the mandated 700–1200ms band, and
+ * the whole rule exists only for people who have not asked motion to stop.
+ */
+@media (prefers-reduced-motion: no-preference) {
+  .ws-fade {
+    animation: ws-crossfade var(--ws-dur) var(--ws-ease) both;
+  }
+}
+@keyframes ws-crossfade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 /* Visible only on focus — the first tab stop on every page. */
@@ -85,8 +167,10 @@ main {
 /*
  * One focus style for everything, and it is never removed. `:focus-visible`
  * so a mouse click does not leave a ring behind, but every keyboard path
- * shows one. The color is chosen to be visible against both the page and
- * the filled accent buttons.
+ * shows one. Deep clay in light (6.13:1 on canvas), candle in dark
+ * (9.72:1 on dusk) — the ring is drawn OUTSIDE the control (positive
+ * offset, see the calendar pills) so it always sits on the surface, never
+ * on a filled control's own gradient.
  */
 :focus-visible {
   outline: 3px solid var(--focus);
@@ -97,17 +181,53 @@ main:focus {
   outline: none;
 }
 
+/*
+ * The card: glass over canvas (§08 — white at .55 alpha, blurred, with a
+ * hairline of light for an edge) under the design's one warm shadow.
+ * Never a gray shadow anywhere in this file.
+ */
 .card {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 12px;
+  background: var(--card-bg);
+  -webkit-backdrop-filter: blur(var(--ws-glass-blur));
+  backdrop-filter: blur(var(--ws-glass-blur));
+  border: var(--card-border);
+  border-radius: var(--ws-radius-card);
+  box-shadow: var(--ws-shadow);
   padding: 1.75rem;
 }
 
+/* Titles are Spectral (§03) — chrome stays Hanken. */
+h1,
+h2 {
+  font-family: var(--ws-serif);
+  font-weight: 400;
+  letter-spacing: -0.01em;
+}
+
 h1 {
-  font-size: 1.6rem;
-  line-height: 1.3;
+  font-size: 1.75rem;
+  line-height: 1.25;
   margin: 0 0 0.75rem;
+}
+
+/* The brand lockup (§05): terracotta-gradient circle + Spectral wordmark. */
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  font-family: var(--ws-serif);
+  font-weight: 400;
+  font-size: 1.25rem;
+  letter-spacing: -0.01em;
+}
+.brand-mark {
+  flex: none;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  /* The verbatim terracotta gradient — decorative, so it may stay true. */
+  background: var(--ws-grad-terracotta);
+  box-shadow: var(--ws-shadow);
 }
 
 .lede {
@@ -120,10 +240,30 @@ h1 {
   font-size: 0.9rem;
   margin: 0.35rem 0 0;
 }
+/*
+ * The readout is the eyebrow role (§03): Hanken 600, 12px, uppercase,
+ * .22em tracking. Clay rather than the eyebrow's terracotta because 12px
+ * is small text and terracotta measures 3.39:1 on canvas — the role
+ * stays, the shade deepens (#347 rule 2).
+ */
 .readout {
-  font-size: 1rem;
-  color: var(--text);
+  font-family: var(--ws-sans);
+  font-size: 0.75rem;
   font-weight: 600;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+/*
+ * The rhythm card's status line is a full sentence — the eyebrow's
+ * uppercase tracking is for LABELS, and a shouted sentence is exactly the
+ * urgency §07 forbids. Same emphasis, sentence case.
+ */
+.readout.rhythm-status {
+  text-transform: none;
+  letter-spacing: 0.01em;
+  font-size: 0.9rem;
+  color: var(--text);
 }
 .hint-emphasis {
   color: var(--text);
@@ -143,10 +283,11 @@ h1 {
 
 button {
   font: inherit;
-  border-radius: 8px;
+  font-family: var(--ws-sans);
+  border-radius: var(--ws-radius-pill);
   /* 44px minimum target, as on iOS. */
   min-height: 44px;
-  padding: 0.6rem 1.15rem;
+  padding: 0.6rem 1.35rem;
   cursor: pointer;
 }
 button:disabled {
@@ -154,19 +295,28 @@ button:disabled {
   opacity: 0.75;
 }
 
+/*
+ * The primary CTA (§05): a pill on the terracotta gradient with white
+ * 15px/600 text and the design's warm CTA shadow. The gradient is the
+ * `cta` token — terracotta's role deepened into clay so the label passes
+ * AA at every point of the fill (the verbatim gradient's light end is
+ * 2.88:1 under white text).
+ */
 .primary {
   display: block;
   width: 100%;
   margin-top: 1.5rem;
-  background: var(--accent);
+  background: var(--cta);
   color: var(--accent-text);
-  border: 1px solid var(--accent);
+  border: none;
+  font-size: 0.9375rem;
   font-weight: 600;
+  box-shadow: var(--ws-shadow-cta);
 }
 .secondary {
   background: transparent;
   color: var(--text);
-  border: 1px solid var(--border);
+  border: 1px solid var(--control-border);
 }
 .quiet {
   display: block;
@@ -192,12 +342,17 @@ hr {
 
 .field {
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: 16px;
   padding: 1rem;
   margin: 0 0 1.25rem;
 }
+/* Fieldset legends carry the eyebrow role (§03) — see `.readout`. */
 .field legend {
   font-weight: 600;
+  font-size: 0.75rem;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--accent);
   padding: 0 0.35rem;
 }
 
@@ -220,14 +375,15 @@ hr {
 .control-inline input[type='checkbox'] {
   width: 1.15rem;
   height: 1.15rem;
+  accent-color: var(--accent);
 }
 
 select {
   font: inherit;
   color: var(--text);
   background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 8px;
+  border: 1px solid var(--control-border);
+  border-radius: 12px;
   min-height: 44px;
   padding: 0.4rem 0.6rem;
   width: 100%;
@@ -267,19 +423,21 @@ select:disabled {
   background: transparent;
   color: var(--text);
   /* Signal 3: the ring. Also what makes an unselected circle a visible,
-     obviously-clickable object rather than a bare letter. */
-  border: 2px solid var(--border);
+     obviously-clickable object rather than a bare letter. 1.4.11 holds:
+     the control border is ≥3:1 against both card and canvas. */
+  border: 2px solid var(--control-border);
   font-weight: 400;
 }
 
 .weekday.is-selected {
   /* Signal 1: fill — a luminance inversion, so it survives grayscale and
-     every form of color vision deficiency. */
-  background: var(--accent);
+     every form of color vision deficiency. The fill is the CTA gradient,
+     under which the letter passes AA (white ≥4.8:1 at every point). */
+  background: var(--cta);
   color: var(--accent-text);
   /* Signal 2: weight. */
   font-weight: 700;
-  border-color: var(--accent);
+  border-color: transparent;
 }
 
 /* --- notices ---------------------------------------------------------- */
@@ -287,7 +445,7 @@ select:disabled {
 .notice {
   margin-top: 1rem;
   padding: 0.6rem 0.85rem;
-  border-radius: 8px;
+  border-radius: 12px;
   border: 1px solid var(--border);
 }
 .notice:empty {
@@ -324,7 +482,7 @@ select:disabled {
 
 .dash-header {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
   gap: 1rem;
   margin-bottom: 1.5rem;
@@ -350,12 +508,28 @@ select:disabled {
   justify-content: space-between;
   gap: 1rem;
 }
+/*
+ * Card titles are the eyebrow role (§03): Hanken 600 · 12px · uppercase
+ * · .22em · clay (terracotta's AA shade — see `.readout`). One focal
+ * point per screen: the eyebrows label, the content speaks.
+ */
 .dash-card-header h2 {
-  font-size: 1.2rem;
+  font-family: var(--ws-sans);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin: 0.35rem 0 0.5rem;
+}
+/* Non-frame h2s (the first-run welcome, coming-soon) stay Spectral titles. */
+.dash-card > h2 {
+  font-size: 1.35rem;
   margin: 0 0 0.5rem;
 }
 
-/* The "+" — a 44px target like every other control here. */
+/* The "+" — a 44px target like every other control here. The glyph is
+   24px, large enough (3:1 bar) for the verbatim terracotta gradient. */
 .generate-now {
   text-align: right;
 }
@@ -364,12 +538,13 @@ select:disabled {
   height: 44px;
   padding: 0;
   border-radius: 50%;
-  background: var(--accent);
-  color: var(--accent-text);
-  border: 1px solid var(--accent);
+  background: var(--ws-grad-terracotta);
+  color: #ffffff;
+  border: none;
   font-size: 1.5rem;
   line-height: 1;
   font-weight: 400;
+  box-shadow: var(--ws-shadow-cta);
 }
 .generate-now-status {
   /* Reserves no space when empty so the header does not jump as the
@@ -432,8 +607,8 @@ select:disabled {
   font: inherit;
   color: var(--text);
   background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 8px;
+  border: 1px solid var(--control-border);
+  border-radius: 12px;
   min-height: 44px;
   padding: 0.4rem 0.6rem;
   flex: 1 1 12rem;
@@ -461,7 +636,7 @@ select:disabled {
   font-size: 0.95rem;
   background: var(--bg);
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: 8px;
   padding: 0.35rem 0.5rem;
   display: inline-block;
 }
@@ -471,23 +646,45 @@ select:disabled {
   margin: 1rem 0;
 }
 
+/*
+ * Scripture (§03/§05): Spectral 300 on the verse-block gradient, set
+ * `pretty` so no line ends on an orphan. The exact YouVersion text and
+ * its attribution render inside — never paraphrased, and the reference
+ * line below is the 13px Hanken `reference` role at the muted AA shade.
+ */
 .verse {
   margin: 1.25rem 0;
-  padding-left: 1rem;
-  border-left: 3px solid var(--border);
+  padding: 1.25rem 1.5rem;
+  border-radius: 16px;
+  background: var(--verse-bg);
   color: var(--text);
+  font-family: var(--ws-serif);
+  font-weight: 300;
+  font-size: 1.625rem;
+  line-height: 1.4;
+  text-wrap: pretty;
+}
+.verse p {
+  margin: 0;
 }
 .verse cite {
   display: block;
-  margin-top: 0.4rem;
+  margin-top: 0.75rem;
   color: var(--text-muted);
-  font-size: 0.9rem;
+  font-family: var(--ws-sans);
+  font-weight: 500;
+  font-size: 0.8125rem;
   font-style: normal;
+  letter-spacing: 0.02em;
 }
 
 /* Complementary content, set back from the functional cards above it. */
 .dash-coming-soon {
   background: var(--bg);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  box-shadow: none;
+  border: 1px solid var(--border);
 }
 .dash-coming-soon h2 {
   font-size: 1.05rem;
@@ -507,21 +704,24 @@ select:disabled {
  *     one fixed bar at one fixed opacity, identical on a day with one
  *     meeting and a day with nine — see MonthGrid's header for why a ramp
  *     is out of bounds in this product rather than merely unfashionable.
+ *
+ * The palette is the warm stone-and-dawn end of the token set — never a
+ * cool gray.
  */
 :root {
-  --cal-busy: #78716c;
-  --cal-busy-bg: #e7e5e4;
-  --cal-kairos-bg: #e8ecf7;
-  --cal-line: #e7e5e4;
+  --cal-busy: #7a6b58;
+  --cal-busy-bg: #f1e6d9;
+  --cal-kairos-bg: #f5e6da;
+  --cal-line: #ead9c9;
   --cal-height: 34rem;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --cal-busy: #8f8a99;
-    --cal-busy-bg: #2b2932;
-    --cal-kairos-bg: #262b3d;
-    --cal-line: #322f3a;
+    --cal-busy: #a99c86;
+    --cal-busy-bg: #2f3549;
+    --cal-kairos-bg: #33313f;
+    --cal-line: #38415a;
   }
 }
 
@@ -537,7 +737,7 @@ select:disabled {
   gap: 0;
   margin: 0;
   padding: 0;
-  border: 1px solid var(--border);
+  border: 1px solid var(--control-border);
   border-radius: 999px;
   /*
    * NOT `overflow: hidden` (#264/A1). Clipping the group is the tidy way
@@ -577,6 +777,8 @@ select:disabled {
 }
 
 .cal-mode.is-selected {
+  /* Clay, not the gradient: the selected pill is small 0.85rem text and
+     clay holds 5.53:1 under white. */
   background: var(--accent);
   color: var(--accent-text);
 }
@@ -587,8 +789,8 @@ select:disabled {
  * moves invisibly under the arrow keys.
  *
  * `+2px` — the same offset every other focusable thing in this file uses.
- * It puts the ring on `--surface` (5.02:1) rather than on the selected
- * pill's accent fill (1.56:1 light, 1.22:1 dark).
+ * It puts the ring on `--surface` rather than on the selected pill's
+ * accent fill.
  */
 .cal-mode:focus-within {
   outline: 3px solid var(--focus);
@@ -823,15 +1025,12 @@ select:disabled {
 
 /*
  * #264/A2. The hatch is `.cal-block-busy`'s identity and stays — but it
- * ran *under the label*, so where a #78716c stripe crossed a glyph the
- * text measured 1.59:1 (bold "Busy" on a stripe: 3.65:1). Between
- * stripes it was a comfortable 6.08:1, which is exactly the trap: WCAG
- * 1.4.3 is judged at the worst point on the glyph, not the average.
- *
- * A solid plate behind the label keeps the texture as the block's signal
- * while giving the words a flat background to sit on. Applied to the
- * label wrapper rather than each span so the plate is one continuous
- * shape rather than three overlapping ones.
+ * ran *under the label*, so where a stripe crossed a glyph the text
+ * failed 1.4.3, which is judged at the worst point on the glyph, not the
+ * average. A solid plate behind the label keeps the texture as the
+ * block's signal while giving the words a flat background to sit on.
+ * Applied to the label wrapper rather than each span so the plate is one
+ * continuous shape rather than three overlapping ones.
  */
 .cal-block-busy .cal-block-kind,
 .cal-block-busy .cal-block-time,
@@ -929,13 +1128,12 @@ select:disabled {
    * this rule, and it does so in a way that no colour written anywhere in
    * the file reveals. Naming the muted colour instead means each
    * descendant's contrast is a property of a token with a documented
-   * ratio (`--text-muted`, 5.9:1 on `--bg`) rather than an emergent
-   * result of compositing.
+   * ratio rather than an emergent result of compositing.
    *
-   * The recession still reads: `--text` is 16:1 against this surface and
-   * `--text-muted` is 5.9:1, which is a clear step down. And it was never
-   * the only signal — MonthGrid's visually-hidden "(outside July 2026)"
-   * and the absence of marks both already distinguish these cells.
+   * The recession still reads: `--text` is a clear step up from
+   * `--text-muted` against this surface. And it was never the only
+   * signal — MonthGrid's visually-hidden "(outside July 2026)" and the
+   * absence of marks both already distinguish these cells.
    */
   color: var(--text-muted);
 }
@@ -1022,8 +1220,8 @@ select:disabled {
   font: inherit;
   color: var(--text);
   background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 8px;
+  border: 1px solid var(--control-border);
+  border-radius: 12px;
   resize: vertical;
   min-height: 3.5rem;
 }
@@ -1040,7 +1238,7 @@ select:disabled {
 .journal-entry {
   padding: 0.6rem 0.75rem;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 12px;
 }
 
 .journal-entry-date {

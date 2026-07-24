@@ -3,6 +3,7 @@
 // If this package and that file ever disagree, the file wins; update code.
 
 export * from './bands.js';
+export * from './designTokens.js';
 export * from './devotional.js';
 export * from './toolEnvelope.js';
 export * from './fallbackKey.js';
