@@ -171,7 +171,16 @@ export async function runAllPurgeJobs(
  *      NOT touch files in object storage).
  *   3. Hard-delete the user row, which cascades (ON DELETE CASCADE) to
  *      connections, preferences, daily_bands, devotionals, sessions,
- *      and calendar_events — see migrations/1720000000000_init-schema.ts.
+ *      calendar_events, and youversion_connections (the last via
+ *      migrations/1722700000000, user_id PK REFERENCES users CASCADE) — see
+ *      migrations/1720000000000_init-schema.ts for the rest.
+ *
+ *      YouVersion has no documented token-REVOKE endpoint (⚠️ must-confirm
+ *      U1, kairos-devotional#355), so there is no provider-side revoke step
+ *      to mirror the Google one above: the cascade deletes our stored
+ *      ciphertext, which is what stops the tokens being usable by us. A
+ *      best-effort provider revoke is wired here only once an endpoint is
+ *      confirmed.
  * Order matters for the same reason as purgeDevotionalAudio: revoke/
  * delete anything that depends on the row still existing FIRST, then
  * delete the DB rows last.

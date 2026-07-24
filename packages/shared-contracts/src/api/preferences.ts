@@ -175,6 +175,26 @@ export const RhythmSchema = z
   .strict();
 export type Rhythm = z.infer<typeof RhythmSchema>;
 
+/**
+ * YouVersion connection status on `GET`/`PUT /v1/preferences` (U2/U5,
+ * kairos-devotional#355). A CLOSED (`.strict()`) shape carrying ONLY whether
+ * an account is connected and, if so, the display name to show ("Connected as
+ * …") — Foundation §9's hardest line for this feature: NOTHING about what the
+ * user reads, highlights, or has ever highlighted may ride here. The closed
+ * shape means a field like `highlightCount` or `lastHighlightedAt` fails the
+ * contract test (and the web client's parse) rather than quietly widening —
+ * the structural guarantee, not a convention. U4/U5 consume this; this story
+ * owns it.
+ */
+export const YouVersionConnectionSchema = z
+  .object({
+    connected: z.boolean(),
+    /** Display name of the connected account, absent when not connected or unknown. */
+    displayName: z.string().optional(),
+  })
+  .strict();
+export type YouVersionConnection = z.infer<typeof YouVersionConnectionSchema>;
+
 export const PreferencesUpdateRequestSchema = z.object({
   windowStartLocal: z.string().regex(TIME_REGEX, 'must be HH:MM or HH:MM:SS').optional(),
   windowEndLocal: z.string().regex(TIME_REGEX, 'must be HH:MM or HH:MM:SS').optional(),
@@ -245,6 +265,16 @@ export const PreferencesUpdateRequestSchema = z.object({
    * regardless of this flag. Defaults false.
    */
   liturgicalSeasonsEnabled: z.boolean().optional(),
+  /**
+   * YouVersion highlight consent gates (U4/U5, kairos-devotional#355). Both
+   * default false server-side (migration 1722700000000) and are independently
+   * revocable (Foundation §8), same shape as `calendarEnabled`/`healthEnabled`
+   * above — except these default FALSE, because connecting a YouVersion
+   * account is deliberately NOT consent to read or write highlights. A client
+   * can toggle either without touching the connection itself.
+   */
+  yvWriteHighlights: z.boolean().optional(),
+  yvReadHighlights: z.boolean().optional(),
   /**
    * Adaptive rhythm floor (Epic P #312 / P5 #324, migration
    * 1722500000000): the cadence engine never schedules fewer days/week
@@ -374,6 +404,25 @@ export const PreferencesResponseDataSchema = z.object({
   // Real Postgres `boolean` column (migration 1721100000000), same
   // "DB is authoritative" reasoning as `lectio`/sabbath columns above.
   liturgicalSeasonsEnabled: z.boolean(),
+  /**
+   * YouVersion highlight consent gates (U4/U5, kairos-devotional#355). Real
+   * Postgres `boolean` columns (migration 1722700000000), so the DB is
+   * authoritative — but `.optional()` here, unlike the always-present
+   * `calendarEnabled`, follows the #244 policy the `rhythm` field below also
+   * follows: a client running a version behind (or ahead of) its server
+   * renders NOTHING for the YouVersion controls rather than failing the whole
+   * preferences parse. The deployed server always composes both.
+   */
+  yvWriteHighlights: z.boolean().optional(),
+  yvReadHighlights: z.boolean().optional(),
+  /**
+   * YouVersion connection status (U2, kairos-devotional#355) — the
+   * closed-shape §9-safe object (`YouVersionConnectionSchema` above): status +
+   * display name ONLY, never any highlight/activity data. `.optional()` for
+   * the same #244 reason as `rhythm`/`yv*` above; the deployed server always
+   * composes it from the connections store.
+   */
+  youversionConnection: YouVersionConnectionSchema.optional(),
   // Adaptive rhythm (P5 #324, migration 1722500000000). Only the two
   // user-owned fields are echoed back; the engine's state columns
   // (`adaptive_days_per_week`/`adaptive_reason`) are deliberately absent

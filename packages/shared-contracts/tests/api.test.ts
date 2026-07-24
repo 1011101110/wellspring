@@ -9,8 +9,10 @@ import {
   IsoDateParamSchema,
   isValidIsoDate,
   isValidUuid,
+  PreferencesResponseDataSchema,
   PreferencesUpdateRequestSchema,
   UuidParamSchema,
+  YouVersionConnectionSchema,
 } from '../src/index.js';
 
 describe('api/params', () => {
@@ -125,6 +127,8 @@ describe('api/preferences — PreferencesUpdateRequestSchema', () => {
       sabbathEnabled: true,
       sabbathSession: true,
       liturgicalSeasonsEnabled: true,
+      yvWriteHighlights: true,
+      yvReadHighlights: true,
       minPerWeek: 3,
       adaptiveEnabled: false,
       timezone: 'America/Chicago',
@@ -230,6 +234,84 @@ describe('cadence <-> activeDays derivation (K2, #188)', () => {
 
   it('empty object is valid (no-op update)', () => {
     expect(PreferencesUpdateRequestSchema.safeParse({}).success).toBe(true);
+  });
+});
+
+describe('api/preferences — YouVersion connection (U2, kairos-devotional#355)', () => {
+  it('the request schema round-trips the two consent flags', () => {
+    const result = PreferencesUpdateRequestSchema.safeParse({
+      yvWriteHighlights: true,
+      yvReadHighlights: false,
+    });
+    expect(result.success).toBe(true);
+    expect(result.data).toEqual({ yvWriteHighlights: true, yvReadHighlights: false });
+  });
+
+  it('YouVersionConnectionSchema accepts status-only and status-with-displayName', () => {
+    expect(YouVersionConnectionSchema.safeParse({ connected: false }).success).toBe(true);
+    expect(
+      YouVersionConnectionSchema.safeParse({ connected: true, displayName: 'Ada' }).success,
+    ).toBe(true);
+  });
+
+  it('YouVersionConnectionSchema is CLOSED — no highlight/activity data can ride it (§9)', () => {
+    // The whole point of the closed shape: a field that would leak what the
+    // user reads/highlighted fails the contract rather than quietly widening.
+    expect(
+      YouVersionConnectionSchema.safeParse({ connected: true, highlightCount: 12 }).success,
+    ).toBe(false);
+    expect(
+      YouVersionConnectionSchema.safeParse({ connected: true, lastHighlightedAt: '2026-07-24' })
+        .success,
+    ).toBe(false);
+  });
+
+  it('the response payload carries the closed connection object and the two flags, both optional (#244)', () => {
+    const base = {
+      userId: 'u1',
+      windowStartLocal: '09:00:00',
+      windowEndLocal: '17:00:00',
+      activeDays: [1, 2, 3],
+      cadence: 'custom',
+      durationPreference: null,
+      voice: 'warm',
+      stillness: 'off',
+      lectio: false,
+      calendarEnabled: true,
+      healthEnabled: true,
+      communicationEnabled: true,
+      notifyOnSkip: true,
+      examenEnabled: false,
+      sabbathDay: 0,
+      sabbathEnabled: false,
+      sabbathSession: false,
+      liturgicalSeasonsEnabled: false,
+      minPerWeek: 2,
+      adaptiveEnabled: true,
+      onboardedAt: null,
+      timezone: 'UTC',
+      language: 'en',
+      translationId: 3034,
+      updatedAt: '2026-07-24T12:00:00Z',
+    };
+    // Absent is fine (older server) — #244 policy.
+    expect(PreferencesResponseDataSchema.safeParse(base).success).toBe(true);
+    // Present, well-formed.
+    expect(
+      PreferencesResponseDataSchema.safeParse({
+        ...base,
+        yvWriteHighlights: false,
+        yvReadHighlights: true,
+        youversionConnection: { connected: true, displayName: 'Ada' },
+      }).success,
+    ).toBe(true);
+    // A leaky field inside the nested connection object still fails.
+    expect(
+      PreferencesResponseDataSchema.safeParse({
+        ...base,
+        youversionConnection: { connected: true, streak: 3 },
+      }).success,
+    ).toBe(false);
   });
 });
 
