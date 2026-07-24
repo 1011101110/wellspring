@@ -2,12 +2,13 @@
  * HighlightsBridge (U3 write #356 / U4 read #357). Fakes only — no Postgres,
  * no network. Covers:
  *  - WRITE gate matrix (no connection / consent off / already written / no
- *    verse / happy path) with the POST body mutation-checked;
+ *    verse / happy path) with the create call mutation-checked;
  *  - 401 → refresh-once → retry;
  *  - idempotency stamp only on success;
  *  - fail-open: the bridge NEVER throws, whatever explodes;
  *  - no verse TEXT in the structured log (§9 / privacy);
- *  - READ consent gate + per-day cache;
+ *  - READ (`isPassageHighlighted`) consent gate + per-passage per-day memo +
+ *    401 refresh + fail-quiet;
  *  - the pure `decideHighlightWeaving` precedence / only-when-real / no-repeat.
  */
 import { describe, expect, it, vi } from 'vitest';
@@ -29,7 +30,7 @@ function connectionRow(overrides: Record<string, unknown> = {}) {
     token_expires_at: null,
     youversion_user_id: 'yv-1',
     display_name: 'Sam',
-    scopes: 'openid profile highlights',
+    scopes: 'openid profile email highlights',
     ...overrides,
   };
 }
@@ -52,19 +53,19 @@ function buildBridge(opts: {
   readConsent?: boolean;
   devotional?: Record<string, unknown> | null;
   createResults?: HighlightsResult<void>[];
-  listResults?: HighlightsResult<NormalizedHighlight[]>[];
+  getResults?: HighlightsResult<boolean>[];
   withOAuth?: boolean;
 } = {}) {
   const createResults = opts.createResults ?? [{ ok: true, status: 201, data: undefined }];
-  const listResults = opts.listResults ?? [{ ok: true, status: 200, data: [] }];
+  const getResults = opts.getResults ?? [{ ok: true, status: 200, data: false }];
   let createIdx = 0;
-  let listIdx = 0;
+  let getIdx = 0;
 
   const createHighlight = vi.fn().mockImplementation(() =>
     Promise.resolve(createResults[Math.min(createIdx++, createResults.length - 1)]),
   );
-  const listHighlights = vi.fn().mockImplementation(() =>
-    Promise.resolve(listResults[Math.min(listIdx++, listResults.length - 1)]),
+  const getHighlight = vi.fn().mockImplementation(() =>
+    Promise.resolve(getResults[Math.min(getIdx++, getResults.length - 1)]),
   );
 
   const markHighlightWritten = vi.fn().mockResolvedValue(true);
@@ -73,7 +74,7 @@ function buildBridge(opts: {
   const errorLogs: Array<{ msg: string; meta?: Record<string, unknown> }> = [];
 
   const deps: HighlightsBridgeDeps = {
-    client: { createHighlight, listHighlights },
+    client: { createHighlight, getHighlight },
     connections: {
       get: vi.fn().mockResolvedValue(opts.connection === null ? null : connectionRow(opts.connection)),
       upsert,
@@ -101,7 +102,7 @@ function buildBridge(opts: {
               accessToken: 'fresh-access',
               refreshToken: 'fresh-refresh',
               expiresAt: NOW.getTime() + 3600_000,
-              scopes: 'openid profile highlights',
+              scopes: 'openid profile email highlights',
             }),
           },
         }
@@ -114,7 +115,7 @@ function buildBridge(opts: {
   };
 
   const bridge = new HighlightsBridge(deps);
-  return { bridge, createHighlight, listHighlights, markHighlightWritten, upsert, infoLogs, errorLogs, deps };
+  return { bridge, createHighlight, getHighlight, markHighlightWritten, upsert, infoLogs, errorLogs, deps };
 }
 
 describe('writeHighlightForDevotional — gate matrix', () => {
@@ -123,12 +124,13 @@ describe('writeHighlightForDevotional — gate matrix', () => {
     const outcome = await h.bridge.writeHighlightForDevotional(USER, 'devo-1');
     expect(outcome).toBe('written');
     expect(h.createHighlight).toHaveBeenCalledTimes(1);
-    // Primary verse only — one meaningful mark, not spam. Mutation-checked body.
+    // Primary verse only — one meaningful mark, not spam. Color always sent.
     expect(h.createHighlight.mock.calls[0]![0]).toMatchObject({
       bibleId: 3034,
       passageId: 'JHN.3.16',
       bearer: 'decrypted-access',
     });
+    expect(h.createHighlight.mock.calls[0]![0].color).toMatch(/^[0-9a-f]{6}$/);
     expect(h.markHighlightWritten).toHaveBeenCalledWith(USER, 'devo-1');
   });
 
@@ -222,39 +224,73 @@ describe('writeHighlightForDevotional — fail-open + privacy', () => {
   });
 });
 
-describe('readRecentHighlights', () => {
-  it('read consent OFF → empty, never fetches', async () => {
+describe('isPassageHighlighted', () => {
+  it('read consent OFF → false, never fetches', async () => {
     const h = buildBridge({ readConsent: false });
-    expect(await h.bridge.readRecentHighlights(USER, {})).toEqual([]);
-    expect(h.listHighlights).not.toHaveBeenCalled();
+    expect(await h.bridge.isPassageHighlighted(USER, 3034, 'JHN.3.16')).toBe(false);
+    expect(h.getHighlight).not.toHaveBeenCalled();
   });
 
-  it('returns normalized highlights and caches one fetch per user per day', async () => {
-    const highlights: NormalizedHighlight[] = [
-      { passageId: 'JHN.3.16', bibleId: 3034, createdAt: '2026-07-23T00:00:00Z' },
-    ];
-    const h = buildBridge({ listResults: [{ ok: true, status: 200, data: highlights }] });
-    const first = await h.bridge.readRecentHighlights(USER, {});
-    const second = await h.bridge.readRecentHighlights(USER, {});
-    expect(first).toEqual(highlights);
-    expect(second).toEqual(highlights);
-    // Cached: exactly ONE live fetch despite two reads (rate-limit respect).
-    expect(h.listHighlights).toHaveBeenCalledTimes(1);
+  it('returns the API verdict and memoizes one lookup per passage per day', async () => {
+    const h = buildBridge({ getResults: [{ ok: true, status: 200, data: true }] });
+    const first = await h.bridge.isPassageHighlighted(USER, 3034, 'JHN.3.16');
+    const second = await h.bridge.isPassageHighlighted(USER, 3034, 'JHN.3.16');
+    expect(first).toBe(true);
+    expect(second).toBe(true);
+    // Memoized: exactly ONE live fetch despite two reads (rate-limit respect).
+    expect(h.getHighlight).toHaveBeenCalledTimes(1);
   });
 
-  it('a fetch failure degrades to an empty signal, never throws', async () => {
-    const h = buildBridge({ listResults: [{ ok: false, status: 503, error: 'down' }] });
-    await expect(h.bridge.readRecentHighlights(USER, {})).resolves.toEqual([]);
+  it('a different passage is a distinct lookup (memo is per-passage)', async () => {
+    const h = buildBridge({
+      getResults: [
+        { ok: true, status: 200, data: true },
+        { ok: true, status: 200, data: false },
+      ],
+    });
+    expect(await h.bridge.isPassageHighlighted(USER, 3034, 'JHN.3.16')).toBe(true);
+    expect(await h.bridge.isPassageHighlighted(USER, 3034, 'PSA.23.1')).toBe(false);
+    expect(h.getHighlight).toHaveBeenCalledTimes(2);
+  });
+
+  it('a 401 refreshes once and retries with the fresh bearer', async () => {
+    const h = buildBridge({
+      withOAuth: true,
+      getResults: [
+        { ok: false, status: 401, error: 'expired' },
+        { ok: true, status: 200, data: true },
+      ],
+    });
+    expect(await h.bridge.isPassageHighlighted(USER, 3034, 'JHN.3.16')).toBe(true);
+    expect(h.getHighlight).toHaveBeenCalledTimes(2);
+    expect(h.getHighlight.mock.calls[1]![0].bearer).toBe('fresh-access');
+    expect(h.upsert).toHaveBeenCalledTimes(1);
+  });
+
+  it('a fetch failure degrades to false and is NOT memoized (can recover next run)', async () => {
+    const h = buildBridge({ getResults: [{ ok: false, status: 503, error: 'down' }] });
+    expect(await h.bridge.isPassageHighlighted(USER, 3034, 'JHN.3.16')).toBe(false);
+    // Not cached — a second call retries the fetch.
+    await h.bridge.isPassageHighlighted(USER, 3034, 'JHN.3.16');
+    expect(h.getHighlight).toHaveBeenCalledTimes(2);
+  });
+
+  it('no connection → false, never throws', async () => {
+    const h = buildBridge({ connection: null });
+    await expect(h.bridge.isPassageHighlighted(USER, 3034, 'JHN.3.16')).resolves.toBe(false);
+    expect(h.getHighlight).not.toHaveBeenCalled();
   });
 });
 
 describe('decideHighlightWeaving (pure) — precedence / only-when-real / no-repeat', () => {
+  // The list is the subset of candidate passages CONFIRMED highlighted,
+  // newest-first.
   const HL: NormalizedHighlight[] = [
-    { passageId: 'JHN.3.16', bibleId: 3034, createdAt: '2026-07-23T00:00:00Z' },
-    { passageId: 'PSA.23.1', bibleId: 3034, createdAt: '2026-07-20T00:00:00Z' },
+    { passageId: 'JHN.3.16', bibleId: 3034 },
+    { passageId: 'PSA.23.1', bibleId: 3034 },
   ];
 
-  it('weaves the first non-recently-used highlight when nothing higher steers', () => {
+  it('weaves the first non-recently-used marked passage when nothing higher steers', () => {
     const d = decideHighlightWeaving(HL, { higherPrecedenceActive: false, recentlyWovenPassageIds: [] });
     expect(d).toEqual({ passageRef: 'JHN.3.16', reason: 'highlight_woven' });
   });
@@ -265,7 +301,7 @@ describe('decideHighlightWeaving (pure) — precedence / only-when-real / no-rep
     expect(d.reason).toBe('higher_precedence_active');
   });
 
-  it('only-when-real: no highlights → nothing woven (never fabricates a mark)', () => {
+  it('only-when-real: no marked candidate → nothing woven (never fabricates a mark)', () => {
     const d = decideHighlightWeaving([], { higherPrecedenceActive: false, recentlyWovenPassageIds: [] });
     expect(d.passageRef).toBeUndefined();
     expect(d.reason).toBe('no_highlights');

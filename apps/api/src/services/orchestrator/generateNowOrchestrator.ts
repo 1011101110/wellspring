@@ -108,22 +108,32 @@ export const SESSION_EXPIRY_MS = 48 * 60 * 60 * 1000;
 export const EXTENDED_FORMAT_MIN_GAP_MINUTES = 15;
 
 /**
- * READ bridge (U4 #357): how far back to fetch highlights, and the no-repeat
- * window. A highlighted passage that already appears in any devotional's
- * verses within the last {@link HIGHLIGHT_NO_REPEAT_DAYS} days is not woven
- * again — the same marked verse should not recur day after day. Deriving the
- * "recently used" set from recent devotionals' verses (rather than a new
- * column) keeps the guard migration-free and self-correcting.
+ * READ bridge (U4 #357). There is NO list-all highlights endpoint
+ * (live-verified 2026-07-24) — the only read is a per-passage lookup. So the
+ * orchestrator draws CANDIDATE passages from the user's recent devotional
+ * verses (over {@link HIGHLIGHT_CANDIDATE_LOOKBACK_DAYS}), asks the bridge
+ * which of them the user has marked, and weaves the newest marked one that
+ * was NOT itself woven within {@link HIGHLIGHT_NO_REPEAT_DAYS} — so the same
+ * marked verse does not recur day after day. Both windows derive from recent
+ * devotionals' verses (no new column), keeping the guard migration-free.
+ *
+ * {@link HIGHLIGHT_CANDIDATE_LOOKBACK_DAYS} is deliberately wider than the
+ * no-repeat window so a verse shown (and marked) 1–3 months ago can be
+ * revisited once, while one shown in the last month is held back.
+ * {@link HIGHLIGHT_MAX_CANDIDATE_CHECKS} caps the per-passage lookups made in
+ * one generation.
  */
-export const HIGHLIGHT_READ_LIMIT = 20;
+export const HIGHLIGHT_CANDIDATE_LOOKBACK_DAYS = 90;
 export const HIGHLIGHT_NO_REPEAT_DAYS = 30;
+export const HIGHLIGHT_MAX_CANDIDATE_CHECKS = 20;
 
 /** The narrow READ seam the orchestrator consumes — the whole HighlightsBridge satisfies it. */
 export interface HighlightsReadBridge {
-  readRecentHighlights(
+  isPassageHighlighted(
     userId: VerifiedUserId,
-    opts: { limit?: number },
-  ): Promise<NormalizedHighlight[]>;
+    bibleId: number,
+    passageId: string,
+  ): Promise<boolean>;
 }
 
 /** The duration bands in ascending length order — the ladder the P7 duration nudge steps along. */
@@ -1006,10 +1016,14 @@ export class GenerateNowOrchestrator {
    * Scoped exactly like feedback steering: standard-slot scheduled generations
    * that set `applyFeedbackSteering`, never distress. Precedence (the #326
    * idiom, highlight at the BOTTOM): if inviteContext, a prayer intention, or a
-   * steered theme already shapes this devotional, the highlight yields — the
-   * pure `decideHighlightWeaving` is told `higherPrecedenceActive` and returns
-   * nothing. No-repeat: a passage already present in the last
-   * {@link HIGHLIGHT_NO_REPEAT_DAYS} days of devotionals is skipped.
+   * steered theme already shapes this devotional, the highlight yields entirely
+   * (and no per-passage lookup is made).
+   *
+   * Because there is NO list-all endpoint (live-verified 2026-07-24), candidate
+   * passages are drawn from the user's recent devotional verses (over
+   * {@link HIGHLIGHT_CANDIDATE_LOOKBACK_DAYS}); the bridge is asked which the
+   * user has actually MARKED, and the newest marked one not woven within
+   * {@link HIGHLIGHT_NO_REPEAT_DAYS} is chosen.
    *
    * FAIL-OPEN: any read/derive failure returns undefined (unwoven), never
    * throws — a YouVersion read outage costs the personalization, not the
@@ -1025,8 +1039,9 @@ export class GenerateNowOrchestrator {
     prayerIntention: string | undefined;
   }): Promise<string | undefined> {
     const { params, slotType, verifiedUserId, date, bands } = args;
+    const bridge = this.highlightsBridge;
     if (
-      !this.highlightsBridge ||
+      !bridge ||
       !params.applyFeedbackSteering ||
       slotType !== 'standard' ||
       params.distressSignalOverride ||
@@ -1034,23 +1049,54 @@ export class GenerateNowOrchestrator {
     ) {
       return undefined;
     }
+
+    // Higher-precedence signal already steers this devotional → the highlight
+    // yields, and we skip every per-passage lookup (the #326 lowest rung).
+    const higherPrecedenceActive =
+      params.inviteContext !== undefined ||
+      args.prayerIntention !== undefined ||
+      args.steeredTheme !== undefined;
+    if (higherPrecedenceActive) return undefined;
+
     try {
-      const higherPrecedenceActive =
-        params.inviteContext !== undefined ||
-        args.prayerIntention !== undefined ||
-        args.steeredTheme !== undefined;
+      // Candidate passages come from recent devotional verses — the only
+      // passages we can check, since there is no list-all highlights endpoint.
+      const lookbackStart = previousIsoDateBy(date, HIGHLIGHT_CANDIDATE_LOOKBACK_DAYS);
+      const recent = await this.devotionals.listForUserInRange(
+        verifiedUserId,
+        lookbackStart,
+        date,
+      );
 
-      const highlights = await this.highlightsBridge.readRecentHighlights(verifiedUserId, {
-        limit: HIGHLIGHT_READ_LIMIT,
-      });
+      // No-repeat set: passages shown within the shorter window are held back
+      // so the same marked verse does not recur day after day.
+      const noRepeatStart = previousIsoDateBy(date, HIGHLIGHT_NO_REPEAT_DAYS);
+      const recentlyWovenPassageIds = recent
+        .filter((d) => d.date >= noRepeatStart)
+        .flatMap((d) => d.verses.map((v) => v.usfm));
 
-      // Derive the no-repeat set from recent devotionals' verses (no new
-      // column): every passage the user has already seen woven recently.
-      const sinceDate = previousIsoDateBy(date, HIGHLIGHT_NO_REPEAT_DAYS);
-      const recent = await this.devotionals.listForUserInRange(verifiedUserId, sinceDate, date);
-      const recentlyWovenPassageIds = recent.flatMap((d) => d.verses.map((v) => v.usfm));
+      // De-duplicated candidate passages, newest-first (rows are ASC by date),
+      // capped to bound the per-passage lookups.
+      const seen = new Set<string>();
+      const candidates: NormalizedHighlight[] = [];
+      for (let i = recent.length - 1; i >= 0 && candidates.length < HIGHLIGHT_MAX_CANDIDATE_CHECKS; i--) {
+        for (const v of recent[i]!.verses) {
+          if (seen.has(v.usfm)) continue;
+          seen.add(v.usfm);
+          candidates.push({ passageId: v.usfm, bibleId: v.versionId });
+          if (candidates.length >= HIGHLIGHT_MAX_CANDIDATE_CHECKS) break;
+        }
+      }
 
-      const decision = decideHighlightWeaving(highlights, {
+      // Ask the bridge which candidates the user has actually marked.
+      const highlighted: NormalizedHighlight[] = [];
+      for (const c of candidates) {
+        if (await bridge.isPassageHighlighted(verifiedUserId, c.bibleId, c.passageId)) {
+          highlighted.push(c);
+        }
+      }
+
+      const decision = decideHighlightWeaving(highlighted, {
         higherPrecedenceActive,
         recentlyWovenPassageIds,
       });

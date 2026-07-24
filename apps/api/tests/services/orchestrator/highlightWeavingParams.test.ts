@@ -3,13 +3,19 @@
  * the EXACT `highlightedReference` param the spied `DevotionalEngine.generate`
  * receives, through the real orchestrator.
  *
+ * READ model (live-verified 2026-07-24): there is NO list-all endpoint, so the
+ * orchestrator draws CANDIDATE passages from the user's recent devotional
+ * verses and asks the bridge (`isPassageHighlighted`) which the user marked.
+ *
  * Load-bearing assertions:
- *  - a real highlight is woven as `highlightedReference` (standard-slot,
+ *  - a marked recent passage is woven as `highlightedReference` (standard-slot,
  *    applyFeedbackSteering);
- *  - only-when-real: no highlights → param absent, byte-identical to a run
+ *  - only-when-real: nothing marked → param absent, byte-identical to a run
  *    with no bridge wired at all (the regression pin);
- *  - precedence: inviteContext (higher rung) suppresses the highlight;
- *  - no-repeat: a passage already in the recent devotionals is skipped;
+ *  - precedence: inviteContext (higher rung) suppresses the highlight AND skips
+ *    every per-passage lookup;
+ *  - no-repeat: a marked passage shown within the no-repeat window is skipped
+ *    for the next marked candidate;
  *  - generate-now shape (no applyFeedbackSteering) never consults the bridge;
  *  - fail-open: a read explosion still generates, unwoven.
  */
@@ -29,10 +35,13 @@ import type {
 import type { TtsService } from '../../../src/services/tts/ttsService.js';
 import type { AudioStorage } from '../../../src/services/audio/audioStorage.js';
 import type { HighlightsReadBridge } from '../../../src/services/orchestrator/generateNowOrchestrator.js';
-import type { NormalizedHighlight } from '../../../src/services/youversion/youVersionHighlightsClient.js';
 import type { DevotionalOutput } from '@kairos/shared-contracts';
 
 const NOW = new Date('2026-07-24T12:00:00Z');
+
+// A recent (within 30d) date and an older (30–90d) date, relative to NOW.
+const RECENT_DATE = '2026-07-10'; // 14 days ago — inside the no-repeat window
+const OLDER_DATE = '2026-06-10'; // 44 days ago — a candidate, outside no-repeat
 
 const DEVOTIONAL: DevotionalOutput = {
   format: 'standard',
@@ -43,13 +52,19 @@ const DEVOTIONAL: DevotionalOutput = {
   prayer: 'Prayer.',
 };
 
+interface CandidateDevotional {
+  date: string;
+  verses: Array<{ usfm: string; versionId: number }>;
+}
+
 function buildHarness(opts: {
-  highlights?: NormalizedHighlight[];
-  recentRangeDevotionals?: Array<{ verses: Array<{ usfm: string }> }>;
+  markedPassages?: string[];
+  recentDevotionals?: CandidateDevotional[];
   withoutBridge?: boolean;
-  readImpl?: () => Promise<NormalizedHighlight[]>;
+  readImpl?: () => Promise<boolean>;
 } = {}) {
   const engineParams: GenerateDevotionalParams[] = [];
+  const marked = new Set(opts.markedPassages ?? []);
 
   const users = {
     findById: vi.fn().mockResolvedValue({
@@ -70,7 +85,7 @@ function buildHarness(opts: {
         Promise.resolve({ id: 'devo-1', ...input }),
       ),
     setAudioObject: vi.fn().mockResolvedValue(undefined),
-    listForUserInRange: vi.fn().mockResolvedValue(opts.recentRangeDevotionals ?? []),
+    listForUserInRange: vi.fn().mockResolvedValue(opts.recentDevotionals ?? []),
   } as unknown as DevotionalsRepository;
   const sessions = {
     create: vi.fn().mockResolvedValue({ id: 'sess-1', token: 'tok-1' }),
@@ -91,10 +106,14 @@ function buildHarness(opts: {
     uploadManifest: vi.fn().mockResolvedValue(undefined),
   } as unknown as AudioStorage;
 
-  const readRecentHighlights = vi
+  const isPassageHighlighted = vi
     .fn()
-    .mockImplementation(opts.readImpl ?? (() => Promise.resolve(opts.highlights ?? [])));
-  const highlightsBridge: HighlightsReadBridge = { readRecentHighlights };
+    .mockImplementation(
+      opts.readImpl
+        ? () => opts.readImpl!()
+        : (_uid: string, _bibleId: number, passageId: string) => Promise.resolve(marked.has(passageId)),
+    );
+  const highlightsBridge: HighlightsReadBridge = { isPassageHighlighted };
 
   const orchestrator = new GenerateNowOrchestrator({
     users,
@@ -111,24 +130,24 @@ function buildHarness(opts: {
     ...(opts.withoutBridge ? {} : { highlightsBridge }),
   });
 
-  return { orchestrator, engineParams, readRecentHighlights };
+  return { orchestrator, engineParams, isPassageHighlighted };
 }
 
-const HL = (passageId: string, createdAt?: string): NormalizedHighlight => ({
-  passageId,
-  bibleId: 3034,
-  ...(createdAt ? { createdAt } : {}),
-});
-
 describe('U4 golden params — highlight weaving', () => {
-  it('weaves a real highlight as `highlightedReference` (standard, applyFeedbackSteering)', async () => {
-    const h = buildHarness({ highlights: [HL('JHN.3.16', '2026-07-23T00:00:00Z')] });
+  it('weaves a marked recent passage as `highlightedReference` (standard, applyFeedbackSteering)', async () => {
+    const h = buildHarness({
+      markedPassages: ['JHN.3.16'],
+      recentDevotionals: [{ date: OLDER_DATE, verses: [{ usfm: 'JHN.3.16', versionId: 3034 }] }],
+    });
     await h.orchestrator.generateNow({ userId: 'user-1', applyFeedbackSteering: true, skipCalendar: true });
     expect(h.engineParams[0]!.highlightedReference).toBe('JHN.3.16');
   });
 
-  it('only-when-real: no highlights → param absent and byte-identical to no bridge wired', async () => {
-    const woven = buildHarness({ highlights: [] });
+  it('only-when-real: nothing marked → param absent and byte-identical to no bridge wired', async () => {
+    const woven = buildHarness({
+      markedPassages: [],
+      recentDevotionals: [{ date: OLDER_DATE, verses: [{ usfm: 'JHN.3.16', versionId: 3034 }] }],
+    });
     await woven.orchestrator.generateNow({ userId: 'user-1', applyFeedbackSteering: true, skipCalendar: true });
     const control = buildHarness({ withoutBridge: true });
     await control.orchestrator.generateNow({ userId: 'user-1', applyFeedbackSteering: true, skipCalendar: true });
@@ -136,8 +155,11 @@ describe('U4 golden params — highlight weaving', () => {
     expect('highlightedReference' in woven.engineParams[0]!).toBe(false);
   });
 
-  it('precedence: inviteContext (higher rung) suppresses the highlight', async () => {
-    const h = buildHarness({ highlights: [HL('JHN.3.16')] });
+  it('precedence: inviteContext (higher rung) suppresses the highlight and skips every lookup', async () => {
+    const h = buildHarness({
+      markedPassages: ['JHN.3.16'],
+      recentDevotionals: [{ date: OLDER_DATE, verses: [{ usfm: 'JHN.3.16', versionId: 3034 }] }],
+    });
     await h.orchestrator.generateNow({
       userId: 'user-1',
       applyFeedbackSteering: true,
@@ -146,26 +168,38 @@ describe('U4 golden params — highlight weaving', () => {
     });
     expect(h.engineParams[0]!.highlightedReference).toBeUndefined();
     expect(h.engineParams[0]!.inviteContext).toBe('Team standup — pray for focus');
+    expect(h.isPassageHighlighted).not.toHaveBeenCalled();
   });
 
-  it('no-repeat: a passage already in the recent devotionals is skipped for the next candidate', async () => {
+  it('no-repeat: a marked passage shown within the no-repeat window is skipped for the next marked candidate', async () => {
     const h = buildHarness({
-      highlights: [HL('JHN.3.16', '2026-07-23T00:00:00Z'), HL('PSA.23.1', '2026-07-20T00:00:00Z')],
-      recentRangeDevotionals: [{ verses: [{ usfm: 'JHN.3.16' }] }],
+      markedPassages: ['JHN.3.16', 'PSA.23.1'],
+      recentDevotionals: [
+        // Oldest first (ASC), like the repo returns.
+        { date: OLDER_DATE, verses: [{ usfm: 'PSA.23.1', versionId: 3034 }] },
+        { date: RECENT_DATE, verses: [{ usfm: 'JHN.3.16', versionId: 3034 }] },
+      ],
     });
     await h.orchestrator.generateNow({ userId: 'user-1', applyFeedbackSteering: true, skipCalendar: true });
+    // JHN.3.16 is marked but shown within the last 30d → held back; PSA.23.1 wins.
     expect(h.engineParams[0]!.highlightedReference).toBe('PSA.23.1');
   });
 
   it('generate-now shape (no applyFeedbackSteering) never consults the bridge', async () => {
-    const h = buildHarness({ highlights: [HL('JHN.3.16')] });
+    const h = buildHarness({
+      markedPassages: ['JHN.3.16'],
+      recentDevotionals: [{ date: OLDER_DATE, verses: [{ usfm: 'JHN.3.16', versionId: 3034 }] }],
+    });
     await h.orchestrator.generateNow({ userId: 'user-1', skipCalendar: true });
-    expect(h.readRecentHighlights).not.toHaveBeenCalled();
+    expect(h.isPassageHighlighted).not.toHaveBeenCalled();
     expect(h.engineParams[0]!.highlightedReference).toBeUndefined();
   });
 
   it('fail-open: a read explosion still generates, unwoven', async () => {
-    const h = buildHarness({ readImpl: () => Promise.reject(new Error('yv read down (test)')) });
+    const h = buildHarness({
+      recentDevotionals: [{ date: OLDER_DATE, verses: [{ usfm: 'JHN.3.16', versionId: 3034 }] }],
+      readImpl: () => Promise.reject(new Error('yv read down (test)')),
+    });
     const result = await h.orchestrator.generateNow({
       userId: 'user-1',
       applyFeedbackSteering: true,

@@ -8,22 +8,23 @@
  * `YouVersionOAuthService` is used so the authorize-URL / PKCE / resolve /
  * exchange behavior under test is the production code, not a stub of it.
  *
- * YouVersion's flow is NON-STANDARD: the authorize redirect carries the
- * signed-in identity ({ yvp_id, user_name, … }), NOT a code. A second server
- * call (/auth/callback) resolves that into a code via a 302 Location header,
- * then /auth/token exchanges the code for tokens.
+ * YouVersion's flow is NON-STANDARD (live-verified 2026-07-24): the authorize
+ * redirect carries ONLY `state` (no code, no identity). A second server call
+ * (/auth/callback?state=) resolves that into a code via a 302 Location header,
+ * then /auth/token exchanges the code for tokens — and identity comes from the
+ * returned `id_token` JWT (decoded, not signature-verified).
  *
  * Covers:
  *   - connect returns an api.youversion.com authorize URL carrying state +
  *     code_challenge (mutation-check: the URL MUST include code_challenge, so
  *     removing it from getAuthorizationUrl fails this test)
  *   - connect stores the state + PKCE verifier server-side keyed to the user
- *   - callback resolves the code (reads it off the 302 Location without
- *     following), exchanges it, and validates the returned state matches
+ *   - callback (state-only) resolves the code (reads it off the 302 Location
+ *     without following), exchanges it, and validates the returned state
  *   - callback rejects missing / unknown / expired / replayed state
  *   - tokens persist ENCRYPTED (stored ciphertext != plaintext; the encrypt
  *     call is asserted invoked)
- *   - identity (yvp_id + user_name) is captured from the redirect, no profile fetch
+ *   - identity (yvp id + name) is decoded from the id_token JWT, no profile fetch
  *   - a null refresh token is stored as null, not thrown
  *   - disconnect deletes the row
  *   - the not-configured 503 path (no OAuth service / no KMS)
@@ -58,6 +59,13 @@ const REDIRECT_URI = 'https://api.kairos.test/v1/youversion/oauth/callback';
 function headers(map: Record<string, string> = {}) {
   const lower = new Map(Object.entries(map).map(([k, v]) => [k.toLowerCase(), v]));
   return { get: (name: string) => lower.get(name.toLowerCase()) ?? null };
+}
+
+/** A fake JWT (`header.payload.signature`) whose payload carries the given claims. */
+function makeJwt(claims: Record<string, unknown>): string {
+  const header = Buffer.from(JSON.stringify({ alg: 'RS256', typ: 'JWT' })).toString('base64url');
+  const payload = Buffer.from(JSON.stringify(claims)).toString('base64url');
+  return `${header}.${payload}.sig`;
 }
 
 /**
@@ -99,9 +107,11 @@ function fakeFetch(
       const status = overrides.token?.status ?? 200;
       const body = overrides.token?.body ?? {
         access_token: 'yv-access-token',
+        // Identity comes from the id_token JWT (live-verified 2026-07-24).
+        id_token: makeJwt({ sub: 'yv-42', name: 'Test Person', email: 'test@example.com' }),
         refresh_token: 'yv-refresh-token',
         expires_in: 3600,
-        scope: 'openid profile email',
+        scope: 'openid profile email highlights',
       };
       return {
         ok: status < 400,
@@ -282,9 +292,7 @@ describe('GET /v1/youversion/oauth/callback', () => {
 
     const res = await app.inject({
       method: 'GET',
-      url:
-        '/v1/youversion/oauth/callback?state=valid-state&yvp_id=yv-42&user_name=Test+Person' +
-        '&user_email=test%40example.com&profile_picture=https%3A%2F%2Fimg.test%2Fp.png',
+      url: '/v1/youversion/oauth/callback?state=valid-state',
     });
 
     expect([301, 302]).toContain(res.statusCode);
@@ -320,7 +328,7 @@ describe('GET /v1/youversion/oauth/callback', () => {
     expect(input.accessTokenEncrypted).toEqual(Buffer.from('enc:yv-access-token'));
     expect(input.accessTokenEncrypted).not.toEqual(Buffer.from('yv-access-token'));
     expect(input.refreshTokenEncrypted).toEqual(Buffer.from('enc:yv-refresh-token'));
-    // §9-safe identity captured straight from the authorize redirect (no /auth/me).
+    // §9-safe identity decoded from the id_token JWT (no /auth/me, no redirect info).
     expect(input.displayName).toBe('Test Person');
     expect(input.youVersionUserId).toBe('yv-42');
     await app.close();
@@ -377,19 +385,31 @@ describe('GET /v1/youversion/oauth/callback', () => {
     await app.close();
   });
 
-  it('stores no display name when the redirect omits user_name', async () => {
+  it('stores no display name when the id_token carries no name claim', async () => {
     const oauthStates = new FakeOAuthStatesRepository();
     oauthStates.seed('valid-state', FAKE_USER_ID);
     const connections = fakeConnections();
     const app = buildTestApp({
       oauthStates: oauthStates as unknown as OAuthStatesRepository,
-      oauthService: realOAuthService(fakeFetch()),
+      // id_token with a sub (yvp id) but NO name claim.
+      oauthService: realOAuthService(
+        fakeFetch({
+          token: {
+            body: {
+              access_token: 'yv-access-token',
+              id_token: makeJwt({ sub: 'yv-1' }),
+              refresh_token: 'yv-refresh-token',
+              expires_in: 3600,
+            },
+          },
+        }),
+      ),
       connections,
     });
 
     const res = await app.inject({
       method: 'GET',
-      url: '/v1/youversion/oauth/callback?state=valid-state&yvp_id=yv-1',
+      url: '/v1/youversion/oauth/callback?state=valid-state',
     });
 
     expect([301, 302]).toContain(res.statusCode);
@@ -451,18 +471,6 @@ describe('GET /v1/youversion/oauth/callback', () => {
     const res = await app.inject({
       method: 'GET',
       url: '/v1/youversion/oauth/callback?yvp_id=yv-1&state=no-verifier',
-    });
-    expect(res.statusCode).toBe(400);
-    await app.close();
-  });
-
-  it('400s on missing yvp_id with a valid state (no identity to resolve)', async () => {
-    const oauthStates = new FakeOAuthStatesRepository();
-    oauthStates.seed('valid-state', FAKE_USER_ID);
-    const app = buildTestApp({ oauthStates: oauthStates as unknown as OAuthStatesRepository });
-    const res = await app.inject({
-      method: 'GET',
-      url: '/v1/youversion/oauth/callback?state=valid-state',
     });
     expect(res.statusCode).toBe(400);
     await app.close();
