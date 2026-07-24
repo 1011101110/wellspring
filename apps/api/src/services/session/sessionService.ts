@@ -34,6 +34,7 @@ import {
   type SessionsRepository,
 } from '../../db/repositories/index.js';
 import type { GlooSummaryService } from '../gloo/glooSummaryService.js';
+import type { HighlightWriter } from '../youversion/highlightsBridge.js';
 import type { SessionPageData } from './renderSessionPage.js';
 
 export type SessionLookupResult = { kind: 'not_found' } | { kind: 'ok'; page: SessionPageData };
@@ -65,7 +66,18 @@ export type SessionFeedbackResult = { kind: 'not_found' } | { kind: 'not_joined'
 /** What the post-Amen confirmation page needs (P2 #321): whose form to render, and whether to render it at all. */
 export type SessionCompletionViewResult =
   | { kind: 'not_found' }
-  | { kind: 'ok'; token: string; feedbackSubmitted: boolean };
+  | {
+      kind: 'ok';
+      token: string;
+      feedbackSubmitted: boolean;
+      /**
+       * True ONLY when this devotional's verse has actually been written to
+       * the user's YouVersion highlights (U3, kairos-devotional#356) — i.e.
+       * `yv_highlight_written_at` is set. Drives the quiet "Saved to your
+       * YouVersion highlights." proof line, which appears in NO other state.
+       */
+      youVersionHighlightSaved: boolean;
+    };
 
 export interface SessionServiceLogger {
   error(msg: string, meta?: Record<string, unknown>): void;
@@ -108,6 +120,17 @@ export interface SessionServiceDeps {
    * shows the form.
    */
   sessionFeedback?: SessionFeedbackRepository;
+  /**
+   * YouVersion write bridge (U3, kairos-devotional#356) — optional like the
+   * other feature deps. When wired, `completeSession` fires a highlight write
+   * for the completed devotional's primary verse, FIRE-AND-FORGET: a
+   * YouVersion outage must never break Amen (fail-open, epic #353 / rhythm
+   * #325). Its own gates (connection, `yv_write_highlights` consent, not
+   * already written) live inside the bridge, so wiring it does nothing for a
+   * user who has not connected or has write consent off. Absent, completion is
+   * byte-identical to before.
+   */
+  highlightWriter?: HighlightWriter;
 }
 
 export class SessionService {
@@ -122,6 +145,7 @@ export class SessionService {
   private readonly glooEngagementSummaries: GlooEngagementSummariesRepository | undefined;
   private readonly prayerIntentions: PrayerIntentionsRepository | undefined;
   private readonly sessionFeedback: SessionFeedbackRepository | undefined;
+  private readonly highlightWriter: HighlightWriter | undefined;
 
   constructor(deps: SessionServiceDeps) {
     this.sessions = deps.sessions;
@@ -135,6 +159,7 @@ export class SessionService {
     this.glooEngagementSummaries = deps.glooEngagementSummaries;
     this.prayerIntentions = deps.prayerIntentions;
     this.sessionFeedback = deps.sessionFeedback;
+    this.highlightWriter = deps.highlightWriter;
   }
 
   /**
@@ -330,6 +355,24 @@ export class SessionService {
           },
         );
       }
+
+      // YouVersion highlight write (U3, kairos-devotional#356): mark the
+      // devotional's primary verse in the user's real Bible. FIRE-AND-FORGET,
+      // first-completion-only — the bridge is best-effort and never throws,
+      // but the extra `.catch` is belt-and-braces so a YouVersion outage can
+      // never turn a completed Amen into an error response (fail-open, epic
+      // #353). All gating (connection / consent / already-written) lives inside
+      // the bridge, so this is a silent no-op for unconnected/unconsented users.
+      if (this.highlightWriter) {
+        this.highlightWriter.writeHighlightForDevotional(ownerId, session.devotional_id).catch(
+          (err) => {
+            this.logger.error('highlight write failed — completion already recorded', {
+              token,
+              err: err instanceof Error ? err.message : String(err),
+            });
+          },
+        );
+      }
     }
 
     return { kind: 'ok', completedAt };
@@ -398,14 +441,34 @@ export class SessionService {
       return { kind: 'not_found' };
     }
 
+    const ownerId = asVerifiedUserId(session.user_id);
+
     let feedbackSubmitted = false;
     if (this.sessionFeedback) {
-      const ownerId = asVerifiedUserId(session.user_id);
       feedbackSubmitted =
         (await this.sessionFeedback.findBySessionToken(ownerId, session.token)) !== null;
     }
 
-    return { kind: 'ok', token: session.token, feedbackSubmitted };
+    // Proof-line state (U3 #356). We resolve it from the ALREADY-WRITTEN
+    // stamp rather than awaiting the async write here: the write fires
+    // fire-and-forget at completion and the browser reaches this page moments
+    // later, so reading `yv_highlight_written_at` is the honest signal — the
+    // line shows only when the highlight has genuinely landed, and its absence
+    // (write still in flight, not connected, consent off, or a YouVersion
+    // outage) simply omits the line rather than promising something unproven.
+    // Best-effort: a devotional read failure just omits the line.
+    let youVersionHighlightSaved = false;
+    try {
+      const devotional = await this.devotionals.getById(ownerId, session.devotional_id);
+      youVersionHighlightSaved = devotional?.yv_highlight_written_at != null;
+    } catch (err) {
+      this.logger.error('completion-view devotional read failed — omitting highlight proof line', {
+        token,
+        err: err instanceof Error ? err.message : String(err),
+      });
+    }
+
+    return { kind: 'ok', token: session.token, feedbackSubmitted, youVersionHighlightSaved };
   }
 
   private async sendGlooSummary(

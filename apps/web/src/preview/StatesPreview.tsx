@@ -49,6 +49,7 @@ import {
   WelcomeStep,
 } from '../views/Onboarding';
 import { SettingsView } from '../views/Settings';
+import { ConnectedAccountsCard } from '../components/ConnectedAccountsCard';
 import { emptyUpcomingMessage } from '../lib/upcoming';
 import { RETURN_GAP_DAYS, returnGreeting } from '../lib/returnGreeting';
 import { readyCard, emptyCard, errorCard, loadingCard } from '../lib/cardState';
@@ -677,7 +678,84 @@ export function StatesPreview() {
           activeDaysCount={7}
           onToggleScheduleFixed={noop}
           onChangeMinPerWeek={noop}
+          youversion={{ kind: 'connected', displayName: 'Maya Fernandez' }}
+          youversionUnavailable={false}
+          yvWriteHighlights={true}
+          yvReadHighlights={false}
+          onConnectYouVersion={noop}
+          onDisconnectYouVersion={noop}
+          onToggleYvWrite={noop}
+          onToggleYvRead={noop}
         />
+      </Section>
+
+      {/*
+       * The Connected-accounts card (U5 #358) in isolation, across every
+       * state a review needs to see side by side: not connected, connected
+       * with the two consent toggles, the graceful 503 "coming soon", and the
+       * two one-shot callback banners. The `unsupported` state renders nothing
+       * by design (#244), so it has no tile.
+       */}
+      <Section title="Connected accounts — YouVersion states (U5 #358)">
+        <div className="card">
+          <ConnectedAccountsCard
+            state={{ kind: 'not_connected' }}
+            unavailable={false}
+            busy={false}
+            writeHighlights={false}
+            readHighlights={false}
+            callback={null}
+            onConnect={noop}
+            onDisconnect={noop}
+            onToggleWrite={noop}
+            onToggleRead={noop}
+          />
+        </div>
+        <div className="card">
+          <ConnectedAccountsCard
+            state={{ kind: 'connected', displayName: 'Maya Fernandez' }}
+            unavailable={false}
+            busy={false}
+            writeHighlights={true}
+            readHighlights={true}
+            callback={{ status: 'success' }}
+            onConnect={noop}
+            onDisconnect={noop}
+            onToggleWrite={noop}
+            onToggleRead={noop}
+          />
+        </div>
+        <div className="card">
+          <ConnectedAccountsCard
+            state={{ kind: 'not_connected' }}
+            unavailable={true}
+            busy={false}
+            writeHighlights={false}
+            readHighlights={false}
+            callback={null}
+            onConnect={noop}
+            onDisconnect={noop}
+            onToggleWrite={noop}
+            onToggleRead={noop}
+          />
+        </div>
+        <div className="card">
+          <ConnectedAccountsCard
+            state={{ kind: 'not_connected' }}
+            unavailable={false}
+            busy={false}
+            writeHighlights={false}
+            readHighlights={false}
+            callback={{
+              status: 'error',
+              message: "You didn't finish connecting your YouVersion account.",
+            }}
+            onConnect={noop}
+            onDisconnect={noop}
+            onToggleWrite={noop}
+            onToggleRead={noop}
+          />
+        </div>
       </Section>
     </main>
   );

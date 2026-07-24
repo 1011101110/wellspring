@@ -13,6 +13,7 @@ import {
   tabAt,
 } from '../../../src/services/stage/stageTimeline.js';
 import { buildStageClientJs } from '../../../src/services/stage/stageClient.js';
+import { releaseStream } from '../../../src/services/stage/stageOpenMoment.js';
 
 /** A realistic coalesced manifest: greeting → scripture → stillness → reflection → prayer → stillness → recap(scripture). */
 const MANIFEST: TimingManifest = [
@@ -200,24 +201,84 @@ describe('captionAt (Q3 caption interpolation)', () => {
 describe('stage client script embedding (stageClient.ts)', () => {
   it('embeds the tested functions by name and stays framework-free', () => {
     const js = buildStageClientJs();
-    for (const name of ['splitCaptionLines', 'sectionAt', 'tabAt', 'captionAt']) {
+    for (const name of [
+      'splitCaptionLines',
+      'sectionAt',
+      'tabAt',
+      'captionAt',
+      // Open Moment (EPIC V #360 / V3 #364) window pure functions.
+      'findOpenMomentWindow',
+      'openMomentExit',
+      'computeRms',
+      'isSpeechEnergy',
+      'chooseOutcome',
+      'hasTranscript',
+      'verseRevealMs',
+      'releaseStream',
+    ]) {
       expect(js).toContain(`function ${name}(`);
     }
     expect(js).toContain('stage-data');
-    // Q7 rehearsal finding (2026-07-23): a getUserMedia call makes Attendee's
-    // container open its meeting-audio-to-page WebRTC path and inject a red
-    // "Failed to receive remote audio stream" banner into the presented DOM
-    // when it times out. This playback-only page must never request the mic.
-    expect(js).not.toContain('getUserMedia');
     expect(js).toContain('pointerdown'); // autoplay retry on first pointer event
     expect(js).not.toContain('import ');
     expect(js).not.toContain('require(');
   });
 
+  it('getUserMedia is requested ONLY inside the Open Moment window module (updated Q7 pin, EPIC V #360)', () => {
+    // Q7 rehearsal finding (2026-07-23): a getUserMedia call at LOAD makes
+    // Attendee's container open its meeting-audio-to-page WebRTC path and
+    // inject a red "Failed to receive remote audio stream" banner when it
+    // times out. The Open Moment deliberately requests the mic — but ONLY
+    // mid-call, inside the bounded, visually-disclosed listening window (the
+    // happy path the container's timeout was designed around), and releases
+    // it the instant the window ends. This pin (superseding the old
+    // "getUserMedia is absent") holds the boundary: the API name appears
+    // exactly once, and only after the window module's marker — never at
+    // load, never in the timeline/playback path.
+    const js = buildStageClientJs();
+
+    // The mic API is INVOKED exactly once — the single request inside the
+    // window module (comments naming the API for provenance don't count).
+    const invocations = js.split('getUserMedia({').length - 1;
+    expect(invocations).toBe(1);
+
+    // The actual request sits AFTER the window module's marker: nothing
+    // touches the mic in the load/timeline/playback path above it (the
+    // marker is the first line of the module, well below the tab/caption/
+    // progress wiring).
+    const moduleMarker = js.indexOf('OPEN MOMENT WINDOW MODULE');
+    expect(moduleMarker).toBeGreaterThan(-1);
+    expect(js.indexOf('getUserMedia({')).toBeGreaterThan(moduleMarker);
+
+    // The request is reached only via enterListening() → startMic().
+    expect(js.indexOf('function startMic(')).toBeGreaterThan(-1);
+    expect(js.indexOf('getUserMedia({')).toBeGreaterThan(js.indexOf('function startMic('));
+  });
+
+  it('releases the microphone stream the instant the window ends (mic-release pin)', () => {
+    // The window MUST stop every captured track immediately on exit
+    // (feature #361). releaseStream is the shipped release path — pin it
+    // functionally with a fake MediaStream that records stop() calls.
+    const stopped: string[] = [];
+    const fakeStream = {
+      getTracks: () => [
+        { kind: 'audio', stop: () => stopped.push('a') },
+        { kind: 'audio', stop: () => stopped.push('b') },
+      ],
+    };
+    expect(releaseStream(fakeStream)).toBe(2);
+    expect(stopped).toEqual(['a', 'b']);
+    // Null-safe: the mic-denied path reaches release with no stream.
+    expect(releaseStream(null)).toBe(0);
+
+    // And the release call is actually wired into the shipped script.
+    const js = buildStageClientJs();
+    expect(js).toContain('releaseStream(omStream)');
+  });
+
   it('the embedded functions actually evaluate and agree with the module (no toString drift)', () => {
     const js = buildStageClientJs();
     const prefix = js.slice(0, js.indexOf('(function () {'));
-    // eslint-disable-next-line @typescript-eslint/no-implied-eval
     const evaluate = new Function(
       `${prefix}; return { sectionAt: sectionAt, tabAt: tabAt, captionAt: captionAt, splitCaptionLines: splitCaptionLines };`,
     )() as {

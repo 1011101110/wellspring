@@ -196,6 +196,20 @@ export interface BuildInstructionsParams {
    * never surfaced as a problem. Omitted entirely (no line) when not given.
    */
   inviteContext?: string;
+  /**
+   * A passage the user has marked in their own YouVersion highlights (U4,
+   * kairos-devotional#357), woven in as "a verse you've marked" — but ONLY
+   * when a real highlight exists (the orchestrator's `decideHighlightWeaving`
+   * decides that; this builder just renders the line). Follows the
+   * signalProvenance doctrine: absent = never claimed. The framing is
+   * HONESTY-LOCKED (see `highlightFramingLine`) so it is true whether the
+   * highlights API is all-user or app-scoped-only (⚠️ must-confirm U1 read
+   * scope) and never implies Wellspring saw the user's wider Bible activity.
+   * A USFM reference, e.g. "JHN.3.16"; the model still fetches the exact text
+   * via get_bible_verse (anti-hallucination pipeline unchanged). Omitted
+   * entirely (no line) when not provided.
+   */
+  highlightedReference?: string;
 }
 
 /**
@@ -315,6 +329,22 @@ function languageDirective(language: LanguageTag): string {
 function distressResourceLanguageNote(language: LanguageTag): string {
   const name = LANGUAGE_ENGLISH_NAMES[language];
   return ` The listener reads ${name}, but keep the 988 resource sentence itself in English exactly as phrased — 988 is a United States, primarily English-language service — and add one brief sentence in ${name} gently framing it, so the listener knows what the English line offers.`;
+}
+
+/**
+ * The honesty-locked highlight-weaving line (U4 #357). Written to be TRUE
+ * under EITHER read scope (⚠️ must-confirm U1): if `/v1/highlights` returns
+ * only Wellspring-created highlights, "you marked this" is still literally
+ * true; if it returns the user's whole set, it is equally true. The one thing
+ * it must never do — and is phrased to prevent — is imply Wellspring has seen
+ * the user's broader Bible reading or highlighting. It speaks to exactly this
+ * one passage and nothing around it. Provenance honesty: the model may claim
+ * the user marked it (they did), and it must still fetch the exact text via
+ * get_bible_verse like any Scripture. §9: no count, no frequency, no "you
+ * highlight a lot" — a single passage, used, never scored.
+ */
+function highlightFramingLine(reference: string): string {
+  return `This listener has marked the passage ${reference} in their own Bible highlights. Center this devotional on it, and you may gently acknowledge — once, quietly — that they marked this verse, which is literally true. Fetch its exact text with get_bible_verse like any Scripture; never quote it from memory. Speak ONLY to this one passage they chose to mark: do not imply, count, or comment on anything else about their reading, their other highlights, or how often they highlight — you have seen only that they marked this one verse.`;
 }
 
 /** Restates the canonical-tool rule (Foundation §4.4) as an explicit instruction line. */
@@ -508,6 +538,12 @@ export function buildInstructions(params: BuildInstructionsParams): string {
     params.inviteContext
       ? `For this devotional, the user wrote — in their own words, on the invitation they sent Wellspring — the following: "${params.inviteContext}". They shared this deliberately, for you to hold. Let it shape the devotional gently. If there is any weight, difficulty, or emotion in it, respond with the same non-shaming, non-fixing gentleness the safety guardrails require — never analyzing it, advising on it, or presenting it back as a problem to solve. A single quiet acknowledgment that they are not alone in it is enough.`
       : null,
+    // U4 #357: weave in a verse the user marked in their YouVersion highlights.
+    // Provenance honesty — emitted ONLY when a real highlight reference is
+    // present (the orchestrator's decideHighlightWeaving gates that, including
+    // precedence: it never sets this when inviteContext/prayerIntention/theme
+    // already steer). Absent = no line, nothing claimed.
+    params.highlightedReference ? highlightFramingLine(params.highlightedReference) : null,
     `Target format: ${targetFormat} — ${FORMAT_WORD_TARGETS[targetFormat]}. Match the devotionalBody length to this format.`,
     bands.distressSignal
       ? `This user has flagged elevated distress. Keep the devotional to the micro format, gentle-comfort theme, low-pressure tone, and include this resource once, gently: in the US, you can call or text 988 (the Suicide & Crisis Lifeline) anytime for free, confidential support. Offer it as a quiet option, without diagnosing or dramatizing.${language === DEFAULT_LANGUAGE ? '' : distressResourceLanguageNote(language)}`

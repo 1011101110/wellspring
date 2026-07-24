@@ -38,6 +38,14 @@ export interface DevotionalRow {
    * 1721900000000.
    */
   meetbot_played_at: Date | null;
+  /**
+   * When Wellspring wrote this devotional's primary verse as a highlight in
+   * the user's YouVersion account (U3, kairos-devotional#356), or NULL if
+   * that has never happened. The durable idempotency stamp behind the write
+   * bridge's "not already written" gate and the completion-page proof line —
+   * see `markHighlightWritten` and migration 1722900000000.
+   */
+  yv_highlight_written_at: Date | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -303,6 +311,29 @@ export class DevotionalsRepository {
         WHERE id = $1 AND meetbot_played_at IS NULL`,
       [devotionalId],
     );
+  }
+
+  /**
+   * Records that Wellspring wrote this devotional's primary verse as a
+   * YouVersion highlight (U3, kairos-devotional#356). Scoped by `user_id`
+   * like every ordinary read/write on this table (the write bridge always
+   * has the owning user's id in hand — this is not one of the deliberately
+   * unscoped Meet-bot exceptions above).
+   *
+   * `WHERE yv_highlight_written_at IS NULL` makes it idempotent and keeps the
+   * FIRST write's timestamp: a double-Amen, a retried POST, or an idempotent
+   * re-run must never write the highlight twice or move the stamp — exactly
+   * the `markMeetBotPlayed` shape. Returns whether THIS call was the one that
+   * set it (`rowCount > 0`), so the bridge can log "wrote" vs "already
+   * written" without a second read and never double-POST to YouVersion.
+   */
+  async markHighlightWritten(userId: VerifiedUserId, devotionalId: string): Promise<boolean> {
+    const result = await this.db.query(
+      `UPDATE devotionals SET yv_highlight_written_at = now(), updated_at = now()
+        WHERE user_id = $1 AND id = $2 AND yv_highlight_written_at IS NULL`,
+      [userId, devotionalId],
+    );
+    return (result.rowCount ?? 0) > 0;
   }
 
   /**

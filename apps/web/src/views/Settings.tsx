@@ -1,9 +1,15 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { PreferencesForm } from '../components/PreferencesForm';
 import { RhythmCard } from '../components/RhythmCard';
+import { ConnectedAccountsCard } from '../components/ConnectedAccountsCard';
 import { ErrorNote } from './Onboarding';
 import type { WebPreferences } from '../lib/preferences';
 import { calendarSettingsState, type ConnectionState } from '../lib/connectionState';
+import type { YouVersionSettingsState } from '../lib/youversionConnection';
+import {
+  takeYouVersionResult,
+  type YouVersionCallbackResult,
+} from '../lib/youversionCallback';
 import type { Rhythm } from '@kairos/shared-contracts';
 
 /**
@@ -36,6 +42,14 @@ export function SettingsView({
   activeDaysCount,
   onToggleScheduleFixed,
   onChangeMinPerWeek,
+  youversion,
+  youversionUnavailable,
+  yvWriteHighlights,
+  yvReadHighlights,
+  onConnectYouVersion,
+  onDisconnectYouVersion,
+  onToggleYvWrite,
+  onToggleYvRead,
 }: {
   value: WebPreferences;
   onChange: (next: WebPreferences) => void;
@@ -65,8 +79,34 @@ export function SettingsView({
   onToggleScheduleFixed: (next: boolean) => void;
   /** Persists a new `minPerWeek` immediately. */
   onChangeMinPerWeek: (next: number) => void;
+  /** The server-derived YouVersion connection state (`youVersionSettingsState`). `unsupported` hides the card. */
+  youversion: YouVersionSettingsState;
+  /** The connect endpoint answered 503 (not configured yet) — show the row disabled with a "coming soon" note. */
+  youversionUnavailable: boolean;
+  /** `yvWriteHighlights` from the last preferences response. */
+  yvWriteHighlights: boolean;
+  /** `yvReadHighlights` from the last preferences response. */
+  yvReadHighlights: boolean;
+  onConnectYouVersion: () => void;
+  onDisconnectYouVersion: () => void;
+  /** Persists `yvWriteHighlights` immediately via a SPARSE PUT. */
+  onToggleYvWrite: (next: boolean) => void;
+  /** Persists `yvReadHighlights` immediately via a SPARSE PUT. */
+  onToggleYvRead: (next: boolean) => void;
 }) {
   const [confirmingSignOut, setConfirmingSignOut] = useState(false);
+
+  // The YouVersion OAuth return arrives as a one-shot flash in sessionStorage
+  // (the callback is a full page load — see lib/youversionCallback). Read and
+  // clear it exactly once, on mount. `takeYouVersionResult` clears the key as
+  // it reads, so a React 18 StrictMode double-invoke sees null the second time
+  // and does nothing — the same idiom the onboarding calendar step uses.
+  const [youversionFlash, setYouversionFlash] =
+    useState<YouVersionCallbackResult | null>(null);
+  useEffect(() => {
+    const result = takeYouVersionResult(window.sessionStorage);
+    if (result) setYouversionFlash(result);
+  }, []);
 
   // Connection (OAuth) and reading consent (`calendar_enabled`) are separate
   // facts; this reconciles them into the one honest readout the section can
@@ -130,6 +170,24 @@ export function SettingsView({
         busy={busy}
         onToggleScheduleFixed={onToggleScheduleFixed}
         onChangeMinPerWeek={onChangeMinPerWeek}
+      />
+
+      {/* "Connected accounts" (U5 #358): YouVersion connection + the two
+          highlight-consent toggles. Like the rhythm card above, it persists
+          on interaction (sparse PUTs / connect / disconnect) rather than
+          through the staged "Save changes" flow, and hides itself entirely on
+          an older server that does not report a connection (#244). */}
+      <ConnectedAccountsCard
+        state={youversion}
+        unavailable={youversionUnavailable}
+        busy={busy}
+        writeHighlights={yvWriteHighlights}
+        readHighlights={yvReadHighlights}
+        callback={youversionFlash}
+        onConnect={onConnectYouVersion}
+        onDisconnect={onDisconnectYouVersion}
+        onToggleWrite={onToggleYvWrite}
+        onToggleRead={onToggleYvRead}
       />
 
       <PreferencesForm value={value} onChange={onChange} timezone={timezone} idPrefix="settings" />

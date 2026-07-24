@@ -244,6 +244,14 @@ export interface SessionCompletePageData {
   token: string;
   /** True once a session_feedback row exists — renders the thanked state and NO form (grace: never nag twice, #321). */
   feedbackSubmitted: boolean;
+  /**
+   * True ONLY when the devotional's verse has actually been saved to the
+   * user's YouVersion highlights (U3, kairos-devotional#356). Shows one quiet
+   * proof line and NOTHING otherwise — the completion page never advertises or
+   * nags about YouVersion to a user who is not connected/consented, and never
+   * claims a save that has not happened. Defaults to false (omitted line).
+   */
+  youVersionHighlightSaved?: boolean;
 }
 
 /**
@@ -290,6 +298,14 @@ ${optionsHtml}
 export function renderSessionCompletePage(data: SessionCompletePageData): string {
   const { token, feedbackSubmitted } = data;
 
+  // One quiet proof line (U3 #356), shown ONLY in the written state — the mark
+  // the devotional left in the user's real Bible. §07 voice (understated,
+  // never triumphant); `.theme` role = the clay muted-text token, AA-safe.
+  // Static string (no user/LLM content), so nothing to escape.
+  const highlightProof = data.youVersionHighlightSaved
+    ? `<p class="theme" role="status">Saved to your YouVersion highlights.</p>`
+    : '';
+
   const feedbackSection = feedbackSubmitted
     ? `<p class="gentle-message">Thank you &mdash; this shapes what comes next.</p>`
     : `<form class="feedback-form" method="post" action="/session/${encodeURIComponent(token)}/feedback">
@@ -322,6 +338,7 @@ ${feedbackGroup('timeFeel', 'The time of day was&hellip;', [
     `<p class="completed-badge" role="status">Completed &#10003;</p>
 <p class="gentle-message">Amen. Your time is marked complete &mdash; thank you for being here.</p>
 <p class="theme">You can close this page and carry the quiet with you. We'll meet you again tomorrow.</p>
+${highlightProof}
 ${feedbackSection}`,
   );
 }

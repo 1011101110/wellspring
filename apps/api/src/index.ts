@@ -7,6 +7,8 @@ import { GlooTokenManager } from './services/gloo/glooTokenManager.js';
 import { GlooResponsesClient } from './services/gloo/glooResponsesClient.js';
 import { LoggingGlooSummaryService } from './services/gloo/glooSummaryService.js';
 import { YouVersionClient } from './services/youversion/youVersionClient.js';
+import { YouVersionHighlightsClient } from './services/youversion/youVersionHighlightsClient.js';
+import { HighlightsBridge } from './services/youversion/highlightsBridge.js';
 import { DevotionalEngine } from './services/devotionalEngine.js';
 import { TtsService } from './services/tts/ttsService.js';
 import { OpenMomentEngine } from './services/stage/openMomentEngine.js';
@@ -70,6 +72,42 @@ const { storage: audioStorage, description: audioStorageDescription } = buildAud
 // is unconfirmed (tracked separately as issue #21), so only the logging
 // no-op transport is wired here until that's resolved.
 const glooSummaryService = new LoggingGlooSummaryService();
+
+/**
+ * YouVersion highlights bridge (U3 write #356 / U4 read #357, epic #353) —
+ * constructed here so it can be wired into BOTH SessionService (write on Amen)
+ * and the orchestrator (read for personalization). Requires KMS to decrypt the
+ * user's OAuth token; if `KMS_KEY_NAME` is unset (a non-YouVersion deploy) the
+ * bridge is simply undefined and both consumers no-op. All consent/connection
+ * gating lives inside the bridge, so wiring it is safe and inert until a user
+ * connects and flips a highlight toggle on. The OAuth refresh helper is
+ * optional — a bridge without it still writes/reads, it just cannot refresh an
+ * expired token (⚠️ must-confirm U1: YouVersion may issue no refresh token).
+ */
+let highlightsBridge: HighlightsBridge | undefined;
+try {
+  const highlightsKms = buildGoogleKmsServiceFromEnv();
+  let highlightsOAuth;
+  try {
+    highlightsOAuth = buildYouVersionOAuthServiceFromEnv();
+  } catch {
+    highlightsOAuth = undefined;
+  }
+  highlightsBridge = new HighlightsBridge({
+    client: new YouVersionHighlightsClient({ appKey: process.env.YOUVERSION_API_KEY ?? '' }),
+    connections: repositories.youversionConnections,
+    preferences: repositories.preferences,
+    devotionals: repositories.devotionals,
+    kmsService: highlightsKms,
+    oauthService: highlightsOAuth,
+  });
+} catch {
+  // No KMS configured — cannot decrypt tokens, so no highlight bridge. The
+  // write/read paths are simply absent (fail-closed by omission), same posture
+  // as the connect route's 503.
+  highlightsBridge = undefined;
+}
+
 const sessionService = new SessionService({
   sessions: repositories.sessions,
   devotionals: repositories.devotionals,
@@ -79,6 +117,9 @@ const sessionService = new SessionService({
   glooEngagementSummaries: repositories.glooEngagementSummaries,
   prayerIntentions: repositories.prayerIntentions,
   sessionFeedback: repositories.sessionFeedback,
+  // U3 (#356): write the completed devotional's verse to the user's YouVersion
+  // highlights, fire-and-forget. Undefined when KMS is not configured.
+  highlightWriter: highlightsBridge,
 });
 
 /**
@@ -388,6 +429,11 @@ const generateNowOrchestrator = new GenerateNowOrchestrator({
     devotionals: repositories.devotionals,
     preferences: repositories.preferences,
   }),
+  // U4 (#357): read the user's YouVersion highlights as a personalization
+  // signal. Only the daily run's `applyFeedbackSteering` generations consult
+  // it, and only when read consent is on (the bridge gates that) — so wiring
+  // it changes nothing for generate-now/examen/invite/distress.
+  highlightsBridge,
   // Calendar integration deps (only present when env vars are configured).
   ...orchestratorCalendarDeps,
   connections: orchestratorCalendarDeps.calendarClient ? repositories.connections : undefined,
