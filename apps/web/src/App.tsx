@@ -3,8 +3,12 @@ import { onAuthStateChanged, type User } from 'firebase/auth';
 import { auth, signOutOfKairos } from './firebase';
 import { getPreferences, putPreferences } from './api/preferences';
 import { getGoogleConnectUrl } from './api/connect';
+import { getYouVersionConnectUrl, disconnectYouVersion } from './api/youversion';
 import { getConnections } from './api/dashboard';
+import { ApiError } from './api/client';
 import { deriveConnectionState, type ConnectionState } from './lib/connectionState';
+import { youVersionSettingsState } from './lib/youversionConnection';
+import { peekYouVersionResult } from './lib/youversionCallback';
 import {
   DEFAULT_PREFERENCES,
   detectTimezone,
@@ -24,7 +28,11 @@ import {
 import { SettingsView } from './views/Settings';
 import { DashboardView } from './views/Dashboard';
 import { DevotionalDetailView } from './views/DevotionalDetail';
-import type { PreferencesResponseData, PreferencesUpdateRequest } from '@kairos/shared-contracts';
+import type {
+  PreferencesResponseData,
+  PreferencesUpdateRequest,
+  YouVersionConnection,
+} from '@kairos/shared-contracts';
 
 /**
  * The whole client, in one place, because the interesting decisions are
@@ -115,6 +123,25 @@ export function App() {
    * and thereby resurrecting, a decision made on iOS.
    */
   const [calendarConsent, setCalendarConsent] = useState<boolean | undefined>(undefined);
+  /**
+   * The YouVersion connection status and its two highlight-consent gates,
+   * mirrored from the last `/v1/preferences` response — the same
+   * server-authoritative discipline as `calendarReadingEnabled` above. The
+   * connection is `undefined` on an older server that does not report it,
+   * which hides the Connected-accounts card entirely (#244).
+   */
+  const [youversionConnection, setYouversionConnection] = useState<
+    YouVersionConnection | undefined
+  >(undefined);
+  const [yvWriteHighlights, setYvWriteHighlights] = useState(false);
+  const [yvReadHighlights, setYvReadHighlights] = useState(false);
+  /**
+   * Set when `POST /v1/youversion/connect` answered 503 (the OAuth client is
+   * not provisioned yet — staging until U1). It disables the connect row with
+   * a quiet "coming soon" note instead of surfacing an error. Discovered on
+   * click, since only the connect call reveals it.
+   */
+  const [youversionUnavailable, setYouversionUnavailable] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
@@ -149,7 +176,22 @@ export function App() {
       void getConnections()
         .then((payload) => setCalendarConnection(deriveConnectionState(payload)))
         .catch(() => setCalendarConnection(null));
-      setPhase(data.onboardedAt === null ? { kind: 'onboarding' } : { kind: 'dashboard' });
+      // A YouVersion OAuth return lands on `/settings?youversion=…`, rewritten
+      // to `/` before render (main.tsx). `peek` reads the pending flash
+      // WITHOUT clearing it — that keeps this routing decision idempotent
+      // across a StrictMode double-load or a token-refresh re-load, and the
+      // one clearing read is `SettingsView`'s, done once it has mounted. An
+      // onboarding user is never diverted: the callback only fires post-connect
+      // from Settings, which an un-onboarded user has not reached.
+      const pendingYouVersion =
+        data.onboardedAt !== null && peekYouVersionResult(window.sessionStorage);
+      setPhase(
+        data.onboardedAt === null
+          ? { kind: 'onboarding' }
+          : pendingYouVersion
+            ? { kind: 'settings' }
+            : { kind: 'dashboard' },
+      );
       // A signed-in user has already done welcome and sign-in by
       // definition, so onboarding resumes at the calendar step — which is
       // also where the OAuth return needs to land.
@@ -220,6 +262,13 @@ export function App() {
   function adoptServerSlices(data: PreferencesResponseData) {
     setServerPrefs(data);
     setCalendarReadingEnabled(data.calendarEnabled);
+    // YouVersion status + consent gates ride the same response (U2/U5). Both
+    // gates default false when absent (an older server, or a row predating the
+    // columns) — connecting an account is deliberately NOT consent to read or
+    // write highlights.
+    setYouversionConnection(data.youversionConnection);
+    setYvWriteHighlights(data.yvWriteHighlights ?? false);
+    setYvReadHighlights(data.yvReadHighlights ?? false);
   }
 
   /**
@@ -275,6 +324,45 @@ export function App() {
       window.location.assign(await getGoogleConnectUrl());
     } catch (err) {
       setError(err instanceof Error ? err.message : 'We could not start the connection.');
+    }
+  }
+
+  /**
+   * Start the YouVersion handoff (U5 #358). A 503 is not a failure to shout
+   * about — it is "not provisioned yet" (staging until U1) — so it flips the
+   * row to a disabled "coming soon" note rather than an error banner. Any
+   * other failure is a real error.
+   */
+  async function startYouVersionConnect() {
+    setError(null);
+    try {
+      window.location.assign(await getYouVersionConnectUrl());
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 503) {
+        setYouversionUnavailable(true);
+        return;
+      }
+      setError(err instanceof Error ? err.message : 'We could not start the connection.');
+    }
+  }
+
+  /**
+   * Disconnect YouVersion, then re-read preferences so the card reflects the
+   * server's new `youversionConnection` — the connection fact stays
+   * server-authoritative, never a local "we think it's gone now" (the #213
+   * lesson). The two consent gates keep their stored values across a
+   * disconnect; a later reconnect does not silently re-grant them.
+   */
+  async function disconnectYouVersionAccount() {
+    setBusy(true);
+    setError(null);
+    try {
+      await disconnectYouVersion();
+      adoptServerSlices(await getPreferences());
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'We could not disconnect your account.');
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -374,6 +462,16 @@ export function App() {
           activeDaysCount={serverPrefs ? new Set(serverPrefs.activeDays).size : 7}
           onToggleScheduleFixed={(fixed) => void saveRhythm({ adaptiveEnabled: !fixed })}
           onChangeMinPerWeek={(n) => void saveRhythm({ minPerWeek: n })}
+          youversion={youVersionSettingsState(youversionConnection)}
+          youversionUnavailable={youversionUnavailable}
+          yvWriteHighlights={yvWriteHighlights}
+          yvReadHighlights={yvReadHighlights}
+          onConnectYouVersion={() => void startYouVersionConnect()}
+          onDisconnectYouVersion={() => void disconnectYouVersionAccount()}
+          // The consent toggles persist on their own — a sparse PUT of exactly
+          // the one field, never the staged form (the #344 discipline).
+          onToggleYvWrite={(next) => void sparseSave({ yvWriteHighlights: next })}
+          onToggleYvRead={(next) => void sparseSave({ yvReadHighlights: next })}
         />
       </Shell>
     );
