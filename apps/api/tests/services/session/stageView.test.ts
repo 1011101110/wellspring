@@ -37,9 +37,10 @@ function fakeSessionRow(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function fakeDevotionalRow() {
+function fakeDevotionalRow(overrides: Record<string, unknown> = {}) {
   return {
     id: 'devo-1',
+    slot_type: 'standard',
     theme: 'Rest',
     format: 'short',
     verses: [
@@ -55,6 +56,7 @@ function fakeDevotionalRow() {
     journaling_prompt: null,
     action_step: null,
     audio_object: 'devotionals/devo-1.mp3',
+    ...overrides,
   };
 }
 
@@ -85,7 +87,7 @@ function build(options: { manifest?: TimingManifest | null; manifestThrows?: boo
     audioStorage,
     now: () => new Date('2026-07-23T12:00:00Z'),
   });
-  return { service, sessions, audioStorage };
+  return { service, sessions, devotionals, audioStorage };
 }
 
 describe('getStageView (Q2 #332)', () => {
@@ -115,6 +117,31 @@ describe('getStageView (Q2 #332)', () => {
     if (stage.kind !== 'ok' || session.kind !== 'ok') throw new Error('expected ok results');
     expect(stage.page).toEqual(session.page);
     expect(stage.manifest).toEqual(MANIFEST);
+  });
+
+  it("surfaces the devotional's slot_type on the stage view — standard by default, examen for the evening variant (T3 #350 residual)", async () => {
+    const { service, devotionals } = build();
+
+    const standard = await service.getStageView(TOKEN);
+    if (standard.kind !== 'ok') throw new Error('expected ok');
+    expect(standard.slotType).toBe('standard');
+
+    (devotionals.getById as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
+      fakeDevotionalRow({ slot_type: 'examen' }),
+    );
+    const examen = await service.getStageView(TOKEN);
+    if (examen.kind !== 'ok') throw new Error('expected ok');
+    expect(examen.slotType).toBe('examen');
+  });
+
+  it('a row without slot_type (pre-#77 fake/fixture) falls back to the light default, never throws', async () => {
+    const { service, devotionals } = build();
+    (devotionals.getById as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
+      fakeDevotionalRow({ slot_type: undefined }),
+    );
+    const result = await service.getStageView(TOKEN);
+    if (result.kind !== 'ok') throw new Error('expected ok');
+    expect(result.slotType).toBe('standard');
   });
 
   it('collapses unknown and expired tokens to the identical not_found (enumeration safety)', async () => {

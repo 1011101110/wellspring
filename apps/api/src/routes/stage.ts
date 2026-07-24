@@ -100,7 +100,14 @@ export function registerStageRoutes(app: FastifyInstance, deps: StageRoutesDeps)
       return reply
         .status(200)
         .type('text/html; charset=utf-8')
-        .send(renderStagePage({ page: result.page, manifest: result.manifest, muted }));
+        .send(
+          renderStagePage({
+            page: result.page,
+            manifest: result.manifest,
+            muted,
+            slotType: result.slotType,
+          }),
+        );
     },
   );
 }
