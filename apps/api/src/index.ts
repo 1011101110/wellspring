@@ -14,6 +14,7 @@ import { buildEmailSenderFromEnv } from './services/invite/resendEmailSender.js'
 import { HttpResendInboundEmailProvider } from './services/invite/inboundEmailProvider.js';
 import { buildGoogleOAuthServiceFromEnv } from './services/calendar/googleOAuthService.js';
 import { buildGoogleKmsServiceFromEnv } from './services/calendar/googleKmsService.js';
+import { buildYouVersionOAuthServiceFromEnv } from './services/youversion/youVersionOAuthService.js';
 import { buildLiveKitConfigFromEnv } from './services/delivery/liveKitConfig.js';
 import { LiveKitRoomProvider } from './services/delivery/liveKitRoomProvider.js';
 import { MeetBotProvider } from './services/delivery/meetBotProvider.js';
@@ -386,11 +387,50 @@ if (inboundInviteRoutes) {
   };
 }
 
+// YouVersion account connection (U2, kairos-devotional#355). Unlike the
+// Google block above, this NEVER prevents the routes from registering: the
+// OAuth service is `undefined` until YOUVERSION_OAUTH_CLIENT_ID is provisioned
+// (U1), and the connect endpoints return a clear 503 until then rather than
+// 404 — so the app deploys fine pre-U1. KMS is required to store tokens at
+// rest; reuse the calendar KMS instance when it was built, otherwise construct
+// one (Cloud KMS is provider-agnostic despite the `Google` name).
+let youVersionKms = orchestratorCalendarDeps.kmsService;
+if (!youVersionKms) {
+  try {
+    youVersionKms = buildGoogleKmsServiceFromEnv();
+  } catch {
+    // KMS_KEY_NAME not configured — the connect route 503s rather than storing
+    // plaintext, same fail-closed-by-omission posture as the OAuth service.
+    youVersionKms = undefined;
+  }
+}
+let youVersionConnect: import('./app.js').BuildAppOptions['youVersionConnect'];
+try {
+  youVersionConnect = {
+    oauthService: buildYouVersionOAuthServiceFromEnv(),
+    kmsService: youVersionKms,
+    // Single web origin the OAuth callback returns to (#15 split) — same
+    // first-of-the-allowlist rule as the Google connect flow.
+    webAppBaseUrl: process.env.WEB_APP_BASE_URL?.split(',')[0]?.trim() || undefined,
+  };
+} catch (err) {
+  // A misconfiguration (e.g. client id set but PUBLIC_BASE_URL missing) must
+  // not crash boot — register the routes with no service so they 503. `app`
+  // does not exist yet here, so log via console rather than the Fastify logger.
+  console.warn('YouVersion OAuth service could not be constructed — connect route will 503:', err);
+  youVersionConnect = {
+    oauthService: undefined,
+    kmsService: youVersionKms,
+    webAppBaseUrl: process.env.WEB_APP_BASE_URL?.split(',')[0]?.trim() || undefined,
+  };
+}
+
 const app = buildApp({
   sessionService,
   repositories,
   audioStorage,
   connectRoutes,
+  youVersionConnect,
   // GET /v1/calendar/freebusy (M1, #255) — the dashboard calendar view's
   // live proxy. Gated on the same calendar env vars as everything else
   // here: with no `GoogleCalendarClient` there is no calendar to read, and
