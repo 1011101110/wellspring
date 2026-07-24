@@ -381,6 +381,15 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
       // bound to the user), so the route is not unprotected, just not
       // Firebase-authed.
       '/v1/youversion/oauth/callback',
+      // Open Moment live response (EPIC V #360 / V2 #363). Capability-token
+      // auth: the session token in the URL IS the credential — the same
+      // doctrine as the public `/session/:token/feedback` and `/stage/:token`
+      // routes, which live outside `/v1`. This one is under `/v1` only for URL
+      // grouping, so the #80 audit must be told it is intentionally not
+      // Firebase-authed; the handler validates the token and is rate-limited
+      // token+IP. (Without this entry the boot audit crashes the container —
+      // every deploy from the open-moment merge onward failed here.)
+      '/v1/stage/:token/respond',
     ],
   });
 

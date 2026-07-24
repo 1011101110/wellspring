@@ -2,6 +2,7 @@ import Fastify from 'fastify';
 import { describe, expect, it } from 'vitest';
 import { auditV1RoutesRequireAuth } from '../../src/auth/routeAudit.js';
 import { requireAuth } from '../../src/auth/middleware.js';
+import { buildApp } from '../../src/app.js';
 
 /**
  * Issue #80: a forgotten `{ preHandler: requireAuth }` on a new `/v1`
@@ -68,6 +69,30 @@ describe('auditV1RoutesRequireAuth', () => {
     app.get('/v1/connect/google/callback', async () => ({ ok: true }));
     app.get('/v1/other-unprotected', async () => ({ ok: true }));
     await expect(app.ready()).rejects.toThrow(/GET \/v1\/other-unprotected/);
+    await app.close();
+  });
+});
+
+/**
+ * Boots the REAL `buildApp()` with the route groups that only register when
+ * their deps are supplied — the exact gap that shipped a boot-crashing
+ * container: `POST /v1/stage/:token/respond` (EPIC V) registers only when
+ * `stageRoutes.stageResponseService` is present, so every prior boot test
+ * (which called `buildApp()` with no options) never exercised the audit
+ * against it. Production DOES supply it, so five deploys crashed on the #80
+ * audit while CI stayed green. This test closes that hole: it fails `onReady`
+ * if a capability-authed `/v1` route is added without an allowlist entry.
+ */
+describe('buildApp boot audit — routes gated behind optional deps', () => {
+  it('boots cleanly with the Open Moment respond route registered (allowlisted)', async () => {
+    const app = buildApp({
+      stageRoutes: {
+        sessionService: { getStageView: async () => ({ kind: 'not_found' }) },
+        // Presence of this dep is what registers POST /v1/stage/:token/respond.
+        stageResponseService: { respond: async () => ({ outcome: 'silence' }) },
+      } as never,
+    });
+    await app.ready();
     await app.close();
   });
 });
