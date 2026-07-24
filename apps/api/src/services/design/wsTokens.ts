@@ -54,23 +54,22 @@ export const WS_SANS =
   `'Hanken Grotesk', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif`;
 
 /**
- * The font files the /stage/assets/fonts route will serve when present.
- * SEAM (T1 #348): these names must match the woff2 files T1 commits under
- * apps/api/assets/fonts/ — if T1 lands different basenames, update this
- * list and the @font-face src URLs below (one place each).
+ * The font files the /stage/assets/fonts route will serve — matched to the
+ * basenames T1 (#348) committed under apps/api/assets/fonts/: latin subsets
+ * per Spectral weight/style, and ONE variable-range Hanken file covering
+ * 400–600 (declared via a `weight` RANGE below, per @font-face spec).
  */
 export const WS_FONT_FACES: ReadonlyArray<{
   family: 'Spectral' | 'Hanken Grotesk';
-  weight: number;
+  /** Single weight, or an inclusive [min, max] range for variable files. */
+  weight: number | readonly [number, number];
   style: 'normal' | 'italic';
   file: string;
 }> = [
-  { family: 'Spectral', weight: 300, style: 'normal', file: 'Spectral-Light.woff2' },
-  { family: 'Spectral', weight: 300, style: 'italic', file: 'Spectral-LightItalic.woff2' },
-  { family: 'Spectral', weight: 400, style: 'normal', file: 'Spectral-Regular.woff2' },
-  { family: 'Hanken Grotesk', weight: 400, style: 'normal', file: 'HankenGrotesk-Regular.woff2' },
-  { family: 'Hanken Grotesk', weight: 500, style: 'normal', file: 'HankenGrotesk-Medium.woff2' },
-  { family: 'Hanken Grotesk', weight: 600, style: 'normal', file: 'HankenGrotesk-SemiBold.woff2' },
+  { family: 'Spectral', weight: 300, style: 'normal', file: 'spectral-300-latin.woff2' },
+  { family: 'Spectral', weight: 300, style: 'italic', file: 'spectral-300italic-latin.woff2' },
+  { family: 'Spectral', weight: 400, style: 'normal', file: 'spectral-400-latin.woff2' },
+  { family: 'Hanken Grotesk', weight: [400, 600], style: 'normal', file: 'hanken-grotesk-400-600-latin.woff2' },
 ];
 
 /**
@@ -85,7 +84,7 @@ export function wsFontFaceCss(): string {
     (f) => `@font-face {
     font-family: '${f.family}';
     font-style: ${f.style};
-    font-weight: ${f.weight};
+    font-weight: ${Array.isArray(f.weight) ? f.weight.join(' ') : f.weight};
     font-display: swap;
     src: url('/stage/assets/fonts/${f.file}') format('woff2');
   }`,

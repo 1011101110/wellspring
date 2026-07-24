@@ -215,7 +215,7 @@ describe('GET /stage/assets/fonts/:file (T3 #350 — self-hosted fonts seam for 
 
   it('404s gracefully for an allowlisted name whose woff2 is not committed yet — the pages fall back to system stacks', async () => {
     const app = buildTestApp(async () => OK_VIEW);
-    const res = await app.inject({ method: 'GET', url: '/stage/assets/fonts/Spectral-Light.woff2' });
+    const res = await app.inject({ method: 'GET', url: '/stage/assets/fonts/spectral-300-latin.woff2' });
     // T1 (#348) commits the binaries; until then (and in any checkout
     // without them) this must be a plain 404, never a 500.
     expect([200, 404]).toContain(res.statusCode);
