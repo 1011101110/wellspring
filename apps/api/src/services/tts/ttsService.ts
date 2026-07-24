@@ -36,8 +36,14 @@ import {
   type Stillness,
   type TimingManifestEntry,
 } from '@kairos/shared-contracts';
-import { buildDevotionalSsmlSegments, type LabeledSsmlSegment } from './ssmlBuilder.js';
+import {
+  buildDevotionalSsmlSegments,
+  buildLiveResponseSsmlSegments,
+  type LabeledSsmlSegment,
+  type LiveResponseSsmlSegment,
+} from './ssmlBuilder.js';
 import { decodeMp3ToPcm } from '../livekit/decodeMp3ToPcm.js';
+import type { LiveResponse, LiveResponseDurations } from '@kairos/shared-contracts';
 
 /** Canonical error code for TTS failure — Foundation §4.5 / §6 error-code list. */
 export const AUDIO_UNAVAILABLE = 'AUDIO_UNAVAILABLE' as const;
@@ -120,10 +126,7 @@ export class TtsService {
   private readonly languageCode: string;
   private readonly speakingRate: number;
   private readonly maxSegmentBytes: number;
-  private readonly decodeMp3: (
-    mp3: Buffer,
-    options?: { sampleRate?: number },
-  ) => Promise<Buffer>;
+  private readonly decodeMp3: (mp3: Buffer, options?: { sampleRate?: number }) => Promise<Buffer>;
   private clientPromise: Promise<TtsClientLike> | undefined;
   private readonly injectedClient: TtsClientLike | undefined;
 
@@ -160,6 +163,7 @@ export class TtsService {
     lectio = false,
     voiceName?: string,
     language?: LanguageTag,
+    openMomentEnabled = false,
   ): Promise<SynthesizeResult> {
     // Per-request voice (#202). Before this, the voice came only from the
     // constructor, so `preferences.voice` had no path to Cloud TTS at all and
@@ -199,6 +203,7 @@ export class TtsService {
       stillness,
       lectio,
       language ?? DEFAULT_LANGUAGE,
+      openMomentEnabled,
     );
     let client: TtsClientLike;
     try {
@@ -246,6 +251,111 @@ export class TtsService {
       // dressed up as a Spanish synthesis or vice versa.
       voiceName: effectiveVoice,
     };
+  }
+
+  /**
+   * Synthesizes a validated Open Moment `LiveResponse` (EPIC V #360 / V2
+   * #363): acknowledgment → verse → framing, in the listener's voice and
+   * language (same locale-swap logic as `synthesize`). Returns the
+   * concatenated MP3 plus best-effort per-part durations for the Stage page
+   * to pace the orb/caption. Never throws for expected upstream failure —
+   * surfaces as `TtsServiceError` so the route can resolve to silence.
+   *
+   * Only ever called on an ALREADY-VALIDATED response (the engine's gauntlet
+   * ran first) — this method does no validation and MUST NOT be given raw
+   * model output (epic §2).
+   */
+  async synthesizeLiveResponse(
+    response: LiveResponse,
+    voiceName?: string,
+    language?: LanguageTag,
+  ): Promise<{ audio: Buffer; voiceName: string; durations: LiveResponseDurations }> {
+    const requestedVoice = voiceName === undefined ? this.voiceName : resolveVoiceName(voiceName);
+    const canonicalVoice = requestedVoice ?? this.voiceName;
+    const languageCode =
+      language === undefined ? this.languageCode : LANGUAGE_CATALOG[language].ttsLocale;
+    const effectiveVoice =
+      language === undefined ? canonicalVoice : localizeVoiceName(canonicalVoice, languageCode);
+
+    const segments = buildLiveResponseSsmlSegments(response, language ?? DEFAULT_LANGUAGE);
+
+    let client: TtsClientLike;
+    try {
+      client = await this.getClient();
+    } catch (err) {
+      throw new TtsServiceError(
+        `Failed to initialize Cloud TTS client: ${(err as Error).message}`,
+        err,
+      );
+    }
+
+    const buffers: Buffer[] = [];
+    for (const segment of segments) {
+      try {
+        const [res] = await client.synthesizeSpeech({
+          input: { ssml: segment.ssml },
+          voice: { languageCode, name: effectiveVoice },
+          audioConfig: { audioEncoding: 'MP3', speakingRate: this.speakingRate },
+        });
+        const content = res.audioContent;
+        if (!content || content.length === 0) {
+          throw new Error('Cloud TTS returned empty audioContent');
+        }
+        buffers.push(
+          typeof content === 'string' ? Buffer.from(content, 'base64') : Buffer.from(content),
+        );
+      } catch (err) {
+        throw new TtsServiceError(`Cloud TTS synthesis failed: ${(err as Error).message}`, err);
+      }
+    }
+
+    return {
+      audio: Buffer.concat(buffers),
+      voiceName: effectiveVoice,
+      durations: await this.measureLiveDurations(segments, buffers),
+    };
+  }
+
+  /**
+   * Best-effort per-part durations for a live response (V2). Same decode math
+   * as `measureManifest`; any decode failure yields all-zero durations (the
+   * Stage page degrades to "play the whole clip"), never throwing.
+   */
+  private async measureLiveDurations(
+    segments: LiveResponseSsmlSegment[],
+    buffers: Buffer[],
+  ): Promise<LiveResponseDurations> {
+    const zero: LiveResponseDurations = {
+      acknowledgmentSec: 0,
+      verseSec: 0,
+      framingSec: 0,
+      totalSec: 0,
+    };
+    try {
+      const byPart: Record<LiveResponseSsmlSegment['part'], number> = {
+        acknowledgment: 0,
+        verse: 0,
+        framing: 0,
+      };
+      let totalSec = 0;
+      for (let i = 0; i < segments.length; i += 1) {
+        const buffer = buffers[i];
+        const part = segments[i]?.part;
+        if (!buffer || !part) continue;
+        const pcm = await this.decodeMp3(buffer, { sampleRate: MANIFEST_SAMPLE_RATE });
+        const sec = pcm.length / (MANIFEST_SAMPLE_RATE * 2);
+        byPart[part] += sec;
+        totalSec += sec;
+      }
+      return {
+        acknowledgmentSec: Math.round(byPart.acknowledgment * 1000) / 1000,
+        verseSec: Math.round(byPart.verse * 1000) / 1000,
+        framingSec: Math.round(byPart.framing * 1000) / 1000,
+        totalSec: Math.round(totalSec * 1000) / 1000,
+      };
+    } catch {
+      return zero;
+    }
   }
 
   /**

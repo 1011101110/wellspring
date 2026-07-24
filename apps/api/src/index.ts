@@ -9,7 +9,12 @@ import { LoggingGlooSummaryService } from './services/gloo/glooSummaryService.js
 import { YouVersionClient } from './services/youversion/youVersionClient.js';
 import { DevotionalEngine } from './services/devotionalEngine.js';
 import { TtsService } from './services/tts/ttsService.js';
-import { GenerateNowOrchestrator, NEUTRAL_DEFAULT_BANDS } from './services/orchestrator/generateNowOrchestrator.js';
+import { OpenMomentEngine } from './services/stage/openMomentEngine.js';
+import { StageResponseService } from './services/stage/stageResponseService.js';
+import {
+  GenerateNowOrchestrator,
+  NEUTRAL_DEFAULT_BANDS,
+} from './services/orchestrator/generateNowOrchestrator.js';
 import { buildEmailSenderFromEnv } from './services/invite/resendEmailSender.js';
 import { HttpResendInboundEmailProvider } from './services/invite/inboundEmailProvider.js';
 import { buildGoogleOAuthServiceFromEnv } from './services/calendar/googleOAuthService.js';
@@ -60,8 +65,7 @@ const publicBaseUrl = (process.env.PUBLIC_BASE_URL ?? `http://localhost:${port}`
  */
 const pool = getPool();
 const repositories = createRepositories(pool);
-const { storage: audioStorage, description: audioStorageDescription } =
-  buildAudioStorageFromEnv();
+const { storage: audioStorage, description: audioStorageDescription } = buildAudioStorageFromEnv();
 // F8 Gloo engagement summary (issue #86): the real Gloo ingestion endpoint
 // is unconfirmed (tracked separately as issue #21), so only the logging
 // no-op transport is wired here until that's resolved.
@@ -106,8 +110,27 @@ const youVersionClient = new YouVersionClient({ apiKey: process.env.YOUVERSION_A
  * they are simply never called when this is active.
  */
 const forceFixture = process.env.PROVIDERS === 'fixture';
-const devotionalEngine = new DevotionalEngine({ glooResponsesClient, youVersionClient, forceFixture });
+const devotionalEngine = new DevotionalEngine({
+  glooResponsesClient,
+  youVersionClient,
+  forceFixture,
+});
 const ttsService = new TtsService();
+
+/**
+ * The Open Moment live-response engine + orchestration (EPIC V #360). The
+ * engine reuses the SAME Gloo + YouVersion clients as the devotional engine
+ * (identical anti-hallucination pipeline). Fixture mode has no live engine, so
+ * the open moment simply never fires there (its context is never persisted).
+ */
+const openMomentEngine = new OpenMomentEngine({ glooResponsesClient, youVersionClient });
+const stageResponseService = new StageResponseService({
+  sessions: repositories.sessions,
+  devotionals: repositories.devotionals,
+  engine: openMomentEngine,
+  tts: ttsService,
+  audioStorage,
+});
 
 /**
  * EmailSender — constructed and boot-logged, but not yet consumed (#343).
@@ -206,7 +229,8 @@ try {
  */
 let roomRoutes: import('./app.js').BuildAppOptions['roomRoutes'] | undefined;
 let liveKitWebhookRoutes: import('./app.js').BuildAppOptions['liveKitWebhookRoutes'] | undefined;
-let deliveryProvider: import('./services/delivery/deliveryProvider.js').DeliveryProvider | undefined;
+let deliveryProvider:
+  import('./services/delivery/deliveryProvider.js').DeliveryProvider | undefined;
 
 try {
   const liveKitConfig = buildLiveKitConfigFromEnv();
@@ -307,7 +331,13 @@ assertMeetBotDispatchConfigExclusive(process.env);
 
 let meetBotDispatchDeps: import('./services/orchestrator/generateNowOrchestrator.js').GenerateNowOrchestratorDeps['meetBotDispatch'];
 const meetBotDispatchUrl = `${publicBaseUrl}/internal/dispatch-meetbot`;
-if (process.env.MEETBOT_TASKS_PROJECT_ID && process.env.MEETBOT_TASKS_LOCATION && process.env.MEETBOT_TASKS_QUEUE && attendeeClient && process.env.INTERNAL_API_TOKEN) {
+if (
+  process.env.MEETBOT_TASKS_PROJECT_ID &&
+  process.env.MEETBOT_TASKS_LOCATION &&
+  process.env.MEETBOT_TASKS_QUEUE &&
+  attendeeClient &&
+  process.env.INTERNAL_API_TOKEN
+) {
   deliveryProvider = new MeetBotProvider(publicBaseUrl);
   meetBotDispatchDeps = {
     taskScheduler: new GcpTaskScheduler({
@@ -374,7 +404,11 @@ const generateNowOrchestrator = new GenerateNowOrchestrator({
 // no idempotency guard (each invite is its own user-triggered generation,
 // not the daily batch). The route only supplies inviteContext + duration.
 if (inboundInviteRoutes) {
-  inboundInviteRoutes.generateFromInvite = async ({ userId, inviteContext, durationPreference }) => {
+  inboundInviteRoutes.generateFromInvite = async ({
+    userId,
+    inviteContext,
+    durationPreference,
+  }) => {
     const result = await generateNowOrchestrator.generateNow({
       userId,
       bandsOverride: NEUTRAL_DEFAULT_BANDS,
@@ -449,7 +483,9 @@ const app = buildApp({
   // Wired whenever sessionService exists (same data source as /session);
   // uses the READ-ONLY getStageView so a bot container load never counts
   // as a join (Epic P attendance integrity).
-  stageRoutes: { sessionService },
+  // `stageResponseService` adds POST /v1/stage/:token/respond — the Open
+  // Moment live-response engine (EPIC V #360 / V2 #363).
+  stageRoutes: { sessionService, stageResponseService },
   roomRoutes,
   liveKitWebhookRoutes,
   meetBotAudioRoutes,

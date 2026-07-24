@@ -1,4 +1,9 @@
-import type { DevotionalFormat, SlotType, Verse } from '@kairos/shared-contracts';
+import type {
+  DevotionalFormat,
+  OpenMomentContext,
+  SlotType,
+  Verse,
+} from '@kairos/shared-contracts';
 import type { Queryable, VerifiedUserId } from './types.js';
 
 export type DevotionalStatus =
@@ -20,6 +25,12 @@ export interface DevotionalRow {
   status: DevotionalStatus;
   is_fixture_fallback: boolean;
   slot_type: SlotType;
+  /**
+   * The Open Moment generation context (EPIC V #360) — non-null ONLY when
+   * the open moment was enabled for this devotional; null otherwise (the gate
+   * the respond route checks). jsonb column, migration 1722800000000.
+   */
+  open_moment: OpenMomentContext | null;
   /**
    * When a Meet-bot finished speaking this devotional into a meeting, or
    * NULL if that has never happened (#221). The durable half of the
@@ -157,6 +168,11 @@ export interface CreateDevotionalInput {
   status?: DevotionalStatus;
   /** Defaults to 'standard' at the DB level (COALESCE below) — pass 'examen' for the evening reflection (issue #77). */
   slotType?: SlotType;
+  /**
+   * The Open Moment generation context (EPIC V #360), or null/omitted when
+   * the open moment is not enabled for this generation. Stored as jsonb.
+   */
+  openMoment?: OpenMomentContext | null;
 }
 
 /**
@@ -172,8 +188,8 @@ export class DevotionalsRepository {
     const result = await this.db.query<DevotionalRow>(
       `INSERT INTO devotionals
          (user_id, date, format, theme, verses, devotional_body, card_summary, prayer,
-          journaling_prompt, action_step, is_fixture_fallback, status, slot_type)
-       VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7, $8, $9, $10, COALESCE($11::boolean, false), COALESCE($12::devotional_status, 'pending'), COALESCE($13::text, 'standard'))
+          journaling_prompt, action_step, is_fixture_fallback, status, slot_type, open_moment)
+       VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7, $8, $9, $10, COALESCE($11::boolean, false), COALESCE($12::devotional_status, 'pending'), COALESCE($13::text, 'standard'), $14::jsonb)
        RETURNING *`,
       [
         userId,
@@ -189,6 +205,7 @@ export class DevotionalsRepository {
         input.isFixtureFallback ?? null,
         input.status ?? null,
         input.slotType ?? null,
+        input.openMoment ? JSON.stringify(input.openMoment) : null,
       ],
     );
     const row = result.rows[0];
@@ -505,10 +522,14 @@ export class DevotionalsRepository {
     // EXPLAIN (issue #242 acceptance): Bitmap Index Scan on
     // devotionals_user_search_vector_idx with BOTH user_id and the @@
     // predicate as Index Cond.
-    const result = await this.db.query<DevotionalSearchResultRow>(
-      DEVOTIONAL_SEARCH_SQL,
-      [userId, query, cursor?.rank ?? null, cursor?.date ?? null, cursor?.id ?? null, limit],
-    );
+    const result = await this.db.query<DevotionalSearchResultRow>(DEVOTIONAL_SEARCH_SQL, [
+      userId,
+      query,
+      cursor?.rank ?? null,
+      cursor?.date ?? null,
+      cursor?.id ?? null,
+      limit,
+    ]);
     return result.rows;
   }
 

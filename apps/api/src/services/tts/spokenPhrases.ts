@@ -48,6 +48,25 @@ export interface SpokenPhrases {
   readonly referenceListSeparator: string;
   /** Joins the penultimate and final references, e.g. " and ". */
   readonly referenceFinalJoiner: string;
+
+  // --- Open Moment (EPIC V #360 / V4 #365) ---------------------------------
+  // Both are OPTIONAL by design: per the story's fallback rule, a language
+  // whose phrasing we could not commit to confidently is DROPPED (left
+  // `undefined`) rather than shipped wrong — ssmlBuilder simply omits the
+  // open-moment segments for that language and the beat falls back to no
+  // spoken invitation. Every entry below is populated (all six phrased
+  // confidently), but the optionality keeps that seam honest.
+  /**
+   * The spoken invitation that ends the QUESTIONS beat and opens the bounded
+   * listening window (feature #361 step 1: an invitation, never a command).
+   * EN baseline is the epic's final copy, verbatim.
+   */
+  readonly openMomentInvitation?: string;
+  /**
+   * The warm silence-close (feature #361 Path B): spoken when the listener
+   * keeps silence. Pre-synthesized so Path B has zero live dependency.
+   */
+  readonly openMomentSilenceClose?: string;
 }
 
 /**
@@ -66,6 +85,9 @@ export const SPOKEN_PHRASES: Readonly<Record<LanguageTag, SpokenPhrases>> = Obje
       `That was ${joined} — it'll be here when you want to come back.`,
     referenceListSeparator: ', ',
     referenceFinalJoiner: ' and ',
+    openMomentInvitation:
+      "If you'd like, speak what you're carrying. Or simply sit with it — I'll wait with you either way.",
+    openMomentSilenceClose: "That's yours to hold. Let's close together.",
   }),
   es: Object.freeze({
     greeting: (theme: string) => `Un momento de ${theme}.`,
@@ -76,6 +98,9 @@ export const SPOKEN_PHRASES: Readonly<Record<LanguageTag, SpokenPhrases>> = Obje
     referenceRecap: (joined: string) => `Eso fue ${joined} — aquí estará cuando quieras volver.`,
     referenceListSeparator: ', ',
     referenceFinalJoiner: ' y ',
+    openMomentInvitation:
+      'Si quieres, dime lo que llevas dentro. O simplemente quédate con ello — de cualquier modo, aquí te espero.',
+    openMomentSilenceClose: 'Eso es tuyo para sostenerlo. Cerremos juntos.',
   }),
   fr: Object.freeze({
     // Colon apposition instead of «Un moment de {theme}» — «de» would need
@@ -94,6 +119,9 @@ export const SPOKEN_PHRASES: Readonly<Record<LanguageTag, SpokenPhrases>> = Obje
       `C'était ${joined} — vous pourrez y revenir quand vous le souhaitez.`,
     referenceListSeparator: ', ',
     referenceFinalJoiner: ' et ',
+    openMomentInvitation:
+      'Si vous le souhaitez, dites ce que vous portez. Ou restez simplement avec cela — dans un cas comme dans l’autre, je reste auprès de vous.',
+    openMomentSilenceClose: 'Cela vous appartient. Terminons ensemble.',
   }),
   de: Object.freeze({
     // Colon apposition instead of a genitive («Ein Moment der Ruhe») — the
@@ -110,6 +138,9 @@ export const SPOKEN_PHRASES: Readonly<Record<LanguageTag, SpokenPhrases>> = Obje
       `Das war ${joined} — du kannst jederzeit dorthin zurückkehren.`,
     referenceListSeparator: ', ',
     referenceFinalJoiner: ' und ',
+    openMomentInvitation:
+      'Wenn du magst, sprich aus, was dich beschäftigt. Oder bleib einfach damit — so oder so, ich warte mit dir.',
+    openMomentSilenceClose: 'Das gehört dir. Lass uns gemeinsam schließen.',
   }),
   pt: Object.freeze({
     greeting: (theme: string) => `Um momento de ${theme}.`,
@@ -121,6 +152,9 @@ export const SPOKEN_PHRASES: Readonly<Record<LanguageTag, SpokenPhrases>> = Obje
       `Esse foi ${joined} — estará aqui quando você quiser voltar.`,
     referenceListSeparator: ', ',
     referenceFinalJoiner: ' e ',
+    openMomentInvitation:
+      'Se quiser, diga o que você está carregando. Ou apenas fique com isso — de qualquer forma, eu espero com você.',
+    openMomentSilenceClose: 'Isso é seu para guardar. Vamos encerrar juntos.',
   }),
   zh: Object.freeze({
     // 「此刻，{theme}。」 — "This moment: {theme}." Apposition again: it
@@ -136,5 +170,8 @@ export const SPOKEN_PHRASES: Readonly<Record<LanguageTag, SpokenPhrases>> = Obje
     // pair with 和, no surrounding spaces.
     referenceListSeparator: '、',
     referenceFinalJoiner: '和',
+    openMomentInvitation:
+      '如果你愿意，说出你心里所承载的。或者只是静静地与它同在——无论哪样，我都在这里陪着你。',
+    openMomentSilenceClose: '这是你自己去守候的。让我们一起收尾。',
   }),
 });

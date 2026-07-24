@@ -11,4 +11,5 @@ export * from './gloo.js';
 export * from './timingManifest.js';
 export * from './voice.js';
 export * from './language.js';
+export * from './openMoment.js';
 export * from './api/index.js';

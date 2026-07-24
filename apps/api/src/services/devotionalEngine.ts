@@ -30,9 +30,6 @@ import {
   CARD_SUMMARY_HARD_LIMIT,
   DEFAULT_LANGUAGE,
   DevotionalOutputSchema,
-  GetBibleVerseArgsSchema,
-  GET_BIBLE_VERSE_TOOL_NAME,
-  LANGUAGE_CATALOG,
   fallbackKey,
   nearestFallbackKey,
   parseFallbackKey,
@@ -46,8 +43,13 @@ import {
   GlooResponsesClient,
   type CreateResponseRequest,
   type GlooResponse,
-  type ToolFunctionDef,
 } from './gloo/glooResponsesClient.js';
+import {
+  GET_BIBLE_VERSE_TOOL,
+  executeGetBibleVerse,
+  type FetchedVerse,
+  type GenerationToolContext,
+} from './gloo/getBibleVerseTool.js';
 import {
   NO_SIGNALS_OBSERVED,
   buildInstructions,
@@ -56,6 +58,12 @@ import {
   type SignalProvenance,
 } from './gloo/instructionsBuilder.js';
 import { YouVersionClient } from './youversion/youVersionClient.js';
+
+// Re-exported for backward-compatible imports (devotionalEngine tests + any
+// caller that reached these through this module before they were extracted
+// into ./gloo/getBibleVerseTool.js). Single definition, two import paths.
+export { licenseFallbackCandidates } from './gloo/getBibleVerseTool.js';
+export type { FetchedVerse } from './gloo/getBibleVerseTool.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 /** fixtures/snapshots lives at the repo root: apps/api/src/services -> ../../../../fixtures/snapshots */
@@ -96,29 +104,9 @@ const MAX_OUTPUT_TOKENS: Record<DevotionalOutput['format'], number> = {
 
 const TEMPERATURE = 0.7;
 
-// --- get_bible_verse tool definition (Foundation §4.4, verbatim schema) -----
-
-const GET_BIBLE_VERSE_TOOL: ToolFunctionDef = {
-  type: 'function',
-  function: {
-    name: GET_BIBLE_VERSE_TOOL_NAME,
-    description:
-      "Fetch authoritative, licensed Bible text from YouVersion for a specific reference. Use this whenever you reference Scripture so the verse text is exact and correctly attributed — never quote Scripture from memory.",
-    parameters: {
-      type: 'object',
-      properties: {
-        usfm: { type: 'string', description: "USFM reference, e.g. 'JHN.3.16' or 'MAT.11.28-MAT.11.30'." },
-        versionId: { type: 'integer', description: 'YouVersion numeric version id, e.g. 111 (NIV).' },
-        reason: {
-          type: 'string',
-          description:
-            "Optional. One short clause on why this passage fits the user's state. Internal rationale; NOT sent to YouVersion.",
-        },
-      },
-      required: ['usfm', 'versionId'],
-    },
-  },
-};
+// The canonical get_bible_verse tool definition + executor now live in
+// ./gloo/getBibleVerseTool.js (shared with the Open Moment engine, EPIC V
+// #360) — imported above.
 
 // --- DevotionalOutput JSON Schema (hand-authored mirror of DevotionalOutputSchema) --
 //
@@ -143,11 +131,13 @@ const DEVOTIONAL_OUTPUT_JSON_SCHEMA: Record<string, unknown> = {
           versionId: { type: 'integer' },
           reference: {
             type: 'string',
-            description: 'Must be the EXACT "reference" field returned by the get_bible_verse tool call for this usfm/versionId (e.g. "Matthew 11:28-30") — never paraphrased or re-derived from the usfm.',
+            description:
+              'Must be the EXACT "reference" field returned by the get_bible_verse tool call for this usfm/versionId (e.g. "Matthew 11:28-30") — never paraphrased or re-derived from the usfm.',
           },
           fetchedText: {
             type: 'string',
-            description: 'Must be the EXACT text returned by the get_bible_verse tool call for this usfm/versionId — never paraphrased.',
+            description:
+              'Must be the EXACT text returned by the get_bible_verse tool call for this usfm/versionId — never paraphrased.',
           },
           attribution: { type: 'string' },
         },
@@ -275,20 +265,8 @@ interface ToolCallLogEntry {
   output: string;
 }
 
-/**
- * Per-generation state the tool executor needs (O3 #315): which language's
- * `LICENSE_UNAVAILABLE` fallback chain to walk, the anti-hallucination
- * ground-truth map, and the versionIds already proven unlicensed this
- * generation (so a second verse fetch doesn't re-walk dead chain links).
- * Built fresh in `generate()` — never shared across generations, since
- * licensing can change server-side and a stale negative would silently
- * skip a now-valid version forever.
- */
-interface GenerationToolContext {
-  language: LanguageTag;
-  fetchedTexts: Map<string, FetchedVerse>;
-  unlicensedVersionIds: Set<number>;
-}
+// `GenerationToolContext` + `FetchedVerse` are imported from
+// ./gloo/getBibleVerseTool.js (shared with the Open Moment engine).
 
 // --- Fixture fallback -----------------------------------------------------------
 
@@ -386,7 +364,9 @@ export function loadFixtureDevotional(fixturesDir: string, bands: BandInput): De
   try {
     raw = readFileSync(filePath, 'utf-8');
   } catch {
-    throw new DevotionalEngineFixtureError(`No fixture file found for fallback key "${key}" at ${filePath}`);
+    throw new DevotionalEngineFixtureError(
+      `No fixture file found for fallback key "${key}" at ${filePath}`,
+    );
   }
   const parsed = JSON.parse(raw) as FixtureFile;
   const result = DevotionalOutputSchema.safeParse(parsed.devotionalOutput);
@@ -436,12 +416,6 @@ function stripTrailingOrphanedQuoteNoise(text: string): string {
  * covers the live-verified YouVersion content-noise case above without
  * weakening the check against genuine mid-passage paraphrasing.
  */
-/** What get_bible_verse actually returned for a given usfm/versionId this generation — the anti-hallucination ground truth. */
-export interface FetchedVerse {
-  text: string;
-  reference: string;
-}
-
 /**
  * Overwrites each verse's `fetchedText` and `reference` with the exact
  * values recorded from the `get_bible_verse` tool result for that
@@ -478,7 +452,12 @@ export function applyAuthoritativeFetchedText(
   if (!Array.isArray(verses)) return;
   for (const verse of verses) {
     if (typeof verse !== 'object' || verse === null) continue;
-    const v = verse as { usfm?: unknown; versionId?: unknown; fetchedText?: unknown; reference?: unknown };
+    const v = verse as {
+      usfm?: unknown;
+      versionId?: unknown;
+      fetchedText?: unknown;
+      reference?: unknown;
+    };
     if (typeof v.usfm !== 'string' || typeof v.versionId !== 'number') continue;
     const fetched = fetchedTexts.get(`${v.usfm}::${v.versionId}`);
     if (fetched === undefined) continue;
@@ -536,7 +515,8 @@ export function findFetchedTextMismatches(
     }
     if (
       actual.text !== verse.fetchedText &&
-      stripTrailingOrphanedQuoteNoise(actual.text) !== stripTrailingOrphanedQuoteNoise(verse.fetchedText)
+      stripTrailingOrphanedQuoteNoise(actual.text) !==
+        stripTrailingOrphanedQuoteNoise(verse.fetchedText)
     ) {
       problems.push(
         `verses[].fetchedText for ${verse.usfm} (versionId ${verse.versionId}) does not match the exact text returned by get_bible_verse (possible paraphrase/hallucination)`,
@@ -551,43 +531,9 @@ export function findFetchedTextMismatches(
   return problems;
 }
 
-// --- Per-language LICENSE_UNAVAILABLE fallback chain (Epic O #311, O3 #315) ----
-
-/**
- * The ordered versionIds to try after `failedVersionId` came back
- * `LICENSE_UNAVAILABLE`: the language's default first (the strongest
- * in-language substitute — relevant when the user's stored ALTERNATE, e.g.
- * es 147 RVES, is what failed), then the catalog's pinned
- * `fallbackVersionIds`, minus the id that just failed and any id already
- * proven unlicensed earlier in this generation.
- *
- * This generalizes the documented en chain (BSB 3034 → WEBUS 206 → ASV 12,
- * docs/03 §3) to every `LANGUAGE_CATALOG` entry, and its hard boundary is
- * the point (O1/#313, DEC-K12): the candidates come from exactly ONE
- * language's entry, so an exhausted chain returns `[]` and the caller
- * degrades to the (English, flagged) fixture path — never to a verse in a
- * different language spliced into the devotional. pt's chain is empty by
- * catalog construction (BLT is the only licensed pt option), so a pt
- * license failure goes straight to `[]`.
- */
-export function licenseFallbackCandidates(
-  language: LanguageTag,
-  failedVersionId: number,
-  alreadyUnlicensed: ReadonlySet<number>,
-): number[] {
-  const entry = LANGUAGE_CATALOG[language];
-  const chain = [entry.defaultVersionId, ...entry.fallbackVersionIds];
-  // De-dupe while preserving order (defaultVersionId could in principle
-  // reappear in a fallback list) and drop everything already known to fail.
-  const seen = new Set<number>();
-  const candidates: number[] = [];
-  for (const versionId of chain) {
-    if (versionId === failedVersionId || alreadyUnlicensed.has(versionId) || seen.has(versionId)) continue;
-    seen.add(versionId);
-    candidates.push(versionId);
-  }
-  return candidates;
-}
+// The per-language LICENSE_UNAVAILABLE fallback chain
+// (`licenseFallbackCandidates`) now lives in ./gloo/getBibleVerseTool.js and
+// is re-exported at the top of this module for backward-compatible imports.
 
 // --- Truncation detection -----------------------------------------------------
 
@@ -700,111 +646,22 @@ export class DevotionalEngine {
     };
   }
 
-  private async executeTool(name: string, argsJson: string, context: GenerationToolContext): Promise<string> {
-    const { fetchedTexts } = context;
-    if (name !== GET_BIBLE_VERSE_TOOL_NAME) {
-      return JSON.stringify({
-        ok: false,
-        error: { code: 'INVALID_ARGUMENT', message: `Unknown tool "${name}"`, retryable: false },
-        meta: { source: 'devotional-engine', fetched_at: new Date().toISOString() },
-      });
-    }
-
-    let args: unknown;
-    try {
-      args = JSON.parse(argsJson);
-    } catch {
-      return JSON.stringify({
-        ok: false,
-        error: { code: 'INVALID_ARGUMENT', message: 'Malformed JSON arguments for get_bible_verse', retryable: false },
-        meta: { source: 'devotional-engine', fetched_at: new Date().toISOString() },
-      });
-    }
-
-    const parsedArgs = GetBibleVerseArgsSchema.safeParse(args);
-    if (!parsedArgs.success) {
-      return JSON.stringify({
-        ok: false,
-        error: {
-          code: 'INVALID_ARGUMENT',
-          message: `get_bible_verse arguments failed validation: ${parsedArgs.error.message}`,
-          retryable: false,
-        },
-        meta: { source: 'devotional-engine', fetched_at: new Date().toISOString() },
-      });
-    }
-
-    const envelope = await this.youVersionClient.getVerse(parsedArgs.data.usfm, parsedArgs.data.versionId);
-    if (envelope.ok) {
-      // Key by the ORIGINAL requested usfm as well as the normalized one
-      // YouVersion echoes back, so the anti-hallucination check matches
-      // regardless of which form the model repeats in its final JSON.
-      const fetched: FetchedVerse = { text: envelope.data.text, reference: envelope.data.reference };
-      fetchedTexts.set(`${parsedArgs.data.usfm}::${parsedArgs.data.versionId}`, fetched);
-      fetchedTexts.set(`${envelope.data.usfm}::${envelope.data.versionId}`, fetched);
-      return JSON.stringify(envelope);
-    }
-
-    if (envelope.error.code === 'LICENSE_UNAVAILABLE') {
-      // Per-language fallback chain (O3 #315), generalizing the documented
-      // en BSB→WEBUS→ASV pattern via LANGUAGE_CATALOG. Same language ONLY —
-      // an exhausted chain falls through to the original failure envelope,
-      // which (with no other version to cite) drives the generation to the
-      // English fixture path rather than ever splicing a verse from another
-      // language into this devotional (DEC-K12).
-      context.unlicensedVersionIds.add(parsedArgs.data.versionId);
-      const candidates = licenseFallbackCandidates(
-        context.language,
-        parsedArgs.data.versionId,
-        context.unlicensedVersionIds,
-      );
-      for (const candidateVersionId of candidates) {
-        const retried = await this.youVersionClient.getVerse(parsedArgs.data.usfm, candidateVersionId);
-        if (retried.ok) {
-          this.logger.info('LICENSE_UNAVAILABLE — substituted a same-language fallback version', {
-            language: context.language,
-            requestedVersionId: parsedArgs.data.versionId,
-            servedVersionId: candidateVersionId,
-            usfm: parsedArgs.data.usfm,
-          });
-          const fetched: FetchedVerse = { text: retried.data.text, reference: retried.data.reference };
-          fetchedTexts.set(`${parsedArgs.data.usfm}::${candidateVersionId}`, fetched);
-          fetchedTexts.set(`${retried.data.usfm}::${retried.data.versionId}`, fetched);
-          // Surface the substitution to the model inside the envelope's meta
-          // so it can cite the SERVED versionId in verses[] (the JSON schema
-          // + anti-hallucination check both key on the tool result's id).
-          return JSON.stringify({
-            ...retried,
-            meta: {
-              ...retried.meta,
-              version_fallback: {
-                requested_version_id: parsedArgs.data.versionId,
-                served_version_id: candidateVersionId,
-                reason: 'LICENSE_UNAVAILABLE',
-              },
-            },
-          });
-        }
-        if (retried.error.code === 'LICENSE_UNAVAILABLE') {
-          // Remember it so a later tool call in this generation doesn't
-          // burn a round-trip re-proving the same unlicensed id.
-          context.unlicensedVersionIds.add(candidateVersionId);
-          continue;
-        }
-        // A non-license failure (rate limit, passage missing in this
-        // version, upstream outage) is a different problem the model should
-        // see as-is rather than have masked by further version-hopping.
-        return JSON.stringify(retried);
-      }
-      this.logger.error('LICENSE_UNAVAILABLE — fallback chain exhausted for language, no cross-language retry (DEC-K12)', {
-        language: context.language,
-        requestedVersionId: parsedArgs.data.versionId,
-        usfm: parsedArgs.data.usfm,
-        candidatesTried: candidates,
-      });
-    }
-
-    return JSON.stringify(envelope);
+  private executeTool(
+    name: string,
+    argsJson: string,
+    context: GenerationToolContext,
+  ): Promise<string> {
+    // Delegates to the shared executor (./gloo/getBibleVerseTool.js) so the
+    // devotional and Open Moment engines fetch + fall back byte-identically.
+    // The `'devotional-engine'` source label preserves this path's envelopes.
+    return executeGetBibleVerse(
+      this.youVersionClient,
+      name,
+      argsJson,
+      context,
+      this.logger,
+      'devotional-engine',
+    );
   }
 
   private buildRequest(
@@ -839,14 +696,22 @@ export class DevotionalEngine {
     fetchedTexts: Map<string, FetchedVerse>,
   ): { ok: true; devotional: DevotionalOutput } | { ok: false; problems: string; rawText: string } {
     if (!text) {
-      return { ok: false, problems: 'Model returned no output_text (empty final message).', rawText: '' };
+      return {
+        ok: false,
+        problems: 'Model returned no output_text (empty final message).',
+        rawText: '',
+      };
     }
 
     let parsed: unknown;
     try {
       parsed = JSON.parse(text);
     } catch (err) {
-      return { ok: false, problems: `Output was not valid JSON: ${(err as Error).message}`, rawText: text };
+      return {
+        ok: false,
+        problems: `Output was not valid JSON: ${(err as Error).message}`,
+        rawText: text,
+      };
     }
 
     // Make fetchedText/reference authoritative from the recorded tool result
@@ -866,7 +731,11 @@ export class DevotionalEngine {
 
     const result = DevotionalOutputSchema.safeParse(parsed);
     if (!result.success) {
-      return { ok: false, problems: `Zod schema validation failed: ${result.error.message}`, rawText: text };
+      return {
+        ok: false,
+        problems: `Zod schema validation failed: ${result.error.message}`,
+        rawText: text,
+      };
     }
 
     const truncationProblem = detectLikelyTruncation(result.data);
@@ -994,7 +863,9 @@ export class DevotionalEngine {
     // for the model to "recall" it correctly.
     const exactTextReminders =
       fetchedTexts.size > 0
-        ? `\n\nThe EXACT required fetchedText/reference value(s), copy verbatim (character-for-character, including any punctuation) — do not paraphrase, normalize, or "clean up" any character:\n${[...fetchedTexts.entries()]
+        ? `\n\nThe EXACT required fetchedText/reference value(s), copy verbatim (character-for-character, including any punctuation) — do not paraphrase, normalize, or "clean up" any character:\n${[
+            ...fetchedTexts.entries(),
+          ]
             .map(([key, fetched]) => {
               const [usfm, versionId] = key.split('::');
               return `- usfm="${usfm}" versionId=${versionId}: fetchedText="${fetched.text}" reference="${fetched.reference}"`;
@@ -1108,7 +979,11 @@ function conversationToolItems(
           logEntry?.output ??
           JSON.stringify({
             ok: false,
-            error: { code: 'UPSTREAM_UNAVAILABLE', message: 'Tool output unavailable for repair replay', retryable: true },
+            error: {
+              code: 'UPSTREAM_UNAVAILABLE',
+              message: 'Tool output unavailable for repair replay',
+              retryable: true,
+            },
             meta: { source: 'devotional-engine', fetched_at: new Date().toISOString() },
           }),
       });

@@ -22,11 +22,12 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { FastifyInstance } from 'fastify';
-import { UuidParamSchema } from '@kairos/shared-contracts';
+import { OpenMomentRequestBodySchema, UuidParamSchema } from '@kairos/shared-contracts';
 import { WS_FONT_FACES } from '../services/design/wsTokens.js';
 import type { StageLookupResult } from '../services/session/sessionService.js';
 import { renderStageGonePage, renderStagePage } from '../services/stage/renderStagePage.js';
 import { buildStageClientJs } from '../services/stage/stageClient.js';
+import type { OpenMomentRespondResult } from '../services/stage/stageResponseService.js';
 
 /**
  * Self-hosted font directory (epic #347 ground rule 1 — no font CDN; the
@@ -41,10 +42,20 @@ const FONTS_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..
 export interface StageRoutesDeps {
   /** Only the READ-ONLY `getStageView` — a minimal shape (not the full `SessionService`) keeps the route independently testable AND makes the no-write rule structural. */
   sessionService: { getStageView(token: string): Promise<StageLookupResult> };
+  /**
+   * The Open Moment response engine (EPIC V #360 / V2 #363). OPTIONAL: when
+   * absent, `POST /v1/stage/:token/respond` is simply not registered, so the
+   * GET-only Stage page (and its tests) keep working unchanged. A minimal
+   * shape — not the whole `StageResponseService` — for the same
+   * independently-testable reason as `sessionService` above.
+   */
+  stageResponseService?: {
+    respond(token: string, transcript: string): Promise<OpenMomentRespondResult>;
+  };
 }
 
 export function registerStageRoutes(app: FastifyInstance, deps: StageRoutesDeps): void {
-  const { sessionService } = deps;
+  const { sessionService, stageResponseService } = deps;
 
   // Built once at registration: the embedded timeline functions and
   // wiring are static per process (no per-request work).
@@ -110,4 +121,64 @@ export function registerStageRoutes(app: FastifyInstance, deps: StageRoutesDeps)
         );
     },
   );
+
+  // POST /v1/stage/:token/respond — the Open Moment response engine (EPIC V
+  // #360 / V2 #363). Registered in the stage scope, so it INHERITS the
+  // scope's token+IP rate limit and JS-enabled CSP automatically (app.ts) —
+  // exactly the "rate-limit like the session scope" the story calls for; no
+  // per-route limiter is added here.
+  //
+  // Capability model: the UUIDv4 session token IS the credential, same as the
+  // GET stage page. Bad/unknown/expired token → the identical enumeration-safe
+  // 404 (the Stage gone page), never a distinguishable error.
+  //
+  // STT SEAM (V1 decides): this builds the TEXT path — the body is a
+  // transcript string (the voice-agent's server-side STT result, or the
+  // standalone browser's STT). To add the audio-blob + server-STT path,
+  // accept the audio here, transcribe it to `transcript`, and call
+  // `stageResponseService.respond(token, transcript)` unchanged — everything
+  // downstream (gates, engine, validation, TTS) is transcript-shaped already.
+  if (stageResponseService) {
+    app.post<{ Params: { token: string } }>('/v1/stage/:token/respond', async (request, reply) => {
+      const { token } = request.params;
+      if (!UuidParamSchema.safeParse(token).success) {
+        return reply.status(404).type('text/html; charset=utf-8').send(renderStageGonePage());
+      }
+
+      const parsedBody = OpenMomentRequestBodySchema.safeParse(request.body);
+      if (!parsedBody.success) {
+        return reply.status(400).send({
+          ok: false,
+          error: {
+            code: 'INVALID_OPEN_MOMENT_REQUEST',
+            message: 'Request body must be { transcript: string }.',
+            retryable: false,
+          },
+        });
+      }
+
+      const result = await stageResponseService.respond(token, parsedBody.data.transcript);
+
+      // Unknown/expired token → identical gone page as the GET route
+      // (enumeration safety, docs/04 §5.4).
+      if (result.kind === 'not_found') {
+        return reply.status(404).type('text/html; charset=utf-8').send(renderStageGonePage());
+      }
+      // Valid session but the open moment was never enabled for this
+      // devotional — the caller holds a real token, so this is not an
+      // enumeration concern; answer plainly.
+      if (result.kind === 'disabled') {
+        return reply.status(409).send({
+          ok: false,
+          error: {
+            code: 'OPEN_MOMENT_DISABLED',
+            message: 'The open moment is not enabled for this devotional.',
+            retryable: false,
+          },
+        });
+      }
+
+      return reply.status(200).send(result.envelope);
+    });
+  }
 }
