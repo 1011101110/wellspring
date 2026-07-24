@@ -53,7 +53,9 @@ export function RhythmCard({
   return (
     <fieldset className="field">
       <legend>Your rhythm</legend>
-      {statusLine && <p className="readout">{statusLine}</p>}
+      {/* A sentence, not a label — `rhythm-status` opts out of the eyebrow
+          treatment `.readout` carries under the design system (§03). */}
+      {statusLine && <p className="readout rhythm-status">{statusLine}</p>}
 
       <label className="row" htmlFor="settings-rhythm-fixed">
         <input
