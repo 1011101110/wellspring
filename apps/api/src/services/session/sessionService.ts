@@ -32,7 +32,9 @@ import {
   type PrayerIntentionsRepository,
   type SessionFeedbackRepository,
   type SessionsRepository,
+  type VerifiedUserId,
 } from '../../db/repositories/index.js';
+import type { SessionRow } from '../../db/repositories/sessionsRepository.js';
 import type { GlooSummaryService } from '../gloo/glooSummaryService.js';
 import type { HighlightWriter } from '../youversion/highlightsBridge.js';
 import type { SessionPageData } from './renderSessionPage.js';
@@ -321,11 +323,60 @@ export class SessionService {
       return { kind: 'not_found' };
     }
 
+    return { kind: 'ok', completedAt: await this.applyCompletion(session, input) };
+  }
+
+  /**
+   * The authenticated "Amen" from the dashboard reader (web + iOS, issue #3):
+   * mark the newest session for THIS user's devotional complete, keyed by
+   * devotional id instead of a capability token. It shares every side effect
+   * with `completeSession` — idempotency, the F8 Gloo summary, the prayer
+   * intention, and the YouVersion highlight write — through `applyCompletion`,
+   * so a completion is byte-identical no matter which surface a user finished
+   * on. Before this, the dashboard readers only flipped a local "Completed ✓"
+   * and nothing reached the server, so no highlight was ever written from them.
+   *
+   * `not_found` when the user has no session for this devotional (the route
+   * maps it to 404, never 403 — the same enumeration-safe posture as the rest
+   * of userScoped). There is deliberately no expiry gate: unlike the public
+   * session page this path is authenticated, so an old devotional reopened from
+   * History can still be marked complete.
+   */
+  async completeByDevotionalId(
+    userId: VerifiedUserId,
+    devotionalId: string,
+  ): Promise<SessionCompleteResult> {
+    const session = await this.sessions.findByDevotionalIdForUser(userId, devotionalId);
+    if (!session) {
+      return { kind: 'not_found' };
+    }
+
+    return { kind: 'ok', completedAt: await this.applyCompletion(session, {}) };
+  }
+
+  /**
+   * The shared completion tail behind BOTH `completeSession` (public capability
+   * token) and `completeByDevotionalId` (authed dashboard Amen). Idempotent: an
+   * already-completed session returns its existing `completed_at` and re-runs
+   * NO side effect — "Amen" is a one-way door, and a double-submit (double-tap,
+   * retry after a flaky response) must not reset the timestamp or re-fire the
+   * write. On the genuine first completion it records the timestamp and fires
+   * the first-completion-only side effects (Gloo summary, prayer intention,
+   * YouVersion highlight write), each fire-and-forget and none allowed to
+   * affect the returned instant. Keyed entirely off the resolved row's own
+   * `token`/`devotional_id`, so it is identical regardless of how the row was
+   * found.
+   */
+  private async applyCompletion(
+    session: SessionRow,
+    input: { durationListenedSec?: number | null; prayerIntention?: string | null },
+  ): Promise<Date> {
     if (session.completed_at) {
-      return { kind: 'ok', completedAt: session.completed_at };
+      return session.completed_at;
     }
 
     const ownerId = asVerifiedUserId(session.user_id);
+    const token = session.token;
     const durationListenedSec = input.durationListenedSec ?? null;
     const updated = await this.sessions.markCompleted(ownerId, token, durationListenedSec);
     // updated should never be null here (we just confirmed the row exists
@@ -375,7 +426,7 @@ export class SessionService {
       }
     }
 
-    return { kind: 'ok', completedAt };
+    return completedAt;
   }
 
   /**

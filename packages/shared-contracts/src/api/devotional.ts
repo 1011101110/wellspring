@@ -190,6 +190,14 @@ export const DevotionalDetailSchema = z.object({
    */
   audio_object: z.string().nullable(),
   created_at: z.string(),
+  /**
+   * The instant this devotional's session was completed ("Amen"), or `null`
+   * when it has not been finished yet (#3). Joined in from the linked
+   * `sessions` row exactly like `DevotionalCardSchema.completedAt` — it is the
+   * one field here that is not a `devotionals` column — so the reader can show
+   * the quiet "Completed ✓" state and the client can reflect a fresh Amen.
+   */
+  completed_at: z.string().nullable(),
 });
 export type DevotionalDetail = z.infer<typeof DevotionalDetailSchema>;
 
@@ -198,3 +206,16 @@ export const DevotionalDetailResponseSchema = z.object({
   data: DevotionalDetailSchema,
 });
 export type DevotionalDetailResponse = z.infer<typeof DevotionalDetailResponseSchema>;
+
+/**
+ * `POST /v1/devotionals/:id/complete` (#3) — the authenticated "Amen" the web +
+ * iOS dashboard readers post to. Idempotent server-side: a second Amen returns
+ * the ORIGINAL completion instant unchanged. `completedAt` is that instant
+ * (ISO string), so a client can reflect completion immediately without a
+ * re-fetch.
+ */
+export const DevotionalCompleteResponseSchema = z.object({
+  ok: z.literal(true),
+  completedAt: z.string(),
+});
+export type DevotionalCompleteResponse = z.infer<typeof DevotionalCompleteResponseSchema>;

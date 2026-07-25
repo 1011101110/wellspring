@@ -317,6 +317,10 @@ public struct DevotionalDetail: Decodable, Equatable, Sendable {
     public let actionStep: String?
     public let audioObject: String?
     public let createdAt: String
+    /// When this devotional's session was marked complete (POST
+    /// /v1/devotionals/:id/complete), else nil. Seeds the reader's Amen
+    /// button so a re-open shows "Completed" (#3).
+    public let completedAt: String?
 
     enum CodingKeys: String, CodingKey {
         case id, date, format, theme, verses, prayer
@@ -326,6 +330,7 @@ public struct DevotionalDetail: Decodable, Equatable, Sendable {
         case actionStep = "action_step"
         case audioObject = "audio_object"
         case createdAt = "created_at"
+        case completedAt = "completed_at"
     }
 
     /// The verse to feature on Today — the first, matching the web

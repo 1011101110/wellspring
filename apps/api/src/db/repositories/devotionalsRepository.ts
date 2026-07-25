@@ -51,6 +51,17 @@ export interface DevotionalRow {
 }
 
 /**
+ * `getById`'s result: a full `DevotionalRow` plus `completed_at` joined in from
+ * the newest linked session (#3). Like `DevotionalCardRow.completed_at`, it is
+ * the one field that is NOT a `devotionals` column — it lets the detail route
+ * report the "Amen" completion state the dashboard reader shows, without a
+ * separate round trip.
+ */
+export interface DevotionalDetailRow extends DevotionalRow {
+  completed_at: Date | null;
+}
+
+/**
  * One row of the paginated devotional list (L5, issue #241) — the card
  * fields only. Note what is NOT here: `devotional_body`, `prayer`,
  * `verses`, `action_step`. Those are the bulk of a devotional and they
@@ -221,9 +232,22 @@ export class DevotionalsRepository {
     return row;
   }
 
-  async getById(userId: VerifiedUserId, devotionalId: string): Promise<DevotionalRow | null> {
-    const result = await this.db.query<DevotionalRow>(
-      `SELECT * FROM devotionals WHERE user_id = $1 AND id = $2`,
+  async getById(userId: VerifiedUserId, devotionalId: string): Promise<DevotionalDetailRow | null> {
+    // `completed_at` is joined from the newest linked session (the same lateral
+    // pattern `listCardsForUser` uses) so the detail route can report the
+    // "Amen" state (#3). The devotional is already user-scoped by the outer
+    // WHERE, so the session — reachable only through this devotional — is the
+    // user's own.
+    const result = await this.db.query<DevotionalDetailRow>(
+      `SELECT d.*, s.completed_at
+         FROM devotionals d
+         LEFT JOIN LATERAL (
+           SELECT completed_at FROM sessions
+            WHERE devotional_id = d.id
+            ORDER BY completed_at DESC NULLS LAST, created_at DESC
+            LIMIT 1
+         ) s ON true
+        WHERE d.user_id = $1 AND d.id = $2`,
       [userId, devotionalId],
     );
     return result.rows[0] ?? null;

@@ -12,6 +12,7 @@ struct DevotionalReaderScreen: View {
     private let devotionalID: String
     private let loadingAccessibilityID: String
     private let loadDetail: @MainActor (String) async throws -> DevotionalDetail
+    private let complete: @MainActor (String) async throws -> Void
     @State private var state: LoadState = .loading
 
     private enum LoadState {
@@ -23,11 +24,13 @@ struct DevotionalReaderScreen: View {
     init(
         devotionalID: String,
         loadingAccessibilityID: String,
-        loadDetail: @escaping @MainActor (String) async throws -> DevotionalDetail
+        loadDetail: @escaping @MainActor (String) async throws -> DevotionalDetail,
+        complete: @escaping @MainActor (String) async throws -> Void
     ) {
         self.devotionalID = devotionalID
         self.loadingAccessibilityID = loadingAccessibilityID
         self.loadDetail = loadDetail
+        self.complete = complete
     }
 
     /// Home-dashboard entry point (Today card + "Your devotionals" card).
@@ -35,7 +38,8 @@ struct DevotionalReaderScreen: View {
         self.init(
             devotionalID: devotionalID,
             loadingAccessibilityID: "devotionalReader.loading",
-            loadDetail: viewModel.devotionalDetail(id:)
+            loadDetail: viewModel.devotionalDetail(id:),
+            complete: viewModel.completeDevotional(id:)
         )
     }
 
@@ -45,7 +49,8 @@ struct DevotionalReaderScreen: View {
         self.init(
             devotionalID: devotionalID,
             loadingAccessibilityID: "history.reader.loading",
-            loadDetail: viewModel.detail(id:)
+            loadDetail: viewModel.detail(id:),
+            complete: viewModel.completeDevotional(id:)
         )
     }
 
@@ -57,7 +62,7 @@ struct DevotionalReaderScreen: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .accessibilityIdentifier(loadingAccessibilityID)
             case .loaded(let detail):
-                DevotionalDetailView(detail: detail)
+                DevotionalDetailView(detail: detail, onComplete: { try await complete(devotionalID) })
             case .failed(let message):
                 VStack(spacing: 12) {
                     Text(message)

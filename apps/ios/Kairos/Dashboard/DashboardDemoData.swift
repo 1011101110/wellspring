@@ -56,7 +56,7 @@ enum DashboardDemoData {
             cardSummary: "A short pause to breathe and remember you are carried, not carrying.",
             prayer: "Lord, teach me the unforced rhythms of grace.",
             journalingPrompt: "What are you carrying that you could hand over right now?",
-            actionStep: nil, audioObject: nil, createdAt: isoInHours(-2)
+            actionStep: nil, audioObject: nil, createdAt: isoInHours(-2), completedAt: nil
         )
         let detail2 = DevotionalDetail(
             id: "devo-2", date: "2026-07-20", format: "text", theme: "The gift of enough",
@@ -67,7 +67,7 @@ enum DashboardDemoData {
             cardSummary: "On a full day, a reminder that today's grace is sufficient for today.",
             prayer: "Give me eyes for the mercy that is new this morning.",
             journalingPrompt: nil, actionStep: "Name one thing you have enough of today.",
-            audioObject: nil, createdAt: "2026-07-20T08:00:00Z")
+            audioObject: nil, createdAt: "2026-07-20T08:00:00Z", completedAt: "2026-07-20T08:12:00Z")
         let detail3 = DevotionalDetail(
             id: "devo-3", date: "2026-07-18", format: "text", theme: "Still waters",
             verses: [Verse(usfm: "PSA.23.2", reference: "Psalm 23:2",
@@ -76,7 +76,7 @@ enum DashboardDemoData {
             devotionalBody: "A few quiet lines for the middle of a loud week. Let your shoulders down.",
             cardSummary: "A few quiet lines for the middle of a loud week.",
             prayer: "Lead me beside the quiet waters today.",
-            journalingPrompt: nil, actionStep: nil, audioObject: nil, createdAt: "2026-07-18T08:00:00Z")
+            journalingPrompt: nil, actionStep: nil, audioObject: nil, createdAt: "2026-07-18T08:00:00Z", completedAt: nil)
         return FakeDevotionalsClient(
             page: DevotionalPage(devotionals: cards, nextCursor: nil),
             detailByID: ["devo-today": detail, "devo-2": detail2, "devo-3": detail3],

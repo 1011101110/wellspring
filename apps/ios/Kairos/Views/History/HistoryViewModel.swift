@@ -87,4 +87,10 @@ public final class HistoryViewModel: ObservableObject {
     public func detail(id: String) async throws -> DevotionalDetail {
         try await devotionals.detail(id: id)
     }
+
+    /// Mark a devotional complete from the reader's Amen button (#3) — the
+    /// server records the session and writes the YouVersion highlight.
+    public func completeDevotional(id: String) async throws {
+        try await devotionals.complete(id: id)
+    }
 }

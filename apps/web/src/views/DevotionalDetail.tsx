@@ -26,7 +26,7 @@
  */
 import { useEffect, useState } from 'react';
 import type { DevotionalDetail as DevotionalDetailData } from '@kairos/shared-contracts';
-import { getDevotional, getDevotionalAudio } from '../api/devotionals';
+import { completeDevotional, getDevotional, getDevotionalAudio } from '../api/devotionals';
 import { audioExpiryNotice, audioLifetime } from '../lib/audioRetention';
 import { formatCalendarDate } from '../lib/datetime';
 import { ErrorNote } from './Onboarding';
@@ -52,16 +52,27 @@ export function DevotionalDetailView({
   const [devotional, setDevotional] = useState<DevotionalDetailData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [audio, setAudio] = useState<AudioState>({ status: 'loading' });
+  // The persisted "Amen" (#3). Seeded from the devotional's own `completed_at`
+  // so a re-opened, already-finished devotional shows "Completed ✓" without a
+  // tap, and set optimistically from the POST response after a fresh Amen.
+  const [completedAt, setCompletedAt] = useState<string | null>(null);
+  const [completing, setCompleting] = useState(false);
+  const [completeError, setCompleteError] = useState<string | null>(null);
 
   useEffect(() => {
     let live = true;
     setDevotional(null);
     setError(null);
     setAudio({ status: 'loading' });
+    setCompletedAt(null);
+    setCompleteError(null);
 
     getDevotional(devotionalId)
       .then((data) => {
-        if (live) setDevotional(data);
+        if (live) {
+          setDevotional(data);
+          setCompletedAt(data.completed_at);
+        }
       })
       .catch((err: unknown) => {
         if (live) setError(err instanceof Error ? err.message : 'We could not open this devotional.');
@@ -86,6 +97,21 @@ export function DevotionalDetailView({
       live = false;
     };
   }, [devotionalId]);
+
+  async function handleComplete() {
+    if (completedAt !== null || completing) return;
+    setCompleteError(null);
+    setCompleting(true);
+    try {
+      setCompletedAt(await completeDevotional(devotionalId));
+    } catch {
+      // Kept deliberately plain and retryable — the reader has already
+      // delivered the devotional; a failed Amen is a retry, never a wall.
+      setCompleteError('Wellspring could not mark this complete just now. Please try again.');
+    } finally {
+      setCompleting(false);
+    }
+  }
 
   return (
     <section aria-labelledby="devotional-heading" className="card">
@@ -206,6 +232,30 @@ export function DevotionalDetailView({
               <p>{devotional.action_step}</p>
             </>
           )}
+
+          {/*
+           * The one write the reader makes: the persisted "Amen" (#3). Before
+           * this the reader only flipped a local flag and nothing reached the
+           * server — so the session was never completed and the YouVersion
+           * highlight (when connected) was never written. A quiet one-way
+           * door: once complete it is a non-interactive "Completed ✓", never a
+           * toggle and nothing to congratulate.
+           */}
+          <div className="devotional-complete">
+            <button
+              type="button"
+              className="primary"
+              disabled={completedAt !== null || completing}
+              onClick={handleComplete}
+            >
+              {completedAt !== null
+                ? 'Completed ✓'
+                : completing
+                  ? 'Marking…'
+                  : 'Amen — mark complete'}
+            </button>
+            <ErrorNote message={completeError} />
+          </div>
         </>
       )}
     </section>

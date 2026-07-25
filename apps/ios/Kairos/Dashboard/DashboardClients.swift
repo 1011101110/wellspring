@@ -133,6 +133,10 @@ public protocol DevotionalsProviding: AnyObject, Sendable {
     func detail(id: String) async throws -> DevotionalDetail
     /// Returns nil when search is unavailable (endpoint 404s).
     func search(query: String) async throws -> [DevotionalCard]?
+    /// Marks this devotional's session complete (POST
+    /// /v1/devotionals/:id/complete), which fires the YouVersion highlight
+    /// write server-side (#3). A 2xx is the whole signal.
+    func complete(id: String) async throws
 }
 
 private struct DevotionalListResponseBody: Decodable { let data: [DevotionalCard]; let nextCursor: String? }
@@ -157,6 +161,9 @@ public final class HTTPDevotionalsClient: DevotionalsProviding, @unchecked Senda
         let body = try await transport.sendAllowing404(path: "v1/devotionals/search", query: q, as: DevotionalListResponseBody.self)
         return body?.data
     }
+    public func complete(id: String) async throws {
+        try await transport.sendNoContent(path: "v1/devotionals/\(id)/complete", method: "POST", jsonBody: nil)
+    }
 }
 
 public final class FakeDevotionalsClient: DevotionalsProviding, @unchecked Sendable {
@@ -164,6 +171,8 @@ public final class FakeDevotionalsClient: DevotionalsProviding, @unchecked Senda
     public var detailByID: [String: DevotionalDetail]
     public var searchResult: [DevotionalCard]?
     public var nextError: DashboardError?
+    /// Ids passed to `complete(id:)`, so a test can assert the call happened.
+    public private(set) var completedIDs: [String] = []
     public init(page: DevotionalPage = DevotionalPage(devotionals: [], nextCursor: nil),
                 detailByID: [String: DevotionalDetail] = [:],
                 searchResult: [DevotionalCard]? = [],
@@ -182,6 +191,10 @@ public final class FakeDevotionalsClient: DevotionalsProviding, @unchecked Senda
     public func search(query: String) async throws -> [DevotionalCard]? {
         if let nextError { throw nextError }
         return searchResult
+    }
+    public func complete(id: String) async throws {
+        if let nextError { throw nextError }
+        completedIDs.append(id)
     }
 }
 

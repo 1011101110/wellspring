@@ -8,6 +8,7 @@
  */
 import {
   DevotionalAudioResponseSchema,
+  DevotionalCompleteResponseSchema,
   DevotionalDetailResponseSchema,
   DevotionalListResponseSchema,
   DEVOTIONAL_AUDIO_UNAVAILABLE_CODE,
@@ -40,6 +41,28 @@ export async function getDevotional(id: string): Promise<DevotionalDetail> {
     throw new ApiError(200, 'Wellspring sent this devotional in a shape this app does not understand.');
   }
   return result.data.data;
+}
+
+/**
+ * The authenticated "Amen" (#3): mark a devotional complete. This is the one
+ * write the reader makes — before it existed, the reader only flipped a local
+ * "Completed ✓" and nothing reached the server, so the session was never
+ * completed and (when YouVersion is connected with write consent) the verse was
+ * never saved to the user's highlights.
+ *
+ * Idempotent server-side — a second Amen returns the original completion
+ * instant unchanged, so a double-click is harmless. Returns that instant (ISO
+ * string) for the caller to reflect immediately.
+ */
+export async function completeDevotional(id: string): Promise<string> {
+  const payload = await apiFetch<unknown>(`/v1/devotionals/${encodeURIComponent(id)}/complete`, {
+    method: 'POST',
+  });
+  const result = DevotionalCompleteResponseSchema.safeParse(payload);
+  if (!result.success) {
+    throw new ApiError(200, 'Wellspring could not confirm this devotional was marked complete.');
+  }
+  return result.data.completedAt;
 }
 
 /**
