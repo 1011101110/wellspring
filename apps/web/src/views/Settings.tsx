@@ -217,17 +217,6 @@ export function SettingsView({
           Sign out
         </button>
       )}
-
-      {/* A persistent, findable YouVersion source credit (their Platform terms
-          ask apps to credit YouVersion for the Bible text). The per-verse
-          translation copyright still shows on each devotional. */}
-      <hr />
-      <p className="youversion-credit">
-        Scripture provided by{' '}
-        <a href="https://www.youversion.com" target="_blank" rel="noopener noreferrer">
-          YouVersion
-        </a>
-      </p>
     </section>
   );
 }
