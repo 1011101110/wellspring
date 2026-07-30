@@ -58,6 +58,12 @@ describe('renderSessionPage', () => {
     expect(html).toContain('<audio controls');
   });
 
+  it('credits YouVersion as the source of the Scripture (Platform terms)', () => {
+    const html = renderSessionPage(basePage());
+    expect(html).toContain('Scripture provided by');
+    expect(html).toContain('youversion.com');
+  });
+
   it('renders the human-readable reference as the verse heading, not the raw USFM (docs/14 §5.1)', () => {
     const html = renderSessionPage(basePage());
 

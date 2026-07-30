@@ -1,7 +1,7 @@
 import Foundation
 
 /// Representative demo content for the dashboard in demo mode (fake services,
-/// no live network — docs/00_FOUNDATION.md §11). Lets the signed-in Home be
+/// no live network â docs/00_FOUNDATION.md Â§11). Lets the signed-in Home be
 /// exercised in previews / UI tests / the demo build with believable data,
 /// the same role `DemoFixtureSnapshot` played for the old Home.
 enum DashboardDemoData {
@@ -31,9 +31,9 @@ enum DashboardDemoData {
 
     static let restVerse = Verse(
         usfm: "MAT.11.28-MAT.11.30",
-        reference: "Matthew 11:28–30",
+        reference: "Matthew 11:28â30",
         fetchedText: "Come to me, all you who are weary and burdened, and I will give you rest. Take my yoke upon you and learn from me, for I am gentle and humble in heart, and you will find rest for your souls.",
-        attribution: "New International Version (NIV)"
+        attribution: "Berean Standard Bible (BSB) — Public Domain"
     )
 
     static func devotionals() -> FakeDevotionalsClient {
@@ -60,9 +60,9 @@ enum DashboardDemoData {
         )
         let detail2 = DevotionalDetail(
             id: "devo-2", date: "2026-07-20", format: "text", theme: "The gift of enough",
-            verses: [Verse(usfm: "LAM.3.22-LAM.3.23", reference: "Lamentations 3:22–23",
+            verses: [Verse(usfm: "LAM.3.22-LAM.3.23", reference: "Lamentations 3:22â23",
                            fetchedText: "Because of the Lord's great love we are not consumed, for his compassions never fail. They are new every morning; great is your faithfulness.",
-                           attribution: "New International Version (NIV)")],
+                           attribution: "Berean Standard Bible (BSB) — Public Domain")],
             devotionalBody: "Today's grace is enough for today. You don't have to carry tomorrow yet.",
             cardSummary: "On a full day, a reminder that today's grace is sufficient for today.",
             prayer: "Give me eyes for the mercy that is new this morning.",
@@ -72,7 +72,7 @@ enum DashboardDemoData {
             id: "devo-3", date: "2026-07-18", format: "text", theme: "Still waters",
             verses: [Verse(usfm: "PSA.23.2", reference: "Psalm 23:2",
                            fetchedText: "He makes me lie down in green pastures, he leads me beside quiet waters.",
-                           attribution: "New International Version (NIV)")],
+                           attribution: "Berean Standard Bible (BSB) — Public Domain")],
             devotionalBody: "A few quiet lines for the middle of a loud week. Let your shoulders down.",
             cardSummary: "A few quiet lines for the middle of a loud week.",
             prayer: "Lead me beside the quiet waters today.",
@@ -126,7 +126,7 @@ enum DashboardDemoData {
             year: comps.year ?? 2026, month: comps.month ?? 7, sessionsCount: 9,
             recurringPassages: ["Psalm 23", "Matthew 11"],
             heavyWeek: MonthlyRecap.HeavyWeek(label: "Your busiest week, Wellspring met you four mornings."),
-            narrative: "This month you kept showing up in the small gaps — a few minutes here and there added up to a steady thread of rest."
+            narrative: "This month you kept showing up in the small gaps â a few minutes here and there added up to a steady thread of rest."
         ))
     }
 

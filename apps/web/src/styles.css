@@ -241,6 +241,19 @@ h1 {
   margin: 0.35rem 0 0;
 }
 /*
+ * YouVersion source credit. Each verse already carries its translation
+ * copyright (`cite`); YouVersion's Platform terms also ask apps to credit
+ * YouVersion as the source of the Bible text. A quiet footer line does that.
+ */
+.youversion-credit {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  margin: 2rem 0 0;
+}
+.youversion-credit a {
+  color: inherit;
+}
+/*
  * The readout is the eyebrow role (§03): Hanken 600, 12px, uppercase,
  * .22em tracking. Clay rather than the eyebrow's terracotta because 12px
  * is small text and terracotta measures 3.39:1 on canvas — the role

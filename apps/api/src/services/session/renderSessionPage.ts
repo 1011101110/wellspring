@@ -123,6 +123,11 @@ function pageShell(title: string, bodyHtml: string): string {
     margin: 0 0 1rem;
   }
   .attribution { color: var(--ws-clay); font-size: 13px; font-weight: 500; letter-spacing: 0.04em; margin: 0; }
+  /* YouVersion source credit (their Platform terms ask apps to credit
+     YouVersion as the source of the Bible text, on top of each version's own
+     copyright shown in the attribution line). Quiet footer, once per page. */
+  .youversion-credit { color: var(--ws-clay); font-size: 12px; letter-spacing: 0.03em; margin: 2.5rem 0 0; opacity: 0.85; }
+  .youversion-credit a { color: inherit; }
   audio { width: 100%; margin: 1.5rem 0; }
   .transcript { font-family: var(--serif); font-size: 1.05rem; line-height: 1.7; white-space: pre-wrap; margin: 1.5rem 0; }
   /* Prayer role (§03): Spectral 300 italic on a mist card. */
@@ -392,7 +397,8 @@ ${audioSection}
 </section>
 ${journalingHtml}
 ${actionStepHtml}
-${completeSection}`;
+${completeSection}
+<p class="youversion-credit">Scripture provided by <a href="https://www.youversion.com" rel="noopener noreferrer" target="_blank">YouVersion</a></p>`;
 
   return pageShell(devotional.theme, body);
 }
