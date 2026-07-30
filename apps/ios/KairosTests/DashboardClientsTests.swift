@@ -42,14 +42,14 @@ final class DashboardClientsTests: XCTestCase {
     }
 
     func test_devotionalDetail_decodesSnakeCase() async throws {
-        stub(#"{"ok":true,"data":{"id":"d1","date":"2026-07-21","format":"text","theme":"Rest","verses":[{"usfm":"MAT.11.28","reference":"Matthew 11:28","fetchedText":"Come to me","attribution":"NIV"}],"devotional_body":"body","card_summary":"summary","prayer":"pray","journaling_prompt":"prompt","action_step":null,"audio_object":null,"created_at":"2026-07-21T08:00:00Z"}}"#)
+        stub(#"{"ok":true,"data":{"id":"d1","date":"2026-07-21","format":"text","theme":"Rest","verses":[{"usfm":"MAT.11.28","reference":"Matthew 11:28","fetchedText":"Come to me","attribution":"Berean Standard Bible (BSB) — Public Domain"}],"devotional_body":"body","card_summary":"summary","prayer":"pray","journaling_prompt":"prompt","action_step":null,"audio_object":null,"created_at":"2026-07-21T08:00:00Z"}}"#)
         let client = HTTPDevotionalsClient(baseURL: base, session: makeSession(), idTokenProvider: token())
         let detail = try await client.detail(id: "d1")
         XCTAssertEqual(detail.devotionalBody, "body")
         XCTAssertEqual(detail.cardSummary, "summary")
         XCTAssertEqual(detail.journalingPrompt, "prompt")
         XCTAssertNil(detail.actionStep)
-        XCTAssertEqual(detail.primaryVerse?.attribution, "NIV")
+        XCTAssertEqual(detail.primaryVerse?.attribution, "Berean Standard Bible (BSB) — Public Domain")
     }
 
     func test_devotionalList_carriesNextCursor() async throws {

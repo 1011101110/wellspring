@@ -183,6 +183,14 @@ struct PreferencesView: View {
                             .disabled(true)
                             .accessibilityIdentifier("preferences.demoMode")
                     }
+                    // YouVersion Platform API terms ask that YouVersion be
+                    // credited as the source of the scripture text; this is the
+                    // always-findable acknowledgement (the reader footer is the
+                    // in-context one).
+                    Text("Scripture provided by YouVersion")
+                        .font(WSTheme.reference())
+                        .foregroundStyle(WSTheme.mutedInk)
+                        .accessibilityIdentifier("preferences.youVersionCredit")
                 } header: {
                     Text("About")
                 }

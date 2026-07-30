@@ -124,6 +124,17 @@ struct DevotionalDetailView: View {
                 }
 
                 completeButton
+
+                // YouVersion Platform API terms ask that YouVersion be
+                // credited as the source of the scripture text (separate from
+                // each verse's per-translation copyright line above). A quiet
+                // footer keeps it present without competing with the passage.
+                Text("Scripture provided by YouVersion")
+                    .font(WSTheme.reference())
+                    .foregroundStyle(WSTheme.mutedInk)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding(.top, 8)
+                    .accessibilityIdentifier("devotionalDetail.youVersionCredit")
             }
             .padding()
         }

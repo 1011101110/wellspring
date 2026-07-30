@@ -256,6 +256,19 @@ export function DevotionalDetailView({
             </button>
             <ErrorNote message={completeError} />
           </div>
+
+          {/*
+           * YouVersion source credit. Each verse already shows its own
+           * translation copyright (`verse.attribution`); YouVersion's Platform
+           * terms additionally ask apps to credit YouVersion as the source of
+           * the Bible text. One quiet line per devotional does that.
+           */}
+          <p className="youversion-credit">
+            Scripture provided by{' '}
+            <a href="https://www.youversion.com" target="_blank" rel="noopener noreferrer">
+              YouVersion
+            </a>
+          </p>
         </>
       )}
     </section>

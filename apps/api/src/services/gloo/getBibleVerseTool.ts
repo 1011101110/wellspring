@@ -38,7 +38,7 @@ export const GET_BIBLE_VERSE_TOOL: ToolFunctionDef = {
         },
         versionId: {
           type: 'integer',
-          description: 'YouVersion numeric version id, e.g. 111 (NIV).',
+          description: 'YouVersion numeric version id, e.g. 3034 (BSB).',
         },
         reason: {
           type: 'string',
