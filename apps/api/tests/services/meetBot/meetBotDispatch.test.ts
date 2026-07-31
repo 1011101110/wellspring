@@ -107,7 +107,7 @@ describe('runMeetBotDispatch', () => {
     const result = await runMeetBotDispatch(VOICE_AGENT_PARAMS, { attendeeClient, sleep: instantSleep });
 
     expect(result).toEqual({ ok: true, botId: 'fake-bot-id', lastState: 'ended' });
-    // toEqual on the WHOLE params object: proves voiceAgentUrl is present
+    // toEqual on the WHOLE params object: proves screenshareUrl is present
     // AND that audioWebsocketUrl/sampleRate keys are entirely absent — a
     // voice-agent bot must never carry websocket leftovers (the client
     // would map them into websocket_settings alongside voice_agent_settings).
@@ -115,7 +115,7 @@ describe('runMeetBotDispatch', () => {
       {
         meetingUrl: VOICE_AGENT_PARAMS.meetingUrl,
         botName: VOICE_AGENT_PARAMS.botName,
-        voiceAgentUrl: VOICE_AGENT_PARAMS.stageUrl,
+        screenshareUrl: VOICE_AGENT_PARAMS.stageUrl,
       },
     ]);
   });

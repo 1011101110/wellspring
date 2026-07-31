@@ -231,7 +231,11 @@ export async function runMeetBotDispatch(
       ? {
           meetingUrl: params.meetingUrl,
           botName: params.botName,
-          voiceAgentUrl: params.stageUrl,
+          // Present the Stage page as a full-screen SHARE (main-stage
+          // treatment) rather than the bot's small webcam tile — this is the
+          // "visual devotional on the meeting's main stage" experience. Maps
+          // to Attendee's `voice_agent_settings: { screenshare_url }`.
+          screenshareUrl: params.stageUrl,
         }
       : {
           meetingUrl: params.meetingUrl,
