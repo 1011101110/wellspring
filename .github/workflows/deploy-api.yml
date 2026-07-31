@@ -131,7 +131,7 @@ jobs:
             --cpu 1 --memory 512Mi --min-instances 0 --max-instances 3 \
             --no-cpu-throttling \
             --timeout 900 \
-            --set-env-vars "^@^BUILD_SHA=${{ github.sha }}@NODE_ENV=${{ steps.t.outputs.node_env }}@DB_NAME=${{ steps.t.outputs.db }}@DB_SOCKET=/cloudsql/${{ env.PROJECT_ID }}:${{ env.REGION }}:shared-postgres@AUDIO_BUCKET=kairos-audio-${{ env.PROJECT_ID }}@PUBLIC_BASE_URL=${{ steps.baseurl.outputs.url }}@MEETBOT_TASKS_PROJECT_ID=${{ env.PROJECT_ID }}@MEETBOT_TASKS_LOCATION=${{ env.REGION }}@MEETBOT_TASKS_QUEUE=meetbot-dispatch@WEB_APP_BASE_URL=${{ vars.WEB_APP_BASE_URL }}@KMS_KEY_NAME=${{ vars.KMS_KEY_NAME }}" \
+            --set-env-vars "^@^BUILD_SHA=${{ github.sha }}@NODE_ENV=${{ steps.t.outputs.node_env }}@DB_NAME=${{ steps.t.outputs.db }}@DB_SOCKET=/cloudsql/${{ env.PROJECT_ID }}:${{ env.REGION }}:shared-postgres@AUDIO_BUCKET=kairos-audio-${{ env.PROJECT_ID }}@PUBLIC_BASE_URL=${{ steps.baseurl.outputs.url }}@MEETBOT_IMMEDIATE_DISPATCH=1@WEB_APP_BASE_URL=${{ vars.WEB_APP_BASE_URL }}@KMS_KEY_NAME=${{ vars.KMS_KEY_NAME }}" \
             --set-secrets "DB_PASSWORD=KAIROS_DB_PASSWORD:latest,GLOO_CLIENT_ID=GLOO_CLIENT_ID:latest,GLOO_CLIENT_SECRET=GLOO_CLIENT_SECRET:latest,YOUVERSION_API_KEY=YOUVERSION_API_KEY:latest,YOUVERSION_OAUTH_CLIENT_ID=YOUVERSION_API_KEY:latest,INTERNAL_API_TOKEN=INTERNAL_API_TOKEN:latest,GOOGLE_OAUTH_CLIENT_ID=GOOGLE_OAUTH_CLIENT_ID:latest,GOOGLE_OAUTH_CLIENT_SECRET=GOOGLE_OAUTH_CLIENT_SECRET:latest,LIVEKIT_URL=LIVEKIT_URL:latest,LIVEKIT_API_KEY=LIVEKIT_API_KEY:latest,LIVEKIT_API_SECRET=LIVEKIT_API_SECRET:latest,ATTENDEE_API_KEY=ATTENDEE_API_KEY:latest,MEETBOT_AUDIO_TOKEN=MEETBOT_AUDIO_TOKEN:latest,RESEND_API_KEY=RESEND_API_KEY:latest,RESEND_WEBHOOK_SECRET=RESEND_WEBHOOK_SECRET:latest,INVITE_EMAIL_DOMAIN=INVITE_EMAIL_DOMAIN:latest"
             # WEB_APP_BASE_URL (#195): origin of the web app, so a
             # browser-originated Google Calendar connect returns to
@@ -148,18 +148,22 @@ jobs:
             # GOOGLE_OAUTH_CLIENT_ID's treatment above — avoids committing a
             # third-party project identifier to git history and keeps every
             # LiveKit value rotatable the same way.
-            # MEETBOT_TASKS_* (H1c, #131 / #53): wired 2026-07-08 — the owner
-            # ACTIVATED H1 Meet-bot delivery for all Google-connected users
-            # (accept+disclose transcription posture, Foundation §8 / docs/22
-            # §3). Plain non-secret identifiers (project id + region are
-            # already in this file), so set directly, not via Secret Manager.
-            # Presence of all three (plus ATTENDEE_API_KEY + INTERNAL_API_TOKEN,
-            # already set) flips deliveryProvider from LiveKit to MeetBotProvider
-            # in index.ts: Google-Calendar events now carry a real Meet link and
-            # a bot is dispatched at gap_start_at via the meetbot-dispatch Cloud
-            # Tasks queue. The hosted session page stays the permanent fallback
-            # (DEC-K3). Staging and prod share the one queue — task names are
-            # UUID-based (meetbot-<devotionalId>), so no cross-target collision.
+            # MEETBOT_IMMEDIATE_DISPATCH=1 (Epic Q, #335/#336): the Meet-bot
+            # delivery default is the VOICE-AGENT / screenshare mode — bots load
+            # the Stage page (`/stage/:token`) and present the visual devotional
+            # on the meeting's main stage while its audio is the bot's voice.
+            # This flag flips /internal/dispatch-meetbot into voice-agent mode
+            # and makes generate-now fire-and-forget the dispatch immediately
+            # (ImmediateTaskScheduler) instead of enqueueing a Cloud Task. It is
+            # deliberately mutually exclusive with the MEETBOT_TASKS_* trio
+            # (index.ts assertMeetBotDispatchConfigExclusive refuses to boot with
+            # both) — the queue path used the websocket-PCM transport, which has
+            # NO screenshare, so it was removed from this deploy on 2026-07-31
+            # after config drift silently reverted a manual gcloud change and
+            # dropped a live demo back to audio-only. Presence of ATTENDEE_API_KEY
+            # + INTERNAL_API_TOKEN (already set) still flips deliveryProvider to
+            # MeetBotProvider so Google-Calendar events carry a real Meet link.
+            # The hosted session page stays the permanent fallback (DEC-K3).
             # --timeout 900 (H1a, #129): the default Cloud Run request timeout
             # is 300s. A live devotional playback test found this borderline —
             # a ~303s devotional caused audible degradation right near the end
