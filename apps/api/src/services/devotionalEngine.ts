@@ -459,14 +459,21 @@ export function applyAuthoritativeFetchedText(
       versionId?: unknown;
       fetchedText?: unknown;
       reference?: unknown;
+      attribution?: unknown;
     };
     if (typeof v.usfm !== 'string' || typeof v.versionId !== 'number') continue;
     const fetched = fetchedTexts.get(`${v.usfm}::${v.versionId}`);
     if (fetched === undefined) continue;
-    // The tool result is the single source of truth for both fields — they
-    // are captured together from the same get_bible_verse response.
+    // The tool result is the single source of truth for all three fields —
+    // they are captured together from the same get_bible_verse response.
+    // Overwriting `attribution` too (not just text/reference) closes a leak
+    // where a model self-correction artifact (e.g. "}] Let me retry
+    // properly. {") echoed into the citation reached the Stage verbatim:
+    // the copyright line is now authoritative BY CONSTRUCTION, exactly like
+    // the verse text.
     v.fetchedText = fetched.text;
     v.reference = fetched.reference;
+    v.attribution = fetched.attribution;
   }
 }
 
