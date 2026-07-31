@@ -305,12 +305,21 @@ function stageShell(
   .question-block { max-width: 44rem; margin: 0 0 2.2rem; }
   .question-block:last-child { margin-bottom: 0; }
   .question-text { font-weight: 300; font-size: clamp(1.15rem, 2.1vw, 1.6rem); line-height: 1.6; margin: 0; }
+  /* Caption chip removed from the visible composition (#333 follow-up): on a
+     text-forward Stage the full reflection is already on screen, so the
+     synced chip is redundant on the main-stage screenshare. Kept in the DOM
+     as a visually-hidden aria-live region (same pattern as .om-live) so
+     assistive tech still receives the caption announcements. */
   .caption-zone {
-    min-height: 5.6rem;
-    display: flex;
-    align-items: flex-end;
-    justify-content: center;
-    padding-bottom: 1.7rem;
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+    border: 0;
   }
   /* Caption chip: ink ground, canvas text (11.7:1), warm shadow, and a
      small terracotta dot as its only accent. */
