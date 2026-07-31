@@ -346,7 +346,13 @@ public final class HTTPGenerateNowClient: GenerateNowRequesting, @unchecked Send
         // `mode: 'now'` — a routine "make one now" tap, distinct from the
         // distress front door (which posts an empty body).
         let payload = try JSONEncoder().encode(["mode": "now"])
-        let body = try await transport.send(path: "v1/devotional/generate-now", method: "POST", jsonBody: payload, as: GenerateNowResponseBody.self)
+        // #296: generate-now runs the full Gloo tool-loop + TTS synthesis +
+        // upload — measured at ~95-99s on staging (2026-07-30). The default
+        // URLSession request timeout (~60s) fires first, so the marquee "Make
+        // one now" tap errored while the devotional actually completed server-
+        // side. Override to 150s (headroom over the observed latency, and above
+        // the distress client's 120s) so the tap resolves instead of timing out.
+        let body = try await transport.send(path: "v1/devotional/generate-now", method: "POST", jsonBody: payload, timeoutInterval: 150, as: GenerateNowResponseBody.self)
         guard let url = URL(string: body.sessionUrl) else { throw DashboardError.network("Malformed sessionUrl.") }
         return GenerateNowOutcome(sessionUrl: url, devotionalId: body.devotionalId, alreadyExisted: body.alreadyExisted)
     }
