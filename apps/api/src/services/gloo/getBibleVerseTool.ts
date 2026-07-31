@@ -55,6 +55,7 @@ export const GET_BIBLE_VERSE_TOOL: ToolFunctionDef = {
 export interface FetchedVerse {
   text: string;
   reference: string;
+  attribution: string;
 }
 
 /**
@@ -163,7 +164,11 @@ export async function executeGetBibleVerse(
 
   const envelope = await youVersionClient.getVerse(parsedArgs.data.usfm, parsedArgs.data.versionId);
   if (envelope.ok) {
-    const fetched: FetchedVerse = { text: envelope.data.text, reference: envelope.data.reference };
+    const fetched: FetchedVerse = {
+      text: envelope.data.text,
+      reference: envelope.data.reference,
+      attribution: envelope.data.attribution,
+    };
     fetchedTexts.set(`${parsedArgs.data.usfm}::${parsedArgs.data.versionId}`, fetched);
     fetchedTexts.set(`${envelope.data.usfm}::${envelope.data.versionId}`, fetched);
     return JSON.stringify(envelope);
@@ -188,6 +193,7 @@ export async function executeGetBibleVerse(
         const fetched: FetchedVerse = {
           text: retried.data.text,
           reference: retried.data.reference,
+          attribution: retried.data.attribution,
         };
         fetchedTexts.set(`${parsedArgs.data.usfm}::${candidateVersionId}`, fetched);
         fetchedTexts.set(`${retried.data.usfm}::${retried.data.versionId}`, fetched);
