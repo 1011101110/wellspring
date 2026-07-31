@@ -2280,13 +2280,13 @@ describe('POST /internal/dispatch-meetbot', () => {
     expect(body.result.ok).toBe(true);
     expect(findByDevotionalId).toHaveBeenCalledWith('devo-1');
     // The exact bot-creation payload for voice-agent mode: the Stage URL
-    // (trailing slash on publicBaseUrl normalized away) as voiceAgentUrl,
+    // (trailing slash on publicBaseUrl normalized away) as screenshareUrl,
     // and — asserted via toEqual — NO websocket fields at all.
     expect(fakeClient.createBotCalls).toEqual([
       {
         meetingUrl: 'https://meet.google.com/abc-defg-hij',
         botName: 'Wellspring',
-        voiceAgentUrl: 'https://api.example.com/stage/session-token-uuid',
+        screenshareUrl: 'https://api.example.com/stage/session-token-uuid',
       },
     ]);
     // Lifecycle parity with websocket mode: dispatch ends in leave + delete_data.
