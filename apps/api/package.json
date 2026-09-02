@@ -25,7 +25,7 @@
     "@google-cloud/text-to-speech": "^6.4.1",
     "@kairos/shared-contracts": "*",
     "@livekit/rtc-node": "^0.13.30",
-    "fastify": "^5.1.0",
+    "fastify": "^5.12.1",
     "firebase-admin": "^14.1.0",
     "ical-generator": "^11.0.0",
     "jose": "^6.2.3",
